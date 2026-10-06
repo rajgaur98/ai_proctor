@@ -4,8 +4,8 @@
 |---|---|
 | **Product** | AI Proctor (working name) |
 | **Phase** | 1 of 2 (Phase 2 = AI daily summaries / standups) |
-| **Status** | Draft v0.2 |
-| **Last updated** | 2026-10-07 |
+| **Status** | Draft v0.3 |
+| **Last updated** | 2026-10-08 |
 | **Tech stack** | [docs/tech-stack.md](../tech-stack.md) |
 | **Target build** | ~13–14 weeks, 2–3 engineers + part-time designer |
 
@@ -105,7 +105,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | AGT-05 | P0 | When the org changes monitoring policy in a way that affects collection (e.g. enables webcam), employees must re-acknowledge the new notice version before the change takes effect for them |
 | AGT-06 | P0 | Agent runs at login, lives in system tray / menu bar, and auto-updates (staged rollout, rollback supported) |
 | AGT-07 | P0 | If a required permission is missing or revoked, the agent shows a persistent prompt to fix it, and the employee's status shows **Tamper (capture blocked)** to the manager |
-| AGT-08 | P0 | Agent footprint: average CPU < 1%, RAM < 250 MB (Electron), no noticeable impact on typing or video calls |
+| AGT-08 | P0 | Agent footprint: average CPU < 1%, RAM < 100 MB, no noticeable impact on typing or video calls |
 
 **Supported platforms:** Windows 10 (22H2+) and Windows 11; macOS 13 Ventura and later.
 
@@ -412,7 +412,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 ## 7. Non-functional requirements (NFR)
 
 ### Performance
-- NFR-PERF-01: Agent average CPU < 1%, peak < 10% during capture (≤ 2 s); RAM < 250 MB.
+- NFR-PERF-01: Agent average CPU < 1%, peak < 10% during capture (≤ 2 s); RAM < 100 MB.
 - NFR-PERF-02: Check-in card appears within 500 ms of its scheduled time.
 - NFR-PERF-03: Live grid status latency ≤ 10 s p95 for agent-reported state changes; Offline is detected within 3–4 min; dashboard pages load in < 2 s p95 for orgs up to 500 users.
 
@@ -485,7 +485,7 @@ audit_log(id, org_id, actor_id, action, target_type, target_id, metadata, create
 Pilot architecture (full detail, costs and scaling triggers in [docs/tech-stack.md](../tech-stack.md)):
 
 ```
-┌──────────────── Desktop agent (Electron + small native module) ────────────────┐
+┌──────────────── Desktop agent (Tauri v2: Rust core + React UI) ────────────────┐
 │ Scheduler · Check-in card · Screenshot + webcam capture · Idle/lock detection · │
 │ Activity sampler · Encrypted offline queue (SQLite) · Auto-updater · Watchdog   │
 └───────────┬──────────────────────────────────────────────┬─────────────────────┘
@@ -501,7 +501,7 @@ Pilot architecture (full detail, costs and scaling triggers in [docs/tech-stack.
 Manager dashboard: React SPA on Cloudflare Pages
 ```
 
-**Platform-specific notes** (native APIs used by Electron or the agent's native module)
+**Platform-specific notes** (native APIs used by the agent's Rust platform layer)
 
 | Capability | macOS | Windows |
 |---|---|---|
