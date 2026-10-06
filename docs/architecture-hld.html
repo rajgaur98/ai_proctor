@@ -1,0 +1,561 @@
+<title>AI Proctor Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column; each figure sits on its own panel and scrolls sideways inside it on narrow screens. */
+:root {
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --ink: #152030;
+  --ink-2: #2f3d4f;
+  --muted: #5d6a7c;
+  --line: #c7d0db;
+  --line-strong: #9aa7b7;
+  --edge: #6b788a;
+  --accent: #0b7a6b;
+  --accent-soft: #dcefea;
+  --zone-dev: #edf2fa;
+  --zone-sb: #ecf6f1;
+  --zone-br: #f4effa;
+  --box: #ffffff;
+  --box-sub: #f2f5f9;
+  --f-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --panel: #141b24; --ink: #e4eaf1; --ink-2: #c3cdd9; --muted: #8d9aab;
+    --line: #2c3846; --line-strong: #4a586a; --edge: #8796a8; --accent: #3cc4ab; --accent-soft: #163a34;
+    --zone-dev: #152031; --zone-sb: #13261f; --zone-br: #1f1a2b; --box: #1a2330; --box-sub: #212b39;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --panel: #141b24; --ink: #e4eaf1; --ink-2: #c3cdd9; --muted: #8d9aab;
+  --line: #2c3846; --line-strong: #4a586a; --edge: #8796a8; --accent: #3cc4ab; --accent-soft: #163a34;
+  --zone-dev: #152031; --zone-sb: #13261f; --zone-br: #1f1a2b; --box: #1a2330; --box-sub: #212b39;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 15px/1.6 var(--f-body);
+  padding-inline: 20px;
+  padding-block: 32px 56px;
+}
+.wrap { max-width: 1120px; margin-inline: auto; display: grid; gap: 40px; }
+
+header { display: grid; gap: 12px; }
+.eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 clamp(30px, 5vw, 44px)/1.08 var(--f-display); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h2 { font: 600 22px/1.2 var(--f-display); margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--ink-2); font-size: 17px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.chip {
+  font: 500 12px/1 var(--f-mono); color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; background: var(--panel);
+}
+.meta a.chip { color: var(--accent); text-decoration: none; }
+.meta a.chip:hover, .meta a.chip:focus-visible { border-color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+section { display: grid; gap: 14px; min-width: 0; }
+section > p { color: var(--ink-2); }
+
+figure { margin: 0; display: grid; gap: 10px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; }
+.panel svg { display: block; width: 100%; height: auto; }
+.panel svg.wide { min-width: 960px; }
+.panel svg.mid { min-width: 760px; }
+figcaption { color: var(--muted); font-size: 14px; max-width: 80ch; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { display: inline-block; width: 30px; height: 0; border-top: 2px solid var(--edge); }
+.sw.hot { border-top: 3px solid var(--accent); }
+.sw.async { border-top: 2px dashed var(--edge); }
+
+.rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.rule { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.rule b { font: 600 15px/1.3 var(--f-display); }
+.rule span { color: var(--muted); font-size: 14px; }
+@media (max-width: 860px) { .rules { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .rules { grid-template-columns: 1fr; } }
+
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 12px/1.2 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { white-space: nowrap; font-weight: 500; }
+code { font: 400 13px var(--f-mono); }
+
+footer { color: var(--muted); font-size: 13px; }
+
+/* SVG styling (page CSS, so both themes follow the tokens) */
+.zone { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 5 4; }
+.z-dev { fill: var(--zone-dev); }
+.z-sb { fill: var(--zone-sb); }
+.z-br { fill: var(--zone-br); }
+.box { fill: var(--box); stroke: var(--line-strong); stroke-width: 1; }
+.box-outer { fill: var(--box-sub); stroke: var(--line-strong); stroke-width: 1; }
+.box-sub { fill: var(--box-sub); stroke: var(--line); stroke-width: 1; }
+.box-new { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+.note { fill: var(--box-sub); stroke: var(--line); stroke-width: 1; }
+.t-zone { font: 600 11px var(--f-mono); letter-spacing: .08em; fill: var(--muted); }
+.t-label { font: 600 10.5px var(--f-mono); letter-spacing: .08em; fill: var(--muted); }
+.t-title { font: 600 13px var(--f-body); fill: var(--ink); }
+.t-title-c { font: 500 13px var(--f-mono); fill: var(--ink); }
+.t-sub { font: 400 11.5px var(--f-body); fill: var(--muted); }
+.t-sub-s { font: 400 10.5px var(--f-body); fill: var(--muted); }
+.t-code { font: 400 11px var(--f-mono); fill: var(--muted); }
+.t-edge { font: 500 11px var(--f-body); fill: var(--ink-2); }
+.t-edge-c { font: 500 11px var(--f-mono); fill: var(--ink-2); }
+.t-mid { text-anchor: middle; }
+.e { stroke: var(--edge); stroke-width: 1.4; fill: none; }
+.e-hot { stroke: var(--accent); stroke-width: 2.4; }
+.e-async { stroke-dasharray: 5 4; }
+.e-int { stroke: var(--line-strong); stroke-width: 1.2; }
+.life { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.divider { stroke: var(--line); stroke-width: 1; }
+.ah { fill: var(--edge); }
+.ah-hot { fill: var(--accent); }
+.bgchip { fill: var(--panel); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">AI Proctor · Phase 1 pilot</div>
+    <h1>High-level architecture</h1>
+    <p class="lede">How the desktop agent, Supabase and the dashboard fit together for the pilot: one US region, no servers of our own, about $25 a month in hosting.</p>
+    <div class="meta">
+      <span class="chip">v1.1 · 8 Oct 2026</span>
+      <span class="chip">Tauri v2 agent</span>
+      <span class="chip">Supabase Pro · US East</span>
+      <span class="chip">React SPA</span>
+      <a class="chip" href="https://github.com/rajgaur98/ai_proctor/blob/claude/employee-activity-monitoring-z07n3t/docs/prd/phase-1-presence-and-timesheets.md">PRD ↗</a>
+      <a class="chip" href="https://github.com/rajgaur98/ai_proctor/blob/claude/employee-activity-monitoring-z07n3t/docs/tech-stack.md">Tech stack ↗</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>System overview</h2>
+    <figure>
+      <div class="panel">
+        <svg class="wide" viewBox="0 0 1320 716" role="img" aria-label="System overview: the Tauri desktop agent on the employee's device signs in through Supabase Auth, sends heartbeats and state events to PostgREST RPC functions, and uploads captures to Supabase Storage. Postgres pushes presence changes through Realtime to the React dashboard in the browser. pg_cron in Postgres triggers Edge Functions that rebuild timesheet segments, issue audited capture URLs, export timesheets, purge old data and send email through Resend. Cloudflare R2 serves agent updates and holds backups; Cloudflare Pages serves the dashboard.">
+          <defs>
+            <marker id="o-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="o-ahh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path class="ah-hot" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- Zones -->
+          <rect class="zone z-dev" x="16" y="48" width="300" height="552" rx="10"/>
+          <text class="t-zone" x="32" y="72">EMPLOYEE DEVICE</text>
+          <text class="t-sub" x="32" y="89">Windows · macOS</text>
+
+          <rect class="zone z-sb" x="456" y="48" width="500" height="552" rx="10"/>
+          <text class="t-zone" x="472" y="72">SUPABASE PRO · US EAST</text>
+          <text class="t-sub" x="472" y="89">single region during the pilot</text>
+
+          <rect class="zone z-br" x="1066" y="48" width="238" height="552" rx="10"/>
+          <text class="t-zone" x="1082" y="72">BROWSER</text>
+          <text class="t-sub" x="1082" y="89">manager · employee · admin</text>
+
+          <!-- Agent -->
+          <rect class="box-outer" x="32" y="100" width="268" height="466" rx="8"/>
+          <text class="t-title" x="48" y="123">Desktop agent<tspan class="t-sub"> · Tauri v2</tspan></text>
+
+          <rect class="box" x="48" y="136" width="236" height="60" rx="6"/>
+          <text class="t-title" x="64" y="160">React UI</text>
+          <text class="t-sub" x="64" y="180">tray · onboarding · check-in card</text>
+
+          <rect class="box" x="48" y="216" width="236" height="116" rx="6"/>
+          <text class="t-title" x="64" y="240">Rust core</text>
+          <text class="t-sub" x="64" y="260">scheduler · session state</text>
+          <text class="t-sub" x="64" y="277">offline queue (encrypted SQLite)</text>
+          <text class="t-sub" x="64" y="294">sync · updater · watchdog</text>
+
+          <rect class="box" x="48" y="352" width="236" height="116" rx="6"/>
+          <text class="t-title" x="64" y="376">Platform layer</text>
+          <text class="t-sub" x="64" y="396">screen capture · webcam frame</text>
+          <text class="t-sub" x="64" y="413">idle · lock · sleep</text>
+          <text class="t-sub" x="64" y="430">camera/mic in use · injected input</text>
+
+          <rect class="box" x="48" y="488" width="236" height="56" rx="6"/>
+          <text class="t-title" x="64" y="510">OS keychain</text>
+          <text class="t-sub" x="64" y="530">session token · queue key</text>
+
+          <line class="e-int" x1="166" y1="196" x2="166" y2="216"/>
+          <line class="e-int" x1="166" y1="332" x2="166" y2="352"/>
+          <line class="e-int" x1="166" y1="468" x2="166" y2="488"/>
+
+          <!-- Supabase services -->
+          <rect class="box" x="476" y="100" width="460" height="44" rx="6"/>
+          <text class="t-title" x="492" y="127">Auth<tspan class="t-sub" dx="10">Google · Microsoft · email + password · TOTP MFA</tspan></text>
+
+          <rect class="box" x="476" y="172" width="460" height="72" rx="6"/>
+          <text class="t-title" x="492" y="195">PostgREST API</text>
+          <text class="t-code" x="492" y="214">agent RPC: agent_heartbeat · agent_events · clock_in/out</text>
+          <text class="t-code" x="492" y="232">dashboard: RLS-scoped reads · edits · approvals</text>
+
+          <rect class="box" x="476" y="276" width="250" height="170" rx="6"/>
+          <text class="t-title" x="492" y="299">Postgres + RLS</text>
+          <text class="t-code" x="492" y="319">presence · last_seen</text>
+          <text class="t-code" x="492" y="335">checkin_events · time_segments</text>
+          <text class="t-code" x="492" y="351">timesheets · policies · audit_log</text>
+          <rect class="box-sub" x="490" y="366" width="222" height="66" rx="5"/>
+          <text class="t-title-c" x="504" y="387">pg_cron</text>
+          <text class="t-sub-s" x="504" y="405">offline sweep, alerts: every 1 min</text>
+          <text class="t-sub-s" x="504" y="421">segments: 5 min · retention: nightly</text>
+
+          <rect class="box" x="786" y="276" width="150" height="60" rx="6"/>
+          <text class="t-title" x="802" y="300">Realtime</text>
+          <text class="t-sub" x="802" y="320">presence changes</text>
+
+          <rect class="box" x="786" y="366" width="150" height="160" rx="6"/>
+          <text class="t-title" x="802" y="389">Edge Functions</text>
+          <text class="t-code" x="802" y="410">rebuild-segments</text>
+          <text class="t-code" x="802" y="428">capture-url</text>
+          <text class="t-code" x="802" y="446">export-timesheet</text>
+          <text class="t-code" x="802" y="464">send-emails</text>
+          <text class="t-code" x="802" y="482">retention-purge</text>
+
+          <rect class="box" x="476" y="486" width="250" height="80" rx="6"/>
+          <text class="t-title" x="492" y="509">Storage</text>
+          <text class="t-sub" x="492" y="527">private captures bucket</text>
+          <text class="t-code" x="492" y="545">{org}/{user}/{date}/{checkin}/…</text>
+
+          <!-- Internal Supabase edges -->
+          <line class="e e-hot" x1="556" y1="244" x2="556" y2="276" marker-end="url(#o-ahh)"/>
+          <text class="t-edge" x="566" y="264">validated RPC</text>
+
+          <line class="e e-hot" x1="726" y1="306" x2="786" y2="306" marker-end="url(#o-ahh)"/>
+          <text class="t-edge t-mid" x="756" y="299">changes</text>
+
+          <line class="e e-async" x1="726" y1="392" x2="786" y2="392" marker-end="url(#o-ah)"/>
+          <text class="t-edge-c t-mid" x="756" y="386">pg_net</text>
+
+          <line class="e" x1="786" y1="422" x2="726" y2="422" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="756" y="438">writes</text>
+
+          <line class="e" x1="786" y1="506" x2="726" y2="506" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="756" y="500">signs</text>
+          <text class="t-edge t-mid" x="756" y="521">purges</text>
+
+          <!-- Agent edges -->
+          <line class="e" x1="300" y1="122" x2="476" y2="122" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="388" y="115">PKCE sign-in</text>
+
+          <line class="e e-hot" x1="300" y1="208" x2="476" y2="208" marker-end="url(#o-ahh)"/>
+          <text class="t-edge t-mid" x="388" y="200">heartbeat · 60 s</text>
+          <text class="t-edge t-mid" x="388" y="225">events · immediate</text>
+
+          <line class="e" x1="300" y1="526" x2="476" y2="526" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="388" y="518">WebP captures</text>
+          <text class="t-edge t-mid" x="388" y="543">on pass only</text>
+
+          <!-- Dashboard -->
+          <rect class="box" x="1082" y="100" width="206" height="466" rx="8"/>
+          <text class="t-title" x="1098" y="124">Dashboard<tspan class="t-sub"> · React SPA</tspan></text>
+          <text class="t-label" x="1098" y="156">MANAGER</text>
+          <text class="t-sub" x="1098" y="174">live grid · day timelines</text>
+          <text class="t-sub" x="1098" y="191">capture viewer</text>
+          <text class="t-sub" x="1098" y="208">timesheet approvals</text>
+          <text class="t-label" x="1098" y="244">EMPLOYEE</text>
+          <text class="t-sub" x="1098" y="262">My data · own captures</text>
+          <text class="t-sub" x="1098" y="279">timesheets · miss reasons</text>
+          <text class="t-label" x="1098" y="315">ADMIN</text>
+          <text class="t-sub" x="1098" y="333">policies · region presets</text>
+          <text class="t-sub" x="1098" y="350">users · audit log</text>
+
+          <!-- Dashboard edges -->
+          <line class="e" x1="1082" y1="122" x2="936" y2="122" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="1011" y="115">sign-in</text>
+
+          <line class="e" x1="1082" y1="208" x2="936" y2="208" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="1011" y="200">reads · edits</text>
+          <text class="t-edge t-mid" x="1011" y="225">approvals</text>
+
+          <line class="e e-hot" x1="936" y1="306" x2="1082" y2="306" marker-end="url(#o-ahh)"/>
+          <text class="t-edge t-mid" x="1011" y="298">status changes</text>
+
+          <line class="e" x1="1082" y1="446" x2="936" y2="446" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="1011" y="438">view capture</text>
+          <text class="t-edge t-mid" x="1011" y="463">exports</text>
+
+          <!-- External services -->
+          <text class="t-zone" x="16" y="630">EXTERNAL SERVICES</text>
+
+          <rect class="box" x="32" y="644" width="260" height="56" rx="6"/>
+          <text class="t-title" x="48" y="667">Cloudflare R2</text>
+          <text class="t-sub" x="48" y="686">agent updates · weekly DB backups</text>
+
+          <rect class="box" x="342" y="644" width="220" height="56" rx="6"/>
+          <text class="t-title" x="358" y="667">GitHub Actions</text>
+          <text class="t-sub" x="358" y="686">CI builds · weekly pg_dump</text>
+
+          <rect class="box" x="596" y="644" width="160" height="56" rx="6"/>
+          <text class="t-title" x="612" y="667">Observability</text>
+          <text class="t-sub" x="612" y="686">Sentry · Better Stack</text>
+
+          <rect class="box" x="786" y="644" width="150" height="56" rx="6"/>
+          <text class="t-title" x="802" y="667">Resend</text>
+          <text class="t-sub" x="802" y="686">alerts · reminders</text>
+
+          <rect class="box" x="1082" y="644" width="206" height="56" rx="6"/>
+          <text class="t-title" x="1098" y="667">Cloudflare Pages</text>
+          <text class="t-sub" x="1098" y="686">serves the dashboard</text>
+
+          <line class="e" x1="166" y1="644" x2="166" y2="566" marker-end="url(#o-ah)"/>
+          <text class="t-edge" x="176" y="618">signed updates</text>
+
+          <line class="e e-async" x1="342" y1="672" x2="292" y2="672" marker-end="url(#o-ah)"/>
+          <text class="t-edge t-mid" x="317" y="664">backup</text>
+
+          <line class="e e-async" x1="861" y1="526" x2="861" y2="644" marker-end="url(#o-ah)"/>
+          <text class="t-edge-c" x="871" y="618">send-emails</text>
+
+          <line class="e" x1="1185" y1="644" x2="1185" y2="566" marker-end="url(#o-ah)"/>
+          <text class="t-edge" x="1195" y="618">static SPA</text>
+        </svg>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><i class="sw hot"></i>Live presence path</span>
+        <span><i class="sw"></i>Request or data flow</span>
+        <span><i class="sw async"></i>Scheduled or background</span>
+      </div>
+      <figcaption>The agent reaches Supabase in only three ways: Auth, validated RPC functions and signed uploads. The teal path is how a state change on a laptop reaches the manager's live grid, through Postgres and Realtime, typically within 10 seconds.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Guarantees the design enforces</h2>
+    <div class="rules">
+      <div class="rule"><b>Agents never write tables</b><span>Every agent write goes through an RPC function that checks the device, user and clock state. The service-role key never leaves Supabase.</span></div>
+      <div class="rule"><b>No capture on a miss</b><span>A missed check-in sends an event with idle time and device state only. Nothing is uploaded.</span></div>
+      <div class="rule"><b>Every capture view is audited</b><span>A signed URL is issued only after the access check and the audit-log entry, and it expires within 5 minutes.</span></div>
+      <div class="rule"><b>Timesheets are derived</b><span>Segments are rebuilt deterministically from raw events. Flagged time is highlighted, never deducted.</span></div>
+      <div class="rule"><b>Works offline</b><span>Events and captures queue encrypted on the device for up to 7 days. Each event has a client UUID, so replays are safe.</span></div>
+      <div class="rule"><b>One region in the pilot</b><span>Everything runs in US East. An EU project is added when the first EU customer signs.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Check-in: pass and miss</h2>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1000 516" role="img" aria-label="Check-in sequence. On a pass, the agent captures and encodes images on the device, uploads them to Storage with a signed URL, then sends agent_events with the object keys; Postgres updates presence to Active, Realtime pushes it to the dashboard. On a miss, the agent sends agent_events with idle time and device state, nothing is uploaded, and presence becomes Away.">
+          <defs>
+            <marker id="s-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="s-ahh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path class="ah-hot" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="15" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="90" y="40">Agent</text>
+          <rect class="box" x="215" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="290" y="40">Storage</text>
+          <rect class="box" x="420" y="16" width="180" height="38" rx="6"/><text class="t-title t-mid" x="510" y="40">Postgres (via RPC)</text>
+          <rect class="box" x="645" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="720" y="40">Realtime</text>
+          <rect class="box" x="835" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="910" y="40">Dashboard</text>
+
+          <line class="life" x1="90" y1="54" x2="90" y2="506"/>
+          <line class="life" x1="290" y1="54" x2="290" y2="506"/>
+          <line class="life" x1="510" y1="54" x2="510" y2="506"/>
+          <line class="life" x1="720" y1="54" x2="720" y2="506"/>
+          <line class="life" x1="910" y1="54" x2="910" y2="506"/>
+
+          <rect class="note" x="100" y="74" width="140" height="28" rx="6"/>
+          <text class="t-sub" x="110" y="92">check-in card appears</text>
+
+          <line class="divider" x1="20" y1="124" x2="980" y2="124"/>
+          <text class="t-label" x="20" y="118">ON PASS</text>
+
+          <rect class="note" x="100" y="138" width="172" height="28" rx="6"/>
+          <text class="t-sub" x="110" y="156">capture + encode on device</text>
+
+          <line class="e" x1="90" y1="200" x2="290" y2="200" marker-end="url(#s-ah)"/>
+          <text class="t-edge t-mid" x="190" y="192">upload (signed URL)</text>
+
+          <line class="e e-hot" x1="90" y1="244" x2="510" y2="244" marker-end="url(#s-ahh)"/>
+          <text class="t-edge-c t-mid" x="400" y="236">agent_events(pass, keys)</text>
+
+          <line class="e e-hot" x1="510" y1="288" x2="720" y2="288" marker-end="url(#s-ahh)"/>
+          <text class="t-edge t-mid" x="615" y="280">presence: Active</text>
+
+          <line class="e e-hot" x1="720" y1="332" x2="910" y2="332" marker-end="url(#s-ahh)"/>
+          <text class="t-edge t-mid" x="815" y="324">status · last check-in</text>
+
+          <line class="divider" x1="20" y1="372" x2="980" y2="372"/>
+          <text class="t-label" x="20" y="366">ON MISS</text>
+
+          <line class="e e-hot" x1="90" y1="412" x2="510" y2="412" marker-end="url(#s-ahh)"/>
+          <text class="t-edge-c t-mid" x="400" y="404">agent_events(miss, idle, device)</text>
+          <rect class="bgchip" x="226" y="422" width="128" height="18"/>
+          <text class="t-sub t-mid" x="290" y="435">no capture, no upload</text>
+
+          <line class="e e-hot" x1="510" y1="456" x2="720" y2="456" marker-end="url(#s-ahh)"/>
+          <text class="t-edge t-mid" x="615" y="448">presence: Away</text>
+
+          <line class="e e-hot" x1="720" y1="492" x2="910" y2="492" marker-end="url(#s-ahh)"/>
+          <text class="t-edge t-mid" x="815" y="484">status: Away</text>
+        </svg>
+      </div>
+      <figcaption>On a pass, images go straight to Storage and only their object keys travel through the RPC. On a miss nothing is captured. If the device is offline, both paths queue locally and replay when it reconnects.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Viewing a capture</h2>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1000 340" role="img" aria-label="Capture view sequence: the manager's browser asks the capture-url Edge Function for a check-in's images; the function checks can_view_user in Postgres, inserts an audit_log entry, asks Storage for a signed URL that expires within 5 minutes, and returns it; the browser then fetches the image directly from Storage.">
+          <defs>
+            <marker id="v-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="15" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="90" y="40">Manager browser</text>
+          <rect class="box" x="270" y="16" width="180" height="38" rx="6"/><text class="t-title-c t-mid" x="360" y="40">capture-url</text>
+          <rect class="box" x="555" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="630" y="40">Postgres</text>
+          <rect class="box" x="825" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="900" y="40">Storage</text>
+
+          <line class="life" x1="90" y1="54" x2="90" y2="330"/>
+          <line class="life" x1="360" y1="54" x2="360" y2="330"/>
+          <line class="life" x1="630" y1="54" x2="630" y2="330"/>
+          <line class="life" x1="900" y1="54" x2="900" y2="330"/>
+
+          <line class="e" x1="90" y1="96" x2="360" y2="96" marker-end="url(#v-ah)"/>
+          <text class="t-edge t-mid" x="225" y="88">open capture (checkin_id)</text>
+
+          <line class="e" x1="360" y1="140" x2="630" y2="140" marker-end="url(#v-ah)"/>
+          <text class="t-edge-c t-mid" x="495" y="132">can_view_user(viewer, employee)</text>
+
+          <line class="e" x1="360" y1="184" x2="630" y2="184" marker-end="url(#v-ah)"/>
+          <text class="t-edge t-mid" x="495" y="176">insert audit_log entry</text>
+
+          <line class="e" x1="360" y1="228" x2="900" y2="228" marker-end="url(#v-ah)"/>
+          <text class="t-edge t-mid" x="765" y="220">signed URL, expires ≤ 5 min</text>
+
+          <line class="e" x1="360" y1="272" x2="90" y2="272" marker-end="url(#v-ah)"/>
+          <text class="t-edge t-mid" x="225" y="264">signed URL</text>
+
+          <line class="e" x1="90" y1="316" x2="900" y2="316" marker-end="url(#v-ah)"/>
+          <text class="t-edge t-mid" x="765" y="308">GET image</text>
+        </svg>
+      </div>
+      <figcaption>The bucket is private and the dashboard never reads it directly. The access check and the audit entry happen before any URL exists, and the employee can see who opened their captures.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>From events to timesheets</h2>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1100 232" role="img" aria-label="Timesheet pipeline: raw events feed the rebuild-segments function, which runs the buildSegments function from packages/core for each changed user-day and replaces that day's time_segments; weekly timesheets sum the segments from raw seconds and go through draft, submitted and approved. A manager edit or a late offline sync triggers a rebuild of that day.">
+          <defs>
+            <marker id="t-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="20" y="40" width="190" height="122" rx="6"/>
+          <text class="t-title" x="36" y="64">Raw events</text>
+          <text class="t-sub" x="36" y="86">clock sessions</text>
+          <text class="t-sub" x="36" y="103">check-ins · breaks · pauses</text>
+          <text class="t-sub" x="36" y="120">status periods</text>
+          <text class="t-sub" x="36" y="137">manual entries</text>
+
+          <rect class="box" x="300" y="40" width="200" height="122" rx="6"/>
+          <text class="t-title-c" x="316" y="64">rebuild-segments</text>
+          <text class="t-code" x="316" y="86">buildSegments()</text>
+          <text class="t-sub" x="316" y="103">pure function, packages/core</text>
+          <text class="t-sub" x="316" y="120">every 5 min and on open</text>
+          <text class="t-sub" x="316" y="137">same input, same output</text>
+
+          <rect class="box" x="590" y="40" width="170" height="122" rx="6"/>
+          <text class="t-title-c" x="606" y="64">time_segments</text>
+          <text class="t-sub" x="606" y="86">verified · meeting</text>
+          <text class="t-sub" x="606" y="103">flagged: idle, away,</text>
+          <text class="t-sub" x="606" y="120">unverified, offline</text>
+          <text class="t-sub" x="606" y="137">break · pause · manual</text>
+
+          <rect class="box" x="850" y="40" width="230" height="122" rx="6"/>
+          <text class="t-title" x="866" y="64">Weekly timesheet</text>
+          <text class="t-sub" x="866" y="86">draft → submitted → approved</text>
+          <text class="t-sub" x="866" y="103">approved by direct manager</text>
+          <text class="t-sub" x="866" y="120">totals from raw seconds</text>
+          <text class="t-sub" x="866" y="137">CSV / XLSX export</text>
+
+          <line class="e" x1="210" y1="100" x2="300" y2="100" marker-end="url(#t-ah)"/>
+          <text class="t-edge t-mid" x="255" y="92">changed days</text>
+          <line class="e" x1="500" y1="100" x2="590" y2="100" marker-end="url(#t-ah)"/>
+          <text class="t-edge t-mid" x="545" y="92">replace day</text>
+          <line class="e" x1="760" y1="100" x2="850" y2="100" marker-end="url(#t-ah)"/>
+          <text class="t-edge t-mid" x="805" y="92">sum seconds</text>
+
+          <path class="e e-async" d="M965 162 V196 H400 V162" marker-end="url(#t-ah)"/>
+          <text class="t-edge t-mid" x="682" y="218">manager edit or late offline sync → rebuild that day</text>
+        </svg>
+      </div>
+      <figcaption>Timesheets are never edited in place. Every change, including a manager excluding flagged time, is recorded and the day is rebuilt, so the hours always match the events behind them.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>What changes as pilots grow</h2>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1000 240" role="img" aria-label="Scale path for heartbeats. In the pilot, the agent sends heartbeats to the PostgREST agent_heartbeat function, which updates last_seen in Postgres. From about 300 to 500 active users, the agent sends heartbeats to the same API domain, now served by a small ingest service that keeps presence in memory and writes only batched status changes to Postgres.">
+          <defs>
+            <marker id="g-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="g-ahh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path class="ah-hot" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <text class="t-label" x="20" y="30">PILOT</text>
+          <rect class="box" x="40" y="44" width="170" height="54" rx="6"/>
+          <text class="t-title" x="56" y="67">Desktop agent</text>
+          <text class="t-sub" x="56" y="86">heartbeat every 60 s</text>
+          <rect class="box" x="400" y="44" width="200" height="54" rx="6"/>
+          <text class="t-title" x="416" y="67">PostgREST RPC</text>
+          <text class="t-code" x="416" y="86">agent_heartbeat()</text>
+          <rect class="box" x="790" y="44" width="170" height="54" rx="6"/>
+          <text class="t-title" x="806" y="67">Postgres</text>
+          <text class="t-sub" x="806" y="86">one write per heartbeat</text>
+          <line class="e" x1="210" y1="71" x2="400" y2="71" marker-end="url(#g-ah)"/>
+          <text class="t-edge t-mid" x="305" y="63">api.&lt;domain&gt;</text>
+          <line class="e" x1="600" y1="71" x2="790" y2="71" marker-end="url(#g-ah)"/>
+          <text class="t-edge t-mid" x="695" y="63">update last_seen</text>
+
+          <line class="divider" x1="20" y1="124" x2="980" y2="124"/>
+
+          <text class="t-label" x="20" y="152">FROM ~300–500 ACTIVE USERS</text>
+          <rect class="box" x="40" y="166" width="170" height="54" rx="6"/>
+          <text class="t-title" x="56" y="189">Desktop agent</text>
+          <text class="t-sub" x="56" y="208">no new release needed</text>
+          <rect class="box-new" x="400" y="166" width="200" height="54" rx="6"/>
+          <text class="t-title" x="416" y="189">Ingest service</text>
+          <text class="t-sub" x="416" y="208">presence held in memory</text>
+          <rect class="box" x="790" y="166" width="170" height="54" rx="6"/>
+          <text class="t-title" x="806" y="189">Postgres</text>
+          <text class="t-sub" x="806" y="208">status changes only</text>
+          <line class="e" x1="210" y1="193" x2="400" y2="193" marker-end="url(#g-ah)"/>
+          <text class="t-edge t-mid" x="305" y="185">same api.&lt;domain&gt;</text>
+          <line class="e e-hot" x1="600" y1="193" x2="790" y2="193" marker-end="url(#g-ahh)"/>
+          <text class="t-edge t-mid" x="695" y="185">batched writes</text>
+        </svg>
+      </div>
+      <figcaption>The agent always calls our own API domain, so moving heartbeats off Supabase is a server-side switch. All other agent RPC calls stay as they are.</figcaption>
+    </figure>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Trigger</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td>~300–500 active users</td><td>Heartbeats move to a small ingest service (figure above)</td></tr>
+          <tr><td>Many managers online at once</td><td>Realtime switches from Postgres Changes to broadcast-from-database</td></tr>
+          <tr><td>First EU customer</td><td>EU Supabase project in Frankfurt, plus an org-to-region directory used at sign-in and agent enrollment</td></tr>
+          <tr><td>SOC 2 report or SAML SSO requested</td><td>Supabase Team plan and an SSO provider</td></tr>
+          <tr><td>~5,000 users or enterprise infra needs</td><td>Evaluate AWS. Plain Postgres and S3-compatible storage make it a migration, not a rewrite</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Source: <code>docs/tech-stack.md</code> and the Phase 1 PRD in <code>rajgaur98/ai_proctor</code>.</footer>
+</div>
