@@ -4,8 +4,9 @@
 |---|---|
 | **Product** | AI Proctor (working name) |
 | **Phase** | 1 of 2 (Phase 2 = AI daily summaries / standups) |
-| **Status** | Draft v0.1 |
-| **Last updated** | 2026-10-06 |
+| **Status** | Draft v0.2 |
+| **Last updated** | 2026-10-07 |
+| **Tech stack** | [docs/tech-stack.md](../tech-stack.md) |
 | **Target build** | ~13–14 weeks, 2–3 engineers + part-time designer |
 
 ---
@@ -81,7 +82,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | ID | Pri | Requirement |
 |---|---|---|
 | ORG-01 | P0 | Owner signs up with Google or Microsoft account (OAuth) or email + password, and creates an organisation |
-| ORG-02 | P0 | At org creation, Owner picks a **data region** (US or EU) and a **region preset** (US / EU / India). Data region cannot be changed after creation |
+| ORG-02 | P0 | At org creation, Owner picks a **data region** (US or EU) and a **region preset** (US / EU / India). Data region cannot be changed after creation. **During pilots only the US data region is offered**; the EU region is deployed when the first EU customer signs |
 | ORG-03 | P0 | Admin invites users by email (single or CSV bulk); invitee receives a link to join and download the agent |
 | ORG-04 | P0 | Roles: **Owner**, **Admin**, **Manager**, **Employee**. A user has one role; Managers and Admins can also be tracked employees |
 | ORG-05 | P0 | Each employee has exactly one **direct manager** (reporting line). Admin can set and change it |
@@ -104,7 +105,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | AGT-05 | P0 | When the org changes monitoring policy in a way that affects collection (e.g. enables webcam), employees must re-acknowledge the new notice version before the change takes effect for them |
 | AGT-06 | P0 | Agent runs at login, lives in system tray / menu bar, and auto-updates (staged rollout, rollback supported) |
 | AGT-07 | P0 | If a required permission is missing or revoked, the agent shows a persistent prompt to fix it, and the employee's status shows **Tamper (capture blocked)** to the manager |
-| AGT-08 | P0 | Agent footprint: average CPU < 1%, RAM < 100 MB, no noticeable impact on typing or video calls |
+| AGT-08 | P0 | Agent footprint: average CPU < 1%, RAM < 250 MB (Electron), no noticeable impact on typing or video calls |
 
 **Supported platforms:** Windows 10 (22H2+) and Windows 11; macOS 13 Ventura and later.
 
@@ -164,7 +165,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | CAP-03 | P0 | Screenshots cover all monitors (one image per monitor) |
 | CAP-04 | P0 | **Excluded apps:** Admin maintains a list (defaults: common password managers). If an excluded app is focused at capture time, that monitor's screenshot is replaced with a placeholder |
 | CAP-05 | P0 | Webcam policy (org-level): **On / Off**. EU preset: Off. Enabling webcam in an EU-region org requires the Admin to confirm in-app that a DPIA has been completed and (where applicable) works council consultation done; confirmation is audit-logged |
-| CAP-06 | P0 | Images are compressed on device (WebP; target ≤ 300 KB per screenshot, ≤ 50 KB per webcam frame), encrypted in transit, and uploaded directly to object storage via short-lived presigned URLs |
+| CAP-06 | P0 | Images are downscaled (max 1280 px wide; webcam 320×240) and compressed on device (WebP, quality ~60; target ≤ 150 KB per screenshot, ≤ 20 KB per webcam frame), encrypted in transit, and uploaded directly to object storage via short-lived signed upload URLs |
 | CAP-07 | P1 | **Face presence detection** (on device, detection only, never recognition): store only a boolean `face_present`. No face images, embeddings or templates are stored or sent. **Disabled** for EU-region orgs and for employees whose work location is Illinois |
 | CAP-08 | P0 | If capture fails (permission revoked, camera in use, no camera), the check-in still passes and the failure reason is stored; repeated permission failures trigger Tamper status |
 
@@ -172,7 +173,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 
 | ID | Pri | Requirement |
 |---|---|---|
-| STS-01 | P0 | Agent sends a **heartbeat** every 30 s while clocked in (contains: idle seconds, lock state, active app category, agent health) |
+| STS-01 | P0 | Agent sends a **heartbeat** every 60 s while clocked in (contains: idle seconds, lock state, active app category, agent health). **State changes** (idle, lock/unlock, call start/end, break, pause, check-in outcome) are sent immediately as events, without waiting for the next heartbeat |
 | STS-02 | P0 | Status is computed server-side using the rules below and pushed to dashboards in real time |
 | STS-03 | P0 | Status change is visible in the manager's live grid within **10 s** (p95) |
 
@@ -182,7 +183,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 |---|---|---|
 | 1 | ⚫ **Off shift** | Not clocked in |
 | 2 | ⚠️ **Tamper** | Agent killed/blocked during clock-in, capture permission missing, or heartbeat gap with device online elsewhere |
-| 3 | ⚫ **Offline** | Clocked in, no heartbeat for > 2 min |
+| 3 | ⚫ **Offline** | Clocked in, no heartbeat for > 3 min |
 | 4 | 🔵 **On break** | Break active |
 | 5 | 🔵 **Paused** | Pause active |
 | 6 | 🔴 **Away (Locked)** | Screen locked or device asleep |
@@ -354,7 +355,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 
 | Setting | US | EU | India |
 |---|---|---|---|
-| Data region | US | **EU** | US |
+| Data region | US | **EU** (after pilot; see ORG-02) | US |
 | Check-in interval | 20–90 min | **45–120 min** | 20–90 min |
 | Screenshot | Full | **Blurred** | Full |
 | Webcam | On | **Off** (enable requires DPIA confirmation) | On |
@@ -393,7 +394,8 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | Response window | 90 s | 30–300 s | Org |
 | Deferred check-in shown after condition ends | ≤ 2 min | Fixed | System |
 | Idle threshold | 10 min | 3–60 min | Org |
-| Offline threshold | 2 min no heartbeat | Fixed | System |
+| Heartbeat interval | 60 s | Fixed | System |
+| Offline threshold | 3 min no heartbeat | Fixed | System |
 | Pause presets | 5 / 10 / 15 min | Fixed | System |
 | Pause cap per pause / per day | 15 / 60 min | 0–60 / 0–240 min | Org |
 | Breaks paid | No | Yes/No | Org |
@@ -410,14 +412,14 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 ## 7. Non-functional requirements (NFR)
 
 ### Performance
-- NFR-PERF-01: Agent average CPU < 1%, peak < 10% during capture (≤ 2 s); RAM < 100 MB.
+- NFR-PERF-01: Agent average CPU < 1%, peak < 10% during capture (≤ 2 s); RAM < 250 MB.
 - NFR-PERF-02: Check-in card appears within 500 ms of its scheduled time.
-- NFR-PERF-03: Live grid status latency ≤ 10 s p95; dashboard pages load in < 2 s p95 for orgs up to 500 users.
+- NFR-PERF-03: Live grid status latency ≤ 10 s p95 for agent-reported state changes; Offline is detected within 3–4 min; dashboard pages load in < 2 s p95 for orgs up to 500 users.
 
 ### Reliability & offline
 - NFR-REL-01: Agent works fully offline: clocking, check-ins, captures, breaks/pauses and activity sampling are queued locally (encrypted) for up to **7 days** and synced when back online. Server-side segment computation uses device timestamps with clock-skew correction.
 - NFR-REL-02: Crash-free sessions ≥ 99.5%.
-- NFR-REL-03: Backend availability 99.9% monthly.
+- NFR-REL-03: Pilot: best effort on the managed backend (no contractual SLA). From general availability: 99.9% monthly.
 
 ### Security
 - NFR-SEC-01: TLS 1.2+ everywhere; AES-256 encryption at rest for databases and object storage.
@@ -428,7 +430,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 - NFR-SEC-06: Code signing for all agent binaries (Apple notarization, Windows Authenticode) to avoid SmartScreen/AV false positives.
 
 ### Data residency
-- NFR-DATA-01: Separate US and EU deployments; an org's data (DB, object storage, backups, logs containing personal data) stays in its region.
+- NFR-DATA-01: Separate US and EU deployments; an org's data (DB, object storage, backups, logs containing personal data) stays in its region. Pilots run in the US region only; the EU deployment is created when the first EU customer signs.
 
 ### Usability & accessibility
 - NFR-UX-01: Dashboard meets WCAG 2.1 AA. Status is never conveyed by colour alone (always with a label).
@@ -480,25 +482,26 @@ audit_log(id, org_id, actor_id, action, target_type, target_id, metadata, create
 
 ## 9. System architecture
 
+Pilot architecture (full detail, costs and scaling triggers in [docs/tech-stack.md](../tech-stack.md)):
+
 ```
-┌──────────────────────── Desktop agent (Tauri v2: Rust core + web UI) ───────────────────────┐
-│ Scheduler · Check-in overlay · Capture (ScreenCaptureKit / Windows.Graphics.Capture,         │
-│ AVFoundation / Media Foundation) · Idle & lock detection · Activity sampler · Watchdog ·     │
-│ Encrypted offline queue · Auto-updater                                                        │
-└──────────────┬──────────────────────────────────────────────────┬───────────────────────────┘
-               │ HTTPS (events, heartbeats)                        │ presigned PUT (images)
-               ▼                                                   ▼
-        API service ───────────► Postgres                 Object storage (encrypted,
-        (auth, policy, events,    (orgs, users, events,     lifecycle retention rules)
-         timesheets, exports)      segments, timesheets)
-               │
-               ├──► Redis pub/sub ──► WebSocket gateway ──► Manager dashboard (Next.js)
-               └──► Workers: status/segment computation, alerts, reminders,
-                    retention purge, exports
-Deployed independently in US and EU regions.
+┌──────────────── Desktop agent (Electron + small native module) ────────────────┐
+│ Scheduler · Check-in card · Screenshot + webcam capture · Idle/lock detection · │
+│ Activity sampler · Encrypted offline queue (SQLite) · Auto-updater · Watchdog   │
+└───────────┬──────────────────────────────────────────────┬─────────────────────┘
+            │ HTTPS: Postgres RPC functions                │ signed upload URLs
+            ▼   (heartbeat, events, clock, check-ins)      ▼
+┌─────────────────────────── Supabase (US region) ───────────────────────────────┐
+│ Postgres + row-level security · Auth · Storage (private bucket) · Realtime ·   │
+│ pg_cron (offline sweep, alerts, retention) · Edge Functions (segment engine,   │
+│ emails, exports, audited capture URLs)                                          │
+└───────────┬────────────────────────────────────────────────────────────────────┘
+            │ Realtime (status changes only) + REST
+            ▼
+Manager dashboard: React SPA on Cloudflare Pages
 ```
 
-**Platform-specific notes**
+**Platform-specific notes** (native APIs used by Electron or the agent's native module)
 
 | Capability | macOS | Windows |
 |---|---|---|
