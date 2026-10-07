@@ -165,7 +165,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | CAP-03 | P0 | Screenshots cover all monitors (one image per monitor) |
 | CAP-04 | P0 | **Excluded apps:** Admin maintains a list (defaults: common password managers). If an excluded app is focused at capture time, that monitor's screenshot is replaced with a placeholder |
 | CAP-05 | P0 | Webcam policy (org-level): **On / Off**. EU preset: Off. Enabling webcam in an EU-region org requires the Admin to confirm in-app that a DPIA has been completed and (where applicable) works council consultation done; confirmation is audit-logged |
-| CAP-06 | P0 | Images are downscaled (max 1280 px wide; webcam 320×240) and compressed on device (WebP, quality ~60; target ≤ 150 KB per screenshot, ≤ 20 KB per webcam frame), encrypted in transit, and uploaded directly to object storage via short-lived signed upload URLs |
+| CAP-06 | P0 | Images are downscaled (max 1280 px wide; webcam 320×240) and compressed on device (WebP, quality ~60; target ≤ 150 KB per screenshot, ≤ 20 KB per webcam frame), encrypted in transit, and uploaded directly to object storage after the check-in event is accepted; the storage policy only accepts files in the employee's own folder for a check-in recorded as passed |
 | CAP-07 | P1 | **Face presence detection** (on device, detection only, never recognition): store only a boolean `face_present`. No face images, embeddings or templates are stored or sent. **Disabled** for EU-region orgs and for employees whose work location is Illinois |
 | CAP-08 | P0 | If capture fails (permission revoked, camera in use, no camera), the check-in still passes and the failure reason is stored; repeated permission failures trigger Tamper status |
 
@@ -489,7 +489,7 @@ Pilot architecture (full detail, costs and scaling triggers in [docs/tech-stack.
 │ Scheduler · Check-in card · Screenshot + webcam capture · Idle/lock detection · │
 │ Activity sampler · Encrypted offline queue (SQLite) · Auto-updater · Watchdog   │
 └───────────┬──────────────────────────────────────────────┬─────────────────────┘
-            │ HTTPS: Postgres RPC functions                │ signed upload URLs
+            │ HTTPS: Postgres RPC functions                │ uploads (own folder)
             ▼   (heartbeat, events, clock, check-ins)      ▼
 ┌─────────────────────────── Supabase (US region) ───────────────────────────────┐
 │ Postgres + row-level security · Auth · Storage (private bucket) · Realtime ·   │

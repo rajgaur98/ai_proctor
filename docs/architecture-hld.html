@@ -329,7 +329,7 @@ footer { color: var(--muted); font-size: 13px; }
         <span><i class="sw"></i>Request or data flow</span>
         <span><i class="sw async"></i>Scheduled or background</span>
       </div>
-      <figcaption>The agent reaches Supabase in only three ways: Auth, validated RPC functions and signed uploads. The teal path is how a state change on a laptop reaches the manager's live grid, through Postgres and Realtime, typically within 10 seconds.</figcaption>
+      <figcaption>The agent reaches Supabase in only three ways: Auth, validated RPC functions and uploads into its own Storage folder. The teal path is how a state change on a laptop reaches the manager's live grid, through Postgres and Realtime, typically within 10 seconds.</figcaption>
     </figure>
   </section>
 
@@ -337,7 +337,7 @@ footer { color: var(--muted); font-size: 13px; }
     <h2>Guarantees the design enforces</h2>
     <div class="rules">
       <div class="rule"><b>Agents never write tables</b><span>Every agent write goes through an RPC function that checks the device, user and clock state. The service-role key never leaves Supabase.</span></div>
-      <div class="rule"><b>No capture on a miss</b><span>A missed check-in sends an event with idle time and device state only. Nothing is uploaded.</span></div>
+      <div class="rule"><b>No capture on a miss</b><span>A missed check-in sends an event with idle time and device state only. Storage refuses files for any check-in not recorded as passed.</span></div>
       <div class="rule"><b>Every capture view is audited</b><span>A signed URL is issued only after the access check and the audit-log entry, and it expires within 5 minutes.</span></div>
       <div class="rule"><b>Timesheets are derived</b><span>Segments are rebuilt deterministically from raw events. Flagged time is highlighted, never deducted.</span></div>
       <div class="rule"><b>Works offline</b><span>Events and captures queue encrypted on the device for up to 7 days. Each event has a client UUID, so replays are safe.</span></div>
@@ -349,7 +349,7 @@ footer { color: var(--muted); font-size: 13px; }
     <h2>Check-in: pass and miss</h2>
     <figure>
       <div class="panel">
-        <svg class="mid" viewBox="0 0 1000 516" role="img" aria-label="Check-in sequence. On a pass, the agent captures and encodes images on the device, uploads them to Storage with a signed URL, then sends agent_events with the object keys; Postgres updates presence to Active, Realtime pushes it to the dashboard. On a miss, the agent sends agent_events with idle time and device state, nothing is uploaded, and presence becomes Away.">
+        <svg class="mid" viewBox="0 0 1000 516" role="img" aria-label="Check-in sequence. On a pass, the agent captures and encodes images on the device and sends agent_events with the object keys; Postgres updates presence to Active and Realtime pushes it to the dashboard; once the event is acknowledged the agent uploads the images to Storage. On a miss, the agent sends agent_events with idle time and device state, nothing is uploaded, and presence becomes Away.">
           <defs>
             <marker id="s-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
             <marker id="s-ahh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path class="ah-hot" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -375,17 +375,17 @@ footer { color: var(--muted); font-size: 13px; }
           <rect class="note" x="100" y="138" width="172" height="28" rx="6"/>
           <text class="t-sub" x="110" y="156">capture + encode on device</text>
 
-          <line class="e" x1="90" y1="200" x2="290" y2="200" marker-end="url(#s-ah)"/>
-          <text class="t-edge t-mid" x="190" y="192">upload (signed URL)</text>
+          <line class="e e-hot" x1="90" y1="200" x2="510" y2="200" marker-end="url(#s-ahh)"/>
+          <text class="t-edge-c t-mid" x="400" y="192">agent_events(pass, keys)</text>
 
-          <line class="e e-hot" x1="90" y1="244" x2="510" y2="244" marker-end="url(#s-ahh)"/>
-          <text class="t-edge-c t-mid" x="400" y="236">agent_events(pass, keys)</text>
+          <line class="e e-hot" x1="510" y1="244" x2="720" y2="244" marker-end="url(#s-ahh)"/>
+          <text class="t-edge t-mid" x="615" y="236">presence: Active</text>
 
-          <line class="e e-hot" x1="510" y1="288" x2="720" y2="288" marker-end="url(#s-ahh)"/>
-          <text class="t-edge t-mid" x="615" y="280">presence: Active</text>
+          <line class="e e-hot" x1="720" y1="288" x2="910" y2="288" marker-end="url(#s-ahh)"/>
+          <text class="t-edge t-mid" x="815" y="280">status · last check-in</text>
 
-          <line class="e e-hot" x1="720" y1="332" x2="910" y2="332" marker-end="url(#s-ahh)"/>
-          <text class="t-edge t-mid" x="815" y="324">status · last check-in</text>
+          <line class="e" x1="90" y1="332" x2="290" y2="332" marker-end="url(#s-ah)"/>
+          <text class="t-edge t-mid" x="190" y="324">upload after event ack</text>
 
           <line class="divider" x1="20" y1="372" x2="980" y2="372"/>
           <text class="t-label" x="20" y="366">ON MISS</text>
@@ -402,7 +402,7 @@ footer { color: var(--muted); font-size: 13px; }
           <text class="t-edge t-mid" x="815" y="484">status: Away</text>
         </svg>
       </div>
-      <figcaption>On a pass, images go straight to Storage and only their object keys travel through the RPC. On a miss nothing is captured. If the device is offline, both paths queue locally and replay when it reconnects.</figcaption>
+      <figcaption>On a pass, the check-in event goes first and the images follow, straight to Storage, which accepts them only for a check-in already recorded as passed. On a miss nothing is captured. If the device is offline, both paths queue locally and replay when it reconnects.</figcaption>
     </figure>
   </section>
 

@@ -1,0 +1,1085 @@
+<title>AI Proctor Low-Level Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column with a section index; figures scroll sideways inside their panels on narrow screens. Same token system as the HLD page. */
+:root {
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --ink: #152030;
+  --ink-2: #2f3d4f;
+  --muted: #5d6a7c;
+  --line: #c7d0db;
+  --line-strong: #9aa7b7;
+  --edge: #6b788a;
+  --accent: #0b7a6b;
+  --accent-soft: #dcefea;
+  --zone-dev: #edf2fa;
+  --zone-sb: #ecf6f1;
+  --box: #ffffff;
+  --box-sub: #f2f5f9;
+  --seg-ok: #bfe3d9;
+  --seg-meet: #cfe0f5;
+  --seg-flag: #f5d9a6;
+  --seg-pause: #e2dcf2;
+  --warn: #a8640a;
+  --f-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --panel: #141b24; --ink: #e4eaf1; --ink-2: #c3cdd9; --muted: #8d9aab;
+    --line: #2c3846; --line-strong: #4a586a; --edge: #8796a8; --accent: #3cc4ab; --accent-soft: #163a34;
+    --zone-dev: #152031; --zone-sb: #13261f; --box: #1a2330; --box-sub: #212b39;
+    --seg-ok: #1f4d44; --seg-meet: #22384f; --seg-flag: #5a4317; --seg-pause: #38304f; --warn: #e3a64a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --panel: #141b24; --ink: #e4eaf1; --ink-2: #c3cdd9; --muted: #8d9aab;
+  --line: #2c3846; --line-strong: #4a586a; --edge: #8796a8; --accent: #3cc4ab; --accent-soft: #163a34;
+  --zone-dev: #152031; --zone-sb: #13261f; --box: #1a2330; --box-sub: #212b39;
+  --seg-ok: #1f4d44; --seg-meet: #22384f; --seg-flag: #5a4317; --seg-pause: #38304f; --warn: #e3a64a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 15px/1.6 var(--f-body);
+  padding-inline: 20px;
+  padding-block: 32px 56px;
+}
+.wrap { max-width: 1120px; margin-inline: auto; display: grid; gap: 44px; }
+
+header { display: grid; gap: 12px; }
+.eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 clamp(30px, 5vw, 44px)/1.08 var(--f-display); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h2 { font: 600 24px/1.2 var(--f-display); margin: 0; text-wrap: balance; }
+h3 { font: 600 17px/1.3 var(--f-display); margin: 0; }
+p { margin: 0; max-width: 72ch; }
+.lede { color: var(--ink-2); font-size: 17px; }
+.meta, .toc { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  font: 500 12px/1 var(--f-mono); color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; background: var(--panel);
+}
+a.chip { color: var(--accent); text-decoration: none; }
+a.chip:hover, a.chip:focus-visible { border-color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toc { padding-top: 6px; border-top: 1px solid var(--line); margin-top: 6px; }
+.toc a { font: 500 13px/1 var(--f-body); color: var(--ink-2); text-decoration: none; padding: 6px 2px; border-bottom: 2px solid transparent; }
+.toc a:hover, .toc a:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+.toc .num { font-family: var(--f-mono); color: var(--muted); margin-right: 6px; }
+
+section { display: grid; gap: 16px; min-width: 0; scroll-margin-top: 16px; }
+section > p { color: var(--ink-2); }
+.sec-head { display: grid; gap: 6px; }
+.sec-head .num { font: 500 12px/1 var(--f-mono); color: var(--muted); letter-spacing: .06em; }
+
+figure { margin: 0; display: grid; gap: 10px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; }
+.panel svg { display: block; width: 100%; height: auto; }
+.panel svg.wide { min-width: 980px; }
+.panel svg.mid { min-width: 780px; }
+figcaption { color: var(--muted); font-size: 14px; max-width: 84ch; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.key { display: inline-block; width: 22px; height: 12px; border-radius: 3px; border: 1px solid var(--line-strong); }
+.k-ok { background: var(--seg-ok); } .k-meet { background: var(--seg-meet); } .k-flag { background: var(--seg-flag); }
+.k-pause { background: var(--seg-pause); } .k-break { background: transparent; border-style: dashed; }
+
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+
+pre {
+  margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto; font: 400 12.5px/1.6 var(--f-mono); color: var(--ink-2);
+}
+.cm { color: var(--muted); }
+code { font: 400 13px var(--f-mono); }
+
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 12px/1.2 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { white-space: nowrap; }
+td code { font-size: 12.5px; }
+.tbl-title { font: 600 15px/1.3 var(--f-display); padding: 12px 14px 0; }
+
+ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; color: var(--ink-2); }
+ol.steps li::marker { font-family: var(--f-mono); color: var(--muted); }
+
+.schema { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 960px) { .schema { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .schema { grid-template-columns: 1fr; } }
+.domain { display: grid; gap: 10px; }
+.domain h3 { display: flex; align-items: baseline; gap: 10px; }
+.domain h3 small { font: 400 13px var(--f-body); color: var(--muted); }
+.t-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.t-card .name { font: 500 14px var(--f-mono); color: var(--ink); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.t-card .name em { font: 400 11.5px var(--f-body); font-style: normal; color: var(--accent); }
+.t-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.t-card li { font: 400 12.5px/1.5 var(--f-mono); color: var(--ink-2); overflow-wrap: anywhere; }
+.t-card li b { font-weight: 500; color: var(--ink); }
+.badge { font: 600 9.5px/1 var(--f-mono); letter-spacing: .04em; padding: 2px 4px; border-radius: 3px; margin-right: 6px; vertical-align: 1px; border: 1px solid var(--line-strong); color: var(--muted); }
+.badge.pk { border-color: var(--accent); color: var(--accent); }
+
+.callout { border-left: 3px solid var(--accent); background: var(--panel); padding: 12px 16px; border-radius: 0 8px 8px 0; color: var(--ink-2); font-size: 14px; }
+
+footer { color: var(--muted); font-size: 13px; }
+
+/* SVG styling */
+.zone { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 5 4; }
+.z-dev { fill: var(--zone-dev); }
+.z-sb { fill: var(--zone-sb); }
+.box { fill: var(--box); stroke: var(--line-strong); stroke-width: 1; }
+.box-outer { fill: var(--box-sub); stroke: var(--line-strong); stroke-width: 1; }
+.box-new { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+.pill-allow { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+.pill-deny { fill: var(--box-sub); stroke: var(--line-strong); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.note { fill: var(--box-sub); stroke: var(--line); stroke-width: 1; }
+.t-zone { font: 600 11px var(--f-mono); letter-spacing: .08em; fill: var(--muted); }
+.t-label { font: 600 10.5px var(--f-mono); letter-spacing: .08em; fill: var(--muted); }
+.t-title { font: 600 13px var(--f-body); fill: var(--ink); }
+.t-title-c { font: 500 13px var(--f-mono); fill: var(--ink); }
+.t-sub { font: 400 11.5px var(--f-body); fill: var(--muted); }
+.t-sub-s { font: 400 10.5px var(--f-body); fill: var(--muted); }
+.t-code { font: 400 11px var(--f-mono); fill: var(--muted); }
+.t-edge { font: 500 11px var(--f-body); fill: var(--ink-2); }
+.t-edge-c { font: 500 11px var(--f-mono); fill: var(--ink-2); }
+.t-bar { font: 500 10.5px var(--f-body); fill: var(--ink); }
+.t-mid { text-anchor: middle; }
+.t-end { text-anchor: end; }
+.e { stroke: var(--edge); stroke-width: 1.4; fill: none; }
+.e-hot { stroke: var(--accent); stroke-width: 2.2; }
+.e-int { stroke: var(--line-strong); stroke-width: 1.2; }
+.life { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.divider { stroke: var(--line); stroke-width: 1; }
+.ah { fill: var(--edge); }
+.ah-hot { fill: var(--accent); }
+.bgchip { fill: var(--panel); }
+.bgchip-z { fill: var(--zone-dev); }
+.bar-in { fill: var(--box-sub); stroke: var(--line-strong); stroke-width: 1; }
+.seg-ok { fill: var(--seg-ok); }
+.seg-meet { fill: var(--seg-meet); }
+.seg-flag { fill: var(--seg-flag); }
+.seg-pause { fill: var(--seg-pause); }
+.seg-break { fill: none; stroke: var(--line-strong); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.mk-pass { fill: var(--accent); }
+.mk-miss { fill: var(--panel); stroke: var(--warn); stroke-width: 2; }
+.tick { stroke: var(--line-strong); stroke-width: 1; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">AI Proctor · Phase 1 pilot</div>
+    <h1>Low-level design</h1>
+    <p class="lede">How the agent is built inside, the states a shift and a check-in move through, the sync protocol, the API contract, the schema, how hours are computed, and who can see what. Read it alongside the high-level design.</p>
+    <div class="meta">
+      <span class="chip">v1.0 · 7 Oct 2026</span>
+      <a class="chip" href="https://claude.ai/artifact/MSaVfETup4qd3uwobYv5ff">HLD ↗</a>
+      <a class="chip" href="https://github.com/rajgaur98/ai_proctor/blob/claude/employee-activity-monitoring-z07n3t/docs/tech-stack.md">Tech stack ↗</a>
+      <a class="chip" href="https://github.com/rajgaur98/ai_proctor/blob/claude/employee-activity-monitoring-z07n3t/docs/prd/phase-1-presence-and-timesheets.md">PRD ↗</a>
+    </div>
+    <nav class="toc" aria-label="Sections">
+      <a href="#agent"><span class="num">1</span>Agent modules</a>
+      <a href="#states"><span class="num">2</span>State machines</a>
+      <a href="#sync"><span class="num">3</span>Sync protocol</a>
+      <a href="#api"><span class="num">4</span>API contract</a>
+      <a href="#schema"><span class="num">5</span>Schema</a>
+      <a href="#segments"><span class="num">6</span>Timesheet engine</a>
+      <a href="#access"><span class="num">7</span>Access control</a>
+    </nav>
+  </header>
+
+  <!-- 1. Agent -->
+  <section id="agent">
+    <div class="sec-head"><span class="num">01</span><h2>Agent modules</h2></div>
+    <p>One Tauri process. React windows talk to the Rust core only over IPC. Every module that observes something writes an event to the local outbox, and only <code>sync</code> and <code>uploader</code> talk to the network. That one rule is what makes offline work and replays safe.</p>
+    <figure>
+      <div class="panel">
+        <svg class="wide" viewBox="0 0 1300 810" role="img" aria-label="Agent module diagram. React windows (tray popover, check-in card, onboarding) talk over Tauri IPC to Rust modules. session starts and stops the scheduler, the scheduler fires checkin, checkin shows the card and receives clicks, and on a pass calls capture. activity, session and checkin write events to the encrypted SQLite outbox; capture writes image files to its uploads table. sync drains event batches to PostgREST and receives policy and commands, which it stores in policy. uploader sends files to Storage only after their check-in event is acknowledged. auth provides JWTs to sync and uploader. updater fetches signed updates from Cloudflare R2. All modules call the operating system through the Platform trait with macOS and Windows implementations.">
+          <defs>
+            <marker id="a-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a-ahh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path class="ah-hot" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <rect class="zone z-dev" x="16" y="30" width="1044" height="770" rx="10"/>
+          <text class="t-zone" x="32" y="54">AGENT PROCESS · TAURI v2</text>
+          <text class="t-label" x="30" y="80">WEBVIEW · REACT</text>
+          <text class="t-label" x="300" y="80">RUST CORE</text>
+
+          <rect class="zone z-sb" x="1100" y="30" width="190" height="770" rx="10"/>
+          <text class="t-zone" x="1114" y="54">CLOUD</text>
+
+          <!-- IPC divider -->
+          <line class="life" x1="245" y1="270" x2="245" y2="700"/>
+          <text class="t-label t-mid" x="245" y="262">IPC</text>
+
+          <!-- Webview windows -->
+          <rect class="box" x="30" y="290" width="160" height="60" rx="6"/>
+          <text class="t-title" x="44" y="314">Tray popover</text>
+          <text class="t-sub" x="44" y="333">status · actions</text>
+
+          <rect class="box" x="30" y="510" width="160" height="60" rx="6"/>
+          <text class="t-title" x="44" y="534">Check-in card</text>
+          <text class="t-sub" x="44" y="553">non-activating panel</text>
+
+          <rect class="box" x="30" y="620" width="160" height="60" rx="6"/>
+          <text class="t-title" x="44" y="644">Onboarding</text>
+          <text class="t-sub" x="44" y="663">notice · permissions</text>
+
+          <!-- Rust modules -->
+          <rect class="box" x="300" y="90" width="200" height="60" rx="6"/>
+          <text class="t-title-c" x="316" y="114">policy</text>
+          <text class="t-sub" x="316" y="133">cached policy, read by all</text>
+
+          <rect class="box" x="300" y="180" width="200" height="60" rx="6"/>
+          <text class="t-title-c" x="316" y="204">activity</text>
+          <text class="t-sub" x="316" y="223">idle · lock · call · apps</text>
+
+          <rect class="box" x="300" y="290" width="200" height="60" rx="6"/>
+          <text class="t-title-c" x="316" y="314">session</text>
+          <text class="t-sub" x="316" y="333">shift, break, pause state</text>
+
+          <rect class="box" x="300" y="400" width="200" height="60" rx="6"/>
+          <text class="t-title-c" x="316" y="424">scheduler</text>
+          <text class="t-sub" x="316" y="443">next_at on disk · deferral</text>
+
+          <rect class="box" x="300" y="510" width="200" height="60" rx="6"/>
+          <text class="t-title-c" x="316" y="534">checkin</text>
+          <text class="t-sub" x="316" y="553">card lifecycle · challenge</text>
+
+          <rect class="box" x="300" y="620" width="200" height="60" rx="6"/>
+          <text class="t-title-c" x="316" y="644">capture</text>
+          <text class="t-sub" x="316" y="663">screens · webcam · WebP</text>
+
+          <!-- Outbox -->
+          <rect class="box-outer" x="590" y="180" width="180" height="500" rx="8"/>
+          <text class="t-title-c" x="606" y="204">outbox</text>
+          <text class="t-sub" x="606" y="223">SQLite · AES-GCM</text>
+          <text class="t-label" x="606" y="262">EVENTS</text>
+          <text class="t-code" x="606" y="281">id (uuid) · seq</text>
+          <text class="t-code" x="606" y="297">type · at · mono_ms</text>
+          <text class="t-code" x="606" y="313">payload · acked_at</text>
+          <line class="divider" x1="590" y1="590" x2="770" y2="590"/>
+          <text class="t-label" x="606" y="612">UPLOADS</text>
+          <text class="t-code" x="606" y="631">checkin_id · path</text>
+          <text class="t-code" x="606" y="647">file · state</text>
+          <text class="t-sub-s" x="606" y="668">sent after event ack</text>
+
+          <!-- Senders -->
+          <rect class="box" x="860" y="180" width="180" height="60" rx="6"/>
+          <text class="t-title-c" x="876" y="204">sync</text>
+          <text class="t-sub" x="876" y="223">batches ≤ 100 · backoff</text>
+
+          <rect class="box" x="860" y="290" width="180" height="60" rx="6"/>
+          <text class="t-title-c" x="876" y="314">auth</text>
+          <text class="t-sub" x="876" y="333">PKCE · keychain tokens</text>
+
+          <rect class="box" x="860" y="620" width="180" height="60" rx="6"/>
+          <text class="t-title-c" x="876" y="644">uploader</text>
+          <text class="t-sub" x="876" y="663">one file at a time · retry</text>
+
+          <rect class="box" x="860" y="720" width="180" height="60" rx="6"/>
+          <text class="t-title-c" x="876" y="744">updater</text>
+          <text class="t-sub" x="876" y="763">signed · staged channels</text>
+
+          <!-- Platform -->
+          <rect class="box-outer" x="300" y="720" width="470" height="70" rx="8"/>
+          <text class="t-title-c" x="316" y="742">platform::Platform (trait)</text>
+          <rect class="box" x="316" y="752" width="215" height="28" rx="5"/>
+          <text class="t-code" x="328" y="771">macos/ · objc2 crates</text>
+          <rect class="box" x="545" y="752" width="215" height="28" rx="5"/>
+          <text class="t-code" x="557" y="771">windows/ · windows-rs</text>
+
+          <!-- External -->
+          <rect class="box" x="1114" y="180" width="162" height="60" rx="6"/>
+          <text class="t-title" x="1128" y="204">PostgREST</text>
+          <text class="t-code" x="1128" y="223">/rpc/agent_*</text>
+
+          <rect class="box" x="1114" y="290" width="162" height="60" rx="6"/>
+          <text class="t-title" x="1128" y="314">Supabase Auth</text>
+          <text class="t-sub" x="1128" y="333">sessions · refresh</text>
+
+          <rect class="box" x="1114" y="620" width="162" height="60" rx="6"/>
+          <text class="t-title" x="1128" y="644">Storage</text>
+          <text class="t-sub" x="1128" y="663">captures bucket</text>
+
+          <rect class="box" x="1114" y="720" width="162" height="60" rx="6"/>
+          <text class="t-title" x="1128" y="744">Cloudflare R2</text>
+          <text class="t-sub" x="1128" y="763">update manifests</text>
+
+          <!-- IPC edges -->
+          <line class="e" x1="190" y1="312" x2="300" y2="312" marker-end="url(#a-ah)"/>
+          <rect class="bgchip-z" x="214" y="294" width="62" height="13"/>
+          <text class="t-edge t-mid" x="245" y="304">commands</text>
+          <line class="e" x1="300" y1="336" x2="190" y2="336" marker-end="url(#a-ah)"/>
+          <rect class="bgchip-z" x="226" y="343" width="38" height="13"/>
+          <text class="t-edge t-mid" x="245" y="353">state</text>
+
+          <line class="e e-hot" x1="300" y1="530" x2="190" y2="530" marker-end="url(#a-ahh)"/>
+          <rect class="bgchip-z" x="196" y="512" width="98" height="13"/>
+          <text class="t-edge-c t-mid" x="245" y="522">show(challenge)</text>
+          <line class="e e-hot" x1="190" y1="554" x2="300" y2="554" marker-end="url(#a-ahh)"/>
+          <rect class="bgchip-z" x="216" y="561" width="58" height="13"/>
+          <text class="t-edge-c t-mid" x="245" y="571">click(n)</text>
+
+          <line class="e" x1="190" y1="650" x2="300" y2="650" marker-end="url(#a-ah)"/>
+          <rect class="bgchip-z" x="208" y="632" width="74" height="13"/>
+          <text class="t-edge t-mid" x="245" y="642">test capture</text>
+
+          <!-- Core chain -->
+          <line class="e" x1="400" y1="350" x2="400" y2="400" marker-end="url(#a-ah)"/>
+          <text class="t-edge" x="408" y="379">start · stop</text>
+          <line class="e e-hot" x1="400" y1="460" x2="400" y2="510" marker-end="url(#a-ahh)"/>
+          <text class="t-edge-c" x="408" y="489">fire(t)</text>
+          <line class="e e-hot" x1="400" y1="570" x2="400" y2="620" marker-end="url(#a-ahh)"/>
+          <text class="t-edge" x="408" y="599">on pass</text>
+          <line class="e" x1="400" y1="720" x2="400" y2="680" marker-end="url(#a-ah)"/>
+          <text class="t-edge" x="408" y="704">OS APIs, used by all modules</text>
+
+          <!-- Producers to outbox -->
+          <line class="e" x1="500" y1="210" x2="590" y2="210" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="545" y="202">events</text>
+          <line class="e" x1="500" y1="320" x2="590" y2="320" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="545" y="312">events</text>
+          <line class="e e-hot" x1="500" y1="540" x2="590" y2="540" marker-end="url(#a-ahh)"/>
+          <text class="t-edge t-mid" x="545" y="532">outcome</text>
+          <line class="e" x1="500" y1="650" x2="590" y2="650" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="545" y="642">files</text>
+
+          <!-- Outbox to senders -->
+          <line class="e e-hot" x1="770" y1="210" x2="860" y2="210" marker-end="url(#a-ahh)"/>
+          <text class="t-edge t-mid" x="815" y="202">drain</text>
+          <line class="e" x1="770" y1="650" x2="860" y2="650" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="815" y="642">ready jobs</text>
+
+          <!-- auth tokens -->
+          <line class="e" x1="950" y1="290" x2="950" y2="240" marker-end="url(#a-ah)"/>
+          <text class="t-edge" x="958" y="270">JWT</text>
+          <line class="e" x1="950" y1="350" x2="950" y2="620" marker-end="url(#a-ah)"/>
+          <text class="t-edge" x="958" y="490">JWT</text>
+
+          <!-- sync to policy -->
+          <path class="e" d="M950 180 V120 H500" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="725" y="113">policy · commands (from each heartbeat reply)</text>
+
+          <!-- Network edges -->
+          <line class="e e-hot" x1="1040" y1="210" x2="1114" y2="210" marker-end="url(#a-ahh)"/>
+          <text class="t-edge t-mid" x="1077" y="202">RPC</text>
+          <line class="e" x1="1040" y1="320" x2="1114" y2="320" marker-start="url(#a-ah)" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="1077" y="312">PKCE</text>
+          <text class="t-edge t-mid" x="1077" y="336">refresh</text>
+          <line class="e" x1="1040" y1="650" x2="1114" y2="650" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="1077" y="642">PUT</text>
+          <line class="e" x1="1114" y1="750" x2="1040" y2="750" marker-end="url(#a-ah)"/>
+          <text class="t-edge t-mid" x="1077" y="742">bundle</text>
+        </svg>
+      </div>
+      <figcaption>Teal arrows are the check-in path, from the scheduler firing to the outcome event leaving the device. The outbox is the only hand-off between observing and sending, so a crash or a dropped connection never loses an event.</figcaption>
+    </figure>
+
+    <div class="two">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Module</th><th>Owns</th></tr></thead>
+          <tbody>
+            <tr><td><code>policy</code></td><td>Org policy cached on disk with its version. Replaced when a heartbeat reply carries a newer version.</td></tr>
+            <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events, and closes an <code>app_session</code> on every foreground change.</td></tr>
+            <tr><td><code>session</code></td><td>Shift state machine (section 2). Auto clock-in on first input inside the shift; auto clock-out after 30 min without input past shift end.</td></tr>
+            <tr><td><code>scheduler</code></td><td>Draws <code>next_at</code> uniformly in [min, max] and writes it to disk before arming, so a restart keeps the same time. Applies deferral and lock rules.</td></tr>
+            <tr><td><code>checkin</code></td><td>Builds the challenge (target number, three shuffled buttons), validates clicks in Rust, rejects injected clicks, records <code>response_ms</code> and the outcome.</td></tr>
+            <tr><td><code>capture</code></td><td>Screens (one per display), one webcam frame, excluded-app placeholders, blur, downscale, WebP. Writes files to the uploads table, never sends them itself.</td></tr>
+            <tr><td><code>sync</code></td><td>Drains events in <code>seq</code> order, heartbeats every 60 s, applies the reply (acks, clock offset, policy, commands).</td></tr>
+            <tr><td><code>uploader</code></td><td>Uploads a file only after its check-in event is acked, deletes the local copy on success.</td></tr>
+            <tr><td><code>auth</code></td><td>PKCE sign-in through the system browser and deep link; refresh token in the OS keychain.</td></tr>
+            <tr><td><code>updater</code></td><td>Signed update manifests from R2 per channel (pilot, stable); never updates during a shown check-in.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <pre><span class="cm">// src-tauri/platform/mod.rs — the only place with OS calls</span>
+pub trait Platform: Send + Sync {
+    fn idle_seconds(&amp;self) -&gt; u64;
+    fn session_state(&amp;self) -&gt; SessionState; <span class="cm">// active, locked, asleep</span>
+    fn call_state(&amp;self) -&gt; CallState;       <span class="cm">// camera or mic in use</span>
+    fn screen_shared(&amp;self) -&gt; bool;         <span class="cm">// sharing or slideshow</span>
+    fn foreground(&amp;self) -&gt; Option&lt;Foreground&gt;;
+    fn capture_screens(&amp;self, max_w: u32)
+        -&gt; Result&lt;Vec&lt;Frame&gt;, CaptureError&gt;;
+    fn capture_webcam(&amp;self, w: u32, h: u32)
+        -&gt; Result&lt;Frame, CaptureError&gt;;
+    fn permissions(&amp;self) -&gt; Permissions;    <span class="cm">// screen, camera</span>
+    fn is_injected(&amp;self, click: &amp;Click) -&gt; bool;
+}
+
+<span class="cm">// Tests use FakePlatform + a fake clock, so the
+// scheduler, session and checkin logic run in CI
+// without a screen or camera.</span></pre>
+    </div>
+  </section>
+
+  <!-- 2. States -->
+  <section id="states">
+    <div class="sec-head"><span class="num">02</span><h2>State machines</h2></div>
+    <p>Two machines run on the device. The shift machine decides whether anything is collected at all; the check-in machine runs only while the shift is in Working.</p>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1000 275" role="img" aria-label="Shift state machine: Off shift moves to Working on clock in or auto clock-in, and back on clock out or auto clock-out. Working moves to On break on start break and back on end break; Working moves to Paused on a 5, 10 or 15 minute pause and back on resume or when the timer ends. Check-ins, captures and activity run only in Working.">
+          <defs>
+            <marker id="m-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="30" y="100" width="180" height="70" rx="35"/>
+          <text class="t-title t-mid" x="120" y="131">Off shift</text>
+          <text class="t-sub t-mid" x="120" y="150">nothing collected</text>
+
+          <rect class="box-new" x="390" y="80" width="240" height="110" rx="14"/>
+          <text class="t-title t-mid" x="510" y="111">Working</text>
+          <text class="t-sub t-mid" x="510" y="133">check-ins, captures and</text>
+          <text class="t-sub t-mid" x="510" y="150">activity run only here</text>
+          <text class="t-code t-mid" x="510" y="173">heartbeat every 60 s</text>
+
+          <rect class="box" x="790" y="10" width="180" height="60" rx="30"/>
+          <text class="t-title t-mid" x="880" y="36">On break</text>
+          <text class="t-sub t-mid" x="880" y="54">unpaid by default</text>
+
+          <rect class="box" x="790" y="200" width="180" height="60" rx="30"/>
+          <text class="t-title t-mid" x="880" y="226">Paused</text>
+          <text class="t-sub t-mid" x="880" y="244">all collection stops</text>
+
+          <line class="e" x1="210" y1="120" x2="390" y2="120" marker-end="url(#m-ah)"/>
+          <text class="t-edge t-mid" x="300" y="112">clock in · auto clock-in</text>
+          <line class="e" x1="390" y1="155" x2="210" y2="155" marker-end="url(#m-ah)"/>
+          <text class="t-edge t-mid" x="300" y="172">clock out · auto clock-out</text>
+
+          <path class="e" d="M590 80 V25 H790" marker-end="url(#m-ah)"/>
+          <text class="t-edge t-mid" x="690" y="18">start break</text>
+          <path class="e" d="M790 55 H650 V80" marker-end="url(#m-ah)"/>
+          <text class="t-edge t-mid" x="720" y="72">end break</text>
+
+          <path class="e" d="M590 190 V245 H790" marker-end="url(#m-ah)"/>
+          <text class="t-edge t-mid" x="690" y="263">pause 5 · 10 · 15 min</text>
+          <path class="e" d="M790 215 H650 V190" marker-end="url(#m-ah)"/>
+          <text class="t-edge t-mid" x="720" y="208">resume · timer ends</text>
+        </svg>
+      </div>
+      <figcaption>Every transition is written to the outbox as an event. The server enforces the same machine: an event that is illegal from the user's current server-side state (for example <code>pause_start</code> while on break) is rejected with a reason.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1080 430" role="img" aria-label="Check-in lifecycle: Scheduled becomes due and passes a gate. If the user is in a call or sharing, it is Deferred and shown within 2 minutes after that ends. If the screen is locked, it is Skipped and shown within 2 minutes after unlock. Otherwise it is Shown. From Shown, a correct click makes it Passed, then Queued with its event and upload jobs, then Synced. A time out makes it Missed and two wrong clicks make it Failed. Synced schedules the next check-in at a random time between min and max; Missed and Failed schedule the next within 5 to 10 minutes.">
+          <defs>
+            <marker id="c-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="c-ahh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path class="ah-hot" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="30" y="180" width="150" height="56" rx="28"/>
+          <text class="t-title t-mid" x="105" y="204">Scheduled</text>
+          <text class="t-code t-mid" x="105" y="223">next_at on disk</text>
+
+          <polygon class="box" points="300,173 350,208 300,243 250,208"/>
+          <text class="t-sub t-mid" x="300" y="212">gate</text>
+
+          <rect class="box" x="400" y="40" width="120" height="50" rx="25"/>
+          <text class="t-title t-mid" x="460" y="62">Deferred</text>
+          <text class="t-sub-s t-mid" x="460" y="79">call or screen share</text>
+
+          <rect class="box" x="400" y="180" width="170" height="56" rx="28"/>
+          <text class="t-title t-mid" x="485" y="203">Shown</text>
+          <text class="t-sub-s t-mid" x="485" y="222">1st wrong click reshuffles</text>
+
+          <rect class="box" x="400" y="330" width="120" height="50" rx="25"/>
+          <text class="t-title t-mid" x="460" y="352">Skipped</text>
+          <text class="t-sub-s t-mid" x="460" y="369">screen locked</text>
+
+          <rect class="box-new" x="660" y="60" width="150" height="50" rx="25"/>
+          <text class="t-title t-mid" x="735" y="82">Passed</text>
+          <text class="t-sub-s t-mid" x="735" y="99">response_ms stored</text>
+
+          <rect class="box" x="660" y="183" width="150" height="50" rx="25"/>
+          <text class="t-title t-mid" x="735" y="205">Missed</text>
+          <text class="t-sub-s t-mid" x="735" y="222">no capture taken</text>
+
+          <rect class="box" x="660" y="306" width="150" height="50" rx="25"/>
+          <text class="t-title t-mid" x="735" y="328">Failed</text>
+          <text class="t-sub-s t-mid" x="735" y="345">treated as a miss</text>
+
+          <rect class="box" x="880" y="60" width="170" height="50" rx="25"/>
+          <text class="t-title t-mid" x="965" y="82">Queued</text>
+          <text class="t-sub-s t-mid" x="965" y="99">event + upload jobs</text>
+
+          <rect class="box" x="880" y="183" width="170" height="50" rx="25"/>
+          <text class="t-title t-mid" x="965" y="205">Synced</text>
+          <text class="t-sub-s t-mid" x="965" y="222">event acked, files uploaded</text>
+
+          <line class="e e-hot" x1="180" y1="208" x2="250" y2="208" marker-end="url(#c-ahh)"/>
+          <text class="t-edge t-mid" x="215" y="200">due</text>
+          <line class="e e-hot" x1="350" y1="208" x2="400" y2="208" marker-end="url(#c-ahh)"/>
+          <text class="t-edge t-mid" x="375" y="200">clear</text>
+
+          <path class="e" d="M300 173 V65 H400" marker-end="url(#c-ah)"/>
+          <text class="t-edge t-mid" x="350" y="58">call · share</text>
+          <line class="e" x1="460" y1="90" x2="460" y2="180" marker-end="url(#c-ah)"/>
+          <text class="t-edge t-end" x="452" y="140">≤ 2 min after it ends</text>
+
+          <path class="e" d="M300 243 V355 H400" marker-end="url(#c-ah)"/>
+          <text class="t-edge t-mid" x="350" y="348">locked</text>
+          <line class="e" x1="460" y1="330" x2="460" y2="236" marker-end="url(#c-ah)"/>
+          <text class="t-edge t-end" x="452" y="290">≤ 2 min after unlock</text>
+
+          <path class="e e-hot" d="M550 180 V85 H660" marker-end="url(#c-ahh)"/>
+          <text class="t-edge t-mid" x="605" y="78">correct click</text>
+          <line class="e" x1="570" y1="208" x2="660" y2="208" marker-end="url(#c-ah)"/>
+          <text class="t-edge t-mid" x="615" y="200">time out</text>
+          <path class="e" d="M550 236 V331 H660" marker-end="url(#c-ah)"/>
+          <text class="t-edge t-mid" x="605" y="324">2 wrong clicks</text>
+
+          <line class="e e-hot" x1="810" y1="85" x2="880" y2="85" marker-end="url(#c-ahh)"/>
+          <text class="t-edge t-mid" x="845" y="78">capture</text>
+          <line class="e e-hot" x1="965" y1="110" x2="965" y2="183" marker-end="url(#c-ahh)"/>
+          <text class="t-edge" x="973" y="151">sync</text>
+
+          <path class="e" d="M965 233 V400 H105 V236" marker-end="url(#c-ah)"/>
+          <path class="e" d="M810 208 H850 V400"/>
+          <path class="e" d="M810 331 H850"/>
+          <text class="t-edge" x="858" y="300">5–10 min</text>
+          <text class="t-edge" x="973" y="300">random [min, max]</text>
+          <text class="t-edge t-mid" x="720" y="393">schedule next check-in</text>
+        </svg>
+      </div>
+      <figcaption>Clock-out, a break or a pause cancels a Scheduled or Shown check-in without recording a miss. The gate reads <code>Platform::session_state</code>, <code>call_state</code> and <code>screen_shared</code> at the moment the check-in is due.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 3. Sync -->
+  <section id="sync">
+    <div class="sec-head"><span class="num">03</span><h2>Sync protocol</h2></div>
+    <p>Events and files leave the device in two separate queues. Files wait for their event so that Storage can check, at upload time, that the check-in really passed.</p>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1000 520" role="img" aria-label="Sync sequence. The outbox gives sync up to 100 unacked events in seq order. sync posts them to the agent_events RPC, which returns accepted, duplicate and rejected ids plus server time. sync marks accepted and duplicate events acked and saves the clock offset. The outbox then releases upload jobs whose check-in is acked; the uploader puts each file into Storage, which returns 200 or 409 if it already exists, both treated as done; the uploader marks the job uploaded and deletes the local file.">
+          <defs>
+            <marker id="y-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="y-ahh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path class="ah-hot" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="15" y="16" width="150" height="38" rx="6"/><text class="t-title-c t-mid" x="90" y="40">outbox</text>
+          <rect class="box" x="215" y="16" width="150" height="38" rx="6"/><text class="t-title-c t-mid" x="290" y="40">sync</text>
+          <rect class="box" x="415" y="16" width="150" height="38" rx="6"/><text class="t-title-c t-mid" x="490" y="40">uploader</text>
+          <rect class="box" x="610" y="16" width="180" height="38" rx="6"/><text class="t-title t-mid" x="700" y="40">agent_events RPC</text>
+          <rect class="box" x="830" y="16" width="150" height="38" rx="6"/><text class="t-title t-mid" x="905" y="40">Storage</text>
+
+          <line class="life" x1="90" y1="54" x2="90" y2="450"/>
+          <line class="life" x1="290" y1="54" x2="290" y2="450"/>
+          <line class="life" x1="490" y1="54" x2="490" y2="450"/>
+          <line class="life" x1="700" y1="54" x2="700" y2="450"/>
+          <line class="life" x1="905" y1="54" x2="905" y2="450"/>
+
+          <text class="t-label" x="20" y="76">EVENTS</text>
+          <line class="e e-hot" x1="90" y1="96" x2="290" y2="96" marker-end="url(#y-ahh)"/>
+          <text class="t-edge t-mid" x="190" y="88">≤ 100 unacked, by seq</text>
+
+          <line class="e e-hot" x1="290" y1="140" x2="700" y2="140" marker-end="url(#y-ahh)"/>
+          <rect class="bgchip" x="408" y="122" width="164" height="14"/>
+          <text class="t-edge-c t-mid" x="490" y="132">POST /rpc/agent_events</text>
+
+          <line class="e" x1="700" y1="184" x2="290" y2="184" marker-end="url(#y-ah)"/>
+          <rect class="bgchip" x="384" y="166" width="212" height="14"/>
+          <text class="t-edge t-mid" x="490" y="176">accepted · duplicates · rejected · time</text>
+
+          <line class="e" x1="290" y1="228" x2="90" y2="228" marker-end="url(#y-ah)"/>
+          <text class="t-edge t-mid" x="190" y="220">mark acked · save offset</text>
+
+          <line class="divider" x1="20" y1="258" x2="980" y2="258"/>
+          <text class="t-label" x="20" y="280">UPLOADS</text>
+
+          <line class="e" x1="90" y1="300" x2="490" y2="300" marker-end="url(#y-ah)"/>
+          <rect class="bgchip" x="210" y="282" width="160" height="14"/>
+          <text class="t-edge t-mid" x="290" y="292">jobs whose event is acked</text>
+
+          <line class="e" x1="490" y1="344" x2="905" y2="344" marker-end="url(#y-ah)"/>
+          <rect class="bgchip" x="572" y="326" width="256" height="14"/>
+          <text class="t-edge-c t-mid" x="700" y="336">PUT captures/{org}/{user}/…/screen-1.webp</text>
+
+          <line class="e" x1="905" y1="388" x2="490" y2="388" marker-end="url(#y-ah)"/>
+          <rect class="bgchip" x="600" y="370" width="200" height="14"/>
+          <text class="t-edge t-mid" x="700" y="380">200, or 409 already exists = done</text>
+
+          <line class="e" x1="490" y1="432" x2="90" y2="432" marker-end="url(#y-ah)"/>
+          <rect class="bgchip" x="194" y="414" width="192" height="14"/>
+          <text class="t-edge t-mid" x="290" y="424">mark uploaded · delete local file</text>
+
+          <rect class="note" x="20" y="466" width="960" height="40" rx="6"/>
+          <text class="t-sub" x="36" y="490">Network error: backoff from 2 s to 5 min with jitter. Rejected events stay in the outbox with a reason, go to Sentry, and are never retried.</text>
+        </svg>
+      </div>
+      <figcaption>The server deduplicates on the client-generated event <code>id</code>, so resending a batch after a timeout is always safe. <code>seq</code> is per device and strictly increasing, which lets the server order events that share a timestamp.</figcaption>
+    </figure>
+
+    <div class="two">
+      <pre><span class="cm">// One element of agent_events.events[]</span>
+{
+  "id": "0192f0c4-7d2e-7b31-9a40-3f1c2b6d8e11",
+  <span class="cm">// UUIDv7 generated on the device</span>
+  "seq": 1842,                     <span class="cm">// per device, +1 per event</span>
+  "type": "checkin",
+  "at": "2026-10-07T09:40:12.481Z", <span class="cm">// device wall clock</span>
+  "mono_ms": 8412331,              <span class="cm">// monotonic, for skew repair</span>
+  "payload": {
+    "scheduled_at": "2026-10-07T09:39:58Z",
+    "shown_at": "2026-10-07T09:40:00Z",
+    "responded_at": "2026-10-07T09:40:12Z",
+    "outcome": "pass",             <span class="cm">// pass | miss | failed</span>
+    "response_ms": 12481,
+    "wrong_clicks": 0,
+    "idle_s_at_show": 4,
+    "device_state": "active",
+    "object_keys": ["screen-1.webp", "webcam.webp"],
+    "project_id": "…",
+    "flags": []
+  }
+}</pre>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Rule</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Batch size</td><td>≤ 100 events or 256 KB, whichever comes first</td></tr>
+            <tr><td>Send trigger</td><td>Immediately on a state-change event; otherwise with the 60 s heartbeat</td></tr>
+            <tr><td>Accepted <code>at</code> range</td><td>Server time − 7 days to + 5 min after offset correction; outside is rejected</td></tr>
+            <tr><td>Clock offset</td><td><code>server_time − device_time</code> from each reply; applied to queued events if drift &gt; 2 s</td></tr>
+            <tr><td>Upload order</td><td>Event acked first, then files; Storage policy checks the check-in passed</td></tr>
+            <tr><td>Local retention</td><td>Acked events kept 24 h for debugging, then deleted; files deleted on upload</td></tr>
+            <tr><td>Outbox cap</td><td>7 days or 2 GB; beyond that the oldest images are dropped first, events never</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. API -->
+  <section id="api">
+    <div class="sec-head"><span class="num">04</span><h2>API contract</h2></div>
+    <p>All writes are Postgres functions called through PostgREST (<code>POST /rest/v1/rpc/&lt;name&gt;</code>) with the caller's JWT. They are <code>SECURITY DEFINER</code>, validate everything themselves, and are the only way to change data. Reads go straight to tables and views through row-level security.</p>
+
+    <div class="table-wrap">
+      <div class="tbl-title">Agent functions</div>
+      <table>
+        <thead><tr><th>Function</th><th>Input</th><th>Server checks</th><th>Returns</th></tr></thead>
+        <tbody>
+          <tr><td><code>register_device</code></td><td>platform, os_version, agent_version, hardware_hash</td><td>Caller signed in and active</td><td>device_id, policy, policy_version</td></tr>
+          <tr><td><code>agent_heartbeat</code></td><td>device_id, sent_at, idle_s, locked, in_call, agent_version, permissions</td><td>Device belongs to caller and is not revoked</td><td>server_time, policy_version, commands[]: <code>refresh_policy</code>, <code>reack_notice</code>, <code>revoke</code>, <code>update</code></td></tr>
+          <tr><td><code>agent_events</code></td><td>device_id, events[] (≤ 100)</td><td>Per event: schema, allowed in current server-side state, <code>at</code> in range</td><td>accepted[], duplicates[], rejected[{id, reason}], server_time</td></tr>
+          <tr><td><code>ack_notice</code></td><td>notice_id</td><td>Notice is the current version for the org and region</td><td>ok</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-wrap">
+      <div class="tbl-title">Event types accepted by <code>agent_events</code></div>
+      <table>
+        <thead><tr><th>Type</th><th>Payload</th><th>Server effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>clock_in</code> / <code>clock_out</code></td><td>project_id?, reason (manual, auto)</td><td>Opens or closes <code>clock_sessions</code>; presence</td></tr>
+          <tr><td><code>break_start</code> / <code>break_end</code></td><td>planned_min?</td><td><code>breaks</code> row; presence On break</td></tr>
+          <tr><td><code>pause_start</code> / <code>pause_end</code></td><td>planned_min (5, 10, 15)</td><td><code>pauses</code> row; over-cap seconds computed on the server</td></tr>
+          <tr><td><code>project_switch</code></td><td>project_id or null</td><td>Project for following time</td></tr>
+          <tr><td><code>checkin</code></td><td>see example above</td><td><code>checkin_events</code> row; presence Active or Away</td></tr>
+          <tr><td><code>idle_start</code> / <code>idle_end</code></td><td>since</td><td><code>status_periods</code>; presence Idle</td></tr>
+          <tr><td><code>lock</code> / <code>unlock</code> / <code>sleep</code> / <code>wake</code></td><td>none</td><td>Presence Away (Locked)</td></tr>
+          <tr><td><code>call_start</code> / <code>call_end</code></td><td>source (camera, mic)</td><td>Presence In meeting</td></tr>
+          <tr><td><code>app_session</code></td><td>app, title?, domain?, start, end</td><td><code>activity_sessions</code> (title dropped if policy says so)</td></tr>
+          <tr><td><code>permission_change</code></td><td>screen, camera</td><td>Tamper (capture blocked) while missing</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-wrap">
+      <div class="tbl-title">Dashboard functions</div>
+      <table>
+        <thead><tr><th>Function</th><th>Who</th><th>Checks and effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>add_miss_reason</code></td><td>Employee</td><td>Own check-in, week not yet submitted</td></tr>
+          <tr><td><code>assign_project</code></td><td>Employee</td><td>Own segments in a draft week; marks the day dirty</td></tr>
+          <tr><td><code>request_manual_entry</code></td><td>Employee</td><td>No overlap with clocked time; created as pending</td></tr>
+          <tr><td><code>submit_timesheet</code></td><td>Employee</td><td>Status draft or returned; manager assigned</td></tr>
+          <tr><td><code>decide_manual_entry</code></td><td>Manager</td><td>Direct manager or active delegate; marks the day dirty</td></tr>
+          <tr><td><code>edit_segment</code></td><td>Manager</td><td>Exclude, include or change project; reason required; writes <code>timesheet_edits</code>, marks dirty, notifies employee</td></tr>
+          <tr><td><code>approve_timesheet</code> / <code>return_timesheet</code></td><td>Manager</td><td>Status submitted; comment required on return</td></tr>
+          <tr><td><code>reopen_timesheet</code></td><td>Manager</td><td>Status approved; reason required; audit-logged</td></tr>
+          <tr><td><code>set_delegation</code></td><td>Manager</td><td>Delegate in same org; date range within 90 days</td></tr>
+          <tr><td><code>confirm_dpia</code></td><td>Admin</td><td>EU-region org enabling webcam; audit-logged</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="two">
+      <div class="table-wrap">
+        <div class="tbl-title">Edge Functions</div>
+        <table>
+          <thead><tr><th>Name</th><th>Trigger</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td><code>rebuild-segments</code></td><td>Cron 5 min; dashboard on open</td><td>Rebuilds every dirty user-day (section 6)</td></tr>
+            <tr><td><code>capture-url</code></td><td>Dashboard</td><td>Access check, audit row, signed URLs valid 5 min</td></tr>
+            <tr><td><code>export-timesheet</code></td><td>Dashboard</td><td>CSV or XLSX into a private exports bucket, signed link</td></tr>
+            <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts and reminders through Resend</td></tr>
+            <tr><td><code>retention-purge</code></td><td>Cron nightly</td><td>Deletes expired objects through the Storage API, then their rows</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <div class="tbl-title">pg_cron jobs</div>
+        <table>
+          <thead><tr><th>Job</th><th>Schedule</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td><code>offline_sweep</code></td><td>Every 1 min</td><td>Clocked-in users with <code>last_seen</code> older than 3 min become Offline</td></tr>
+            <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
+            <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Calls <code>rebuild-segments</code> when <code>dirty_days</code> is not empty</td></tr>
+            <tr><td><code>reminders</code></td><td>Hourly</td><td>Submit and approval reminders, admin escalations</td></tr>
+            <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
+            <tr><td><code>partitions</code></td><td>Weekly</td><td>Creates next weekly partitions, drops expired ones</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Schema -->
+  <section id="schema">
+    <div class="sec-head"><span class="num">05</span><h2>Schema</h2></div>
+    <p>Every table carries <code>org_id</code>, and every row-level security policy starts from it. Times are <code>timestamptz</code> in UTC; the employee's IANA time zone lives on <code>users</code> and <code>shifts</code>.</p>
+
+    <div class="domain">
+      <h3>Identity and org <small>who someone is, who they report to</small></h3>
+      <div class="schema">
+        <div class="t-card"><div class="name">orgs</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b> uuid</li>
+          <li>name · data_region · region_preset</li>
+          <li>policy jsonb · policy_version int</li>
+        </ul></div>
+        <div class="t-card"><div class="name">users <em>id = auth.users.id</em></div><ul>
+          <li><span class="badge pk">PK</span><b>id</b> uuid</li>
+          <li><span class="badge">FK</span>manager_id → users</li>
+          <li><span class="badge">FK</span>team_id → teams</li>
+          <li>role (owner, admin, manager, employee)</li>
+          <li>work_country · work_state · timezone</li>
+          <li>approval_required · active</li>
+        </ul></div>
+        <div class="t-card"><div class="name">delegations</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>manager_id → users</li>
+          <li><span class="badge">FK</span>delegate_id → users</li>
+          <li>starts_on · ends_on</li>
+        </ul></div>
+        <div class="t-card"><div class="name">devices</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>user_id → users</li>
+          <li>platform · os_version · agent_version</li>
+          <li>hardware_hash · revoked_at</li>
+        </ul></div>
+        <div class="t-card"><div class="name">shifts</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>user_id → users</li>
+          <li>days int[] · start_time · end_time</li>
+          <li>timezone</li>
+        </ul></div>
+        <div class="t-card"><div class="name">teams · notices · notice_acks</div><ul>
+          <li>teams: id · name</li>
+          <li>notices: id · region · version · body</li>
+          <li>notice_acks: user_id · notice_id · at</li>
+        </ul></div>
+      </div>
+    </div>
+
+    <div class="domain">
+      <h3>Presence and evidence <small>what the agent reported</small></h3>
+      <div class="schema">
+        <div class="t-card"><div class="name">agent_events_raw <em>weekly partitions</em></div><ul>
+          <li><span class="badge pk">PK</span><b>id</b> uuid (from device)</li>
+          <li><span class="badge">FK</span>device_id · user_id</li>
+          <li>seq · type · at · received_at</li>
+          <li>payload jsonb</li>
+        </ul></div>
+        <div class="t-card"><div class="name">checkin_events</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b> = event id</li>
+          <li><span class="badge">FK</span>user_id · device_id · project_id</li>
+          <li>scheduled_at · shown_at · responded_at</li>
+          <li>outcome · response_ms · wrong_clicks</li>
+          <li>idle_s_at_show · device_state</li>
+          <li>object_keys text[] · face_present</li>
+          <li>flags text[] · missed_reason</li>
+        </ul></div>
+        <div class="t-card"><div class="name">presence <em>Realtime</em></div><ul>
+          <li><span class="badge pk">PK</span><b>user_id</b></li>
+          <li>status · since</li>
+          <li>last_checkin_at · last_checkin_outcome</li>
+          <li>project_id</li>
+        </ul></div>
+        <div class="t-card"><div class="name">last_seen <em>not published</em></div><ul>
+          <li><span class="badge pk">PK</span><b>user_id</b></li>
+          <li>device_id · at</li>
+        </ul></div>
+        <div class="t-card"><div class="name">clock_sessions · breaks · pauses</div><ul>
+          <li><span class="badge">FK</span>user_id → users</li>
+          <li>start_at · end_at</li>
+          <li>clock_sessions: end_reason</li>
+          <li>pauses: planned_min · over_cap_s</li>
+        </ul></div>
+        <div class="t-card"><div class="name">status_periods · activity_sessions</div><ul>
+          <li><span class="badge">FK</span>user_id → users</li>
+          <li>status_periods: status · start_at · end_at</li>
+          <li>activity_sessions <em>(weekly partitions)</em>: app · title · domain · start_at · end_at</li>
+        </ul></div>
+      </div>
+    </div>
+
+    <div class="domain">
+      <h3>Time and approval <small>what gets paid and billed</small></h3>
+      <div class="schema">
+        <div class="t-card"><div class="name">time_segments <em>derived</em></div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>user_id · project_id</li>
+          <li>day date · type · start_at · end_at</li>
+          <li>flagged · excluded · excluded_reason</li>
+        </ul></div>
+        <div class="t-card"><div class="name">timesheets</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b> · unique (user_id, period_start)</li>
+          <li><span class="badge">FK</span>approver_id → users</li>
+          <li>status (draft, submitted, approved, returned)</li>
+          <li>submitted_at · approved_at · comment</li>
+        </ul></div>
+        <div class="t-card"><div class="name">timesheet_edits <em>append-only</em></div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>timesheet_id · editor_id</li>
+          <li>action · target_id · before · after</li>
+          <li>reason · at</li>
+        </ul></div>
+        <div class="t-card"><div class="name">manual_entries</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>user_id · project_id · decided_by</li>
+          <li>start_at · end_at · reason</li>
+          <li>status (pending, approved, rejected)</li>
+        </ul></div>
+        <div class="t-card"><div class="name">clients · projects · project_members</div><ul>
+          <li>clients: id · name</li>
+          <li>projects: id · client_id · name · billable · archived</li>
+          <li>project_members: (project_id, user_id)</li>
+        </ul></div>
+        <div class="t-card"><div class="name">dirty_days · alerts · audit_log</div><ul>
+          <li>dirty_days: <b>(user_id, day)</b> rebuild queue</li>
+          <li>alerts: type · payload · sent_at</li>
+          <li>audit_log <em>(append-only)</em>: actor_id · action · target · metadata · at</li>
+        </ul></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Segments -->
+  <section id="segments">
+    <div class="sec-head"><span class="num">06</span><h2>Timesheet engine</h2></div>
+    <p><code>buildSegments()</code> in <code>packages/core</code> is a pure function from one user-day of events to a list of segments. The example below is a real morning run through it.</p>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1000 372" role="img" aria-label="Worked example from 09:00 to 13:00. Inputs: clocked in all morning, a call from 09:00 to 09:30, check-ins passed at 09:40, missed at 10:50, passed at 11:15 and 12:45, idle from 10:30 to 10:50, a 12 minute pause from 11:30, a break from 12:00 to 12:30. Resulting segments: meeting 09:00–09:30, verified to 10:30, idle to 10:50 (flagged), unverified to 11:15 (flagged), verified to 11:30, pause to 11:42, verified to 12:00, break to 12:30, verified to 13:00. Worked 3 hours 30 minutes, of which 45 minutes flagged.">
+          <text class="t-sub" x="20" y="62">Clocked in</text>
+          <rect class="bar-in" x="170" y="48" width="800" height="20" rx="3"/>
+
+          <text class="t-sub" x="20" y="96">Call (mic, cam)</text>
+          <rect class="bar-in" x="170" y="82" width="100" height="20" rx="3"/>
+
+          <text class="t-sub" x="20" y="130">Check-ins</text>
+          <line class="divider" x1="170" y1="126" x2="970" y2="126"/>
+          <circle class="mk-pass" cx="303" cy="126" r="6"/>
+          <text class="t-sub-s" x="313" y="130">pass</text>
+          <circle class="mk-miss" cx="537" cy="126" r="6"/>
+          <text class="t-sub-s" x="547" y="130">miss</text>
+          <circle class="mk-pass" cx="620" cy="126" r="6"/>
+          <text class="t-sub-s" x="630" y="130">pass</text>
+          <circle class="mk-pass" cx="920" cy="126" r="6"/>
+          <text class="t-sub-s" x="930" y="130">pass</text>
+
+          <text class="t-sub" x="20" y="164">Idle ≥ 10 min</text>
+          <rect class="bar-in" x="470" y="150" width="67" height="20" rx="3"/>
+
+          <text class="t-sub" x="20" y="198">Pause</text>
+          <rect class="bar-in" x="670" y="184" width="40" height="20" rx="3"/>
+
+          <text class="t-sub" x="20" y="232">Break</text>
+          <rect class="bar-in" x="770" y="218" width="100" height="20" rx="3"/>
+
+          <line class="divider" x1="20" y1="252" x2="980" y2="252"/>
+
+          <text class="t-title" x="20" y="286">Segments</text>
+          <rect class="seg-meet" x="170" y="268" width="100" height="28"/>
+          <text class="t-bar t-mid" x="220" y="286">meeting</text>
+          <rect class="seg-ok" x="270" y="268" width="200" height="28"/>
+          <text class="t-bar t-mid" x="370" y="286">verified</text>
+          <rect class="seg-flag" x="470" y="268" width="67" height="28"/>
+          <text class="t-bar t-mid" x="503" y="286">idle</text>
+          <rect class="seg-flag" x="537" y="268" width="83" height="28"/>
+          <text class="t-bar t-mid" x="578" y="286">unverified</text>
+          <rect class="seg-ok" x="620" y="268" width="50" height="28"/>
+          <rect class="seg-pause" x="670" y="268" width="40" height="28"/>
+          <text class="t-bar t-mid" x="690" y="286">pause</text>
+          <rect class="seg-ok" x="710" y="268" width="60" height="28"/>
+          <text class="t-bar t-mid" x="740" y="286">verified</text>
+          <rect class="seg-break" x="771" y="269" width="98" height="26"/>
+          <text class="t-bar t-mid" x="820" y="286">break</text>
+          <rect class="seg-ok" x="870" y="268" width="100" height="28"/>
+          <text class="t-bar t-mid" x="920" y="286">verified</text>
+
+          <line class="tick" x1="170" y1="308" x2="970" y2="308"/>
+          <line class="tick" x1="170" y1="308" x2="170" y2="316"/>
+          <line class="tick" x1="270" y1="308" x2="270" y2="312"/>
+          <line class="tick" x1="370" y1="308" x2="370" y2="316"/>
+          <line class="tick" x1="470" y1="308" x2="470" y2="312"/>
+          <line class="tick" x1="570" y1="308" x2="570" y2="316"/>
+          <line class="tick" x1="670" y1="308" x2="670" y2="312"/>
+          <line class="tick" x1="770" y1="308" x2="770" y2="316"/>
+          <line class="tick" x1="870" y1="308" x2="870" y2="312"/>
+          <line class="tick" x1="970" y1="308" x2="970" y2="316"/>
+          <text class="t-code t-mid" x="170" y="330">09:00</text>
+          <text class="t-code t-mid" x="370" y="330">10:00</text>
+          <text class="t-code t-mid" x="570" y="330">11:00</text>
+          <text class="t-code t-mid" x="770" y="330">12:00</text>
+          <text class="t-code t-mid" x="970" y="330">13:00</text>
+
+          <text class="t-edge" x="20" y="362">Worked 3 h 30 min · flagged 45 min (idle 20, unverified 25) · pause 12 min within cap · break 30 min, unpaid</text>
+        </svg>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><i class="key k-ok"></i>Verified</span>
+        <span><i class="key k-meet"></i>Meeting</span>
+        <span><i class="key k-flag"></i>Flagged, counted until a manager excludes it</span>
+        <span><i class="key k-pause"></i>Pause</span>
+        <span><i class="key k-break"></i>Break</span>
+      </div>
+      <figcaption>Unverified runs from the moment the missed card was shown (10:50) to the next pass (11:15). The idle stretch ends when the card appears, so the two flagged segments sit side by side; where they overlap, unverified wins by precedence.</figcaption>
+    </figure>
+
+    <div class="two">
+      <ol class="steps">
+        <li>Load the user-day: events whose time falls in the employee's local calendar day, plus any open interval from the day before.</li>
+        <li>Build clocked-in intervals from <code>clock_sessions</code> and approved <code>manual_entries</code>.</li>
+        <li>Cut them at every boundary from breaks, pauses, status periods, check-ins and project switches, giving atomic intervals.</li>
+        <li>Classify each atomic interval by precedence: break, pause, offline, away (locked), unverified, meeting, idle, verified.</li>
+        <li>Split pauses at the per-pause and per-day caps; the part over the cap becomes flagged pause.</li>
+        <li>Attach the project in force at that moment, or Unassigned.</li>
+        <li>Merge neighbours with the same type and project, apply exclusions from <code>timesheet_edits</code>.</li>
+        <li>Inside one transaction holding an advisory lock on (user, day): delete the day's segments, insert the new ones, clear the dirty flag.</li>
+      </ol>
+      <div class="callout"><b>Invariants, checked by property tests with fast-check:</b> segments never overlap; together they exactly cover clocked-in time plus approved manual time; totals equal the sum of raw seconds; running the function twice on the same input gives identical output; adding an event can only change segments that overlap it.</div>
+    </div>
+  </section>
+
+  <!-- 7. Access -->
+  <section id="access">
+    <div class="sec-head"><span class="num">07</span><h2>Access control</h2></div>
+    <p>One SQL function, <code>can_view_user(viewer, employee)</code>, backs every read policy and the <code>capture-url</code> check. Approval rights use a stricter variant that leaves admins out.</p>
+    <figure>
+      <div class="panel">
+        <svg class="mid" viewBox="0 0 1180 240" role="img" aria-label="can_view_user decision chain. If the viewer is not in the same org as the employee, deny. If the viewer is the employee, allow own data. If the viewer is an owner or admin, allow viewing but not approving. If the viewer is the employee's direct manager, allow view and approve. If the viewer is an active delegate of that manager, allow view and approve within the date range. Otherwise deny.">
+          <defs>
+            <marker id="p-ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="20" y="40" width="160" height="60" rx="6"/>
+          <text class="t-title t-mid" x="100" y="66">Same org as</text>
+          <text class="t-title t-mid" x="100" y="84">the employee?</text>
+          <rect class="box" x="230" y="40" width="160" height="60" rx="6"/>
+          <text class="t-title t-mid" x="310" y="66">Viewer is the</text>
+          <text class="t-title t-mid" x="310" y="84">employee?</text>
+          <rect class="box" x="440" y="40" width="160" height="60" rx="6"/>
+          <text class="t-title t-mid" x="520" y="66">Viewer is owner</text>
+          <text class="t-title t-mid" x="520" y="84">or admin?</text>
+          <rect class="box" x="650" y="40" width="160" height="60" rx="6"/>
+          <text class="t-title t-mid" x="730" y="66">Viewer is their</text>
+          <text class="t-title t-mid" x="730" y="84">direct manager?</text>
+          <rect class="box" x="860" y="40" width="160" height="60" rx="6"/>
+          <text class="t-title t-mid" x="940" y="66">Active delegate</text>
+          <text class="t-title t-mid" x="940" y="84">of that manager?</text>
+          <rect class="pill-deny" x="1060" y="40" width="100" height="60" rx="30"/>
+          <text class="t-title t-mid" x="1110" y="75">Deny</text>
+
+          <line class="e" x1="180" y1="70" x2="230" y2="70" marker-end="url(#p-ah)"/>
+          <text class="t-edge t-mid" x="205" y="62">yes</text>
+          <line class="e" x1="390" y1="70" x2="440" y2="70" marker-end="url(#p-ah)"/>
+          <text class="t-edge t-mid" x="415" y="62">no</text>
+          <line class="e" x1="600" y1="70" x2="650" y2="70" marker-end="url(#p-ah)"/>
+          <text class="t-edge t-mid" x="625" y="62">no</text>
+          <line class="e" x1="810" y1="70" x2="860" y2="70" marker-end="url(#p-ah)"/>
+          <text class="t-edge t-mid" x="835" y="62">no</text>
+          <line class="e" x1="1020" y1="70" x2="1060" y2="70" marker-end="url(#p-ah)"/>
+          <text class="t-edge t-mid" x="1040" y="62">no</text>
+
+          <line class="e" x1="100" y1="100" x2="100" y2="160" marker-end="url(#p-ah)"/>
+          <text class="t-edge" x="108" y="134">no</text>
+          <line class="e" x1="310" y1="100" x2="310" y2="160" marker-end="url(#p-ah)"/>
+          <text class="t-edge" x="318" y="134">yes</text>
+          <line class="e" x1="520" y1="100" x2="520" y2="160" marker-end="url(#p-ah)"/>
+          <text class="t-edge" x="528" y="134">yes</text>
+          <line class="e" x1="730" y1="100" x2="730" y2="160" marker-end="url(#p-ah)"/>
+          <text class="t-edge" x="738" y="134">yes</text>
+          <line class="e" x1="940" y1="100" x2="940" y2="160" marker-end="url(#p-ah)"/>
+          <text class="t-edge" x="948" y="134">yes</text>
+
+          <rect class="pill-deny" x="20" y="160" width="160" height="56" rx="28"/>
+          <text class="t-title t-mid" x="100" y="185">Deny</text>
+          <text class="t-sub-s t-mid" x="100" y="202">tenant boundary</text>
+          <rect class="pill-allow" x="230" y="160" width="160" height="56" rx="28"/>
+          <text class="t-title t-mid" x="310" y="185">Own data</text>
+          <text class="t-sub-s t-mid" x="310" y="202">view, add reasons, submit</text>
+          <rect class="pill-allow" x="440" y="160" width="160" height="56" rx="28"/>
+          <text class="t-title t-mid" x="520" y="185">View only</text>
+          <text class="t-sub-s t-mid" x="520" y="202">admins never approve</text>
+          <rect class="pill-allow" x="650" y="160" width="160" height="56" rx="28"/>
+          <text class="t-title t-mid" x="730" y="185">View + approve</text>
+          <text class="t-sub-s t-mid" x="730" y="202">direct reports</text>
+          <rect class="pill-allow" x="860" y="160" width="160" height="56" rx="28"/>
+          <text class="t-title t-mid" x="940" y="185">View + approve</text>
+          <text class="t-sub-s t-mid" x="940" y="202">within the date range</text>
+        </svg>
+      </div>
+      <figcaption>Checks run in this order and stop at the first match. Every capture view through <code>capture-url</code> also writes an <code>audit_log</code> row, which the employee can see.</figcaption>
+    </figure>
+
+    <div class="two">
+      <pre><span class="cm">-- Agents may upload only into their own folder,
+-- and only for a check-in the server has recorded as passed.</span>
+create policy captures_insert_own_passed
+on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'captures'
+  and (storage.foldername(name))[1] = auth_org_id()::text
+  and (storage.foldername(name))[2] = auth.uid()::text
+  and exists (
+    select 1 from checkin_events c
+    where c.id = ((storage.foldername(name))[4])::uuid
+      and c.user_id = auth.uid()
+      and c.outcome = 'pass'
+  )
+);
+<span class="cm">-- No select, update or delete policies on the bucket:
+-- reads go through capture-url, deletes through retention-purge.</span></pre>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Object</th><th>Read</th><th>Write</th></tr></thead>
+          <tbody>
+            <tr><td>Event tables</td><td><code>can_view_user</code></td><td>Agent RPC functions only</td></tr>
+            <tr><td><code>presence</code></td><td><code>can_view_user</code>; Realtime applies the same policy</td><td><code>agent_events</code>, <code>offline_sweep</code></td></tr>
+            <tr><td><code>time_segments</code></td><td><code>can_view_user</code></td><td><code>rebuild-segments</code> only</td></tr>
+            <tr><td><code>timesheets</code></td><td><code>can_view_user</code></td><td>Timesheet functions; approval needs manager or delegate</td></tr>
+            <tr><td>Org policy</td><td>Everyone in the org</td><td>Owner, admin</td></tr>
+            <tr><td><code>audit_log</code></td><td>Owner, admin; employees see rows about themselves</td><td>Insert only, from functions; no update or delete grant</td></tr>
+            <tr><td>Service-role key</td><td colspan="2">Held only by Edge Functions; never shipped in the agent or dashboard</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>Source: <code>docs/architecture-lld.html</code> in <code>rajgaur98/ai_proctor</code>. Builds on the PRD, the tech stack and the HLD.</footer>
+</div>

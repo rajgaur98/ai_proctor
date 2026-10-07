@@ -37,7 +37,7 @@
 │   camera/mic in use · injected input · screen-share heuristics    │
 │ React UI: tray popover · onboarding · check-in card               │
 └───────┬──────────────────────────────────────────┬────────────────┘
-        │ HTTPS → PostgREST RPC                    │ signed upload URL
+        │ HTTPS → PostgREST RPC                    │ upload (own folder)
         │ heartbeat (60 s) · events (immediate)    │ (WebP images)
         ▼                                          ▼
 ┌──────────────────────── Supabase (US East) ───────────────────────┐
@@ -69,7 +69,7 @@
 **Check-in with captures**
 1. The agent records the check-in outcome locally first (works offline).
 2. On a pass, the Rust platform layer grabs the screenshot(s) and webcam frame, downscales them and encodes WebP.
-3. The agent uploads to `captures/{org}/{user}/{date}/{checkin_id}/…` (storage RLS only allows writes to the user's own path), then sends the event with the object keys.
+3. The agent sends the check-in event with the object keys. Once the event is acknowledged, it uploads the files to `captures/{org}/{user}/{date}/{checkin_id}/…`. The storage policy accepts a file only in the caller's own folder and only for a check-in already recorded as passed.
 4. Misses send an event only, with no capture.
 
 **Viewing a capture**
