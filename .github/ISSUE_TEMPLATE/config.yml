@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Phase 1 PRD
+    url: https://github.com/rajgaur98/ai_proctor/blob/HEAD/docs/prd/phase-1-presence-and-timesheets.md
+    about: Requirement IDs and scope for Phase 1.

@@ -1,0 +1,25 @@
+name: Spike
+description: A timeboxed investigation that ends in a written decision
+labels: ["type:spike"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to answer
+    validations:
+      required: true
+  - type: input
+    id: timebox
+    attributes:
+      label: Timebox
+      placeholder: 2 days
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      value: |
+        - [ ] Findings written up in docs/spikes/<name>.md with the chosen approach
+    validations:
+      required: true
