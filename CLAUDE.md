@@ -9,6 +9,7 @@ Presence verification + timesheets for remote teams (Phase 1), AI daily summarie
 - `docs/architecture-lld.html`: modules, state machines, sync protocol, schema, access control.
 - `docs/development-tracking.md`: epics, labels, branch/PR conventions.
 - Issues: https://github.com/rajgaur98/ai_proctor/issues (epics #1–#7, later #62).
+- UI design (Claude Design, file "AI Proctor Phase 1.dc.html"): https://claude.ai/design/p/2d6757e9-b833-4f16-829e-c2c507023b77?file=AI+Proctor+Phase+1.dc.html. Sessions can't open this link; use the exported copy under `docs/design/` once it's committed. It's the visual reference for the dashboard, tray popover and check-in card; the brief it came from is `docs/design/phase-1-design-brief.md`.
 
 If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > issue). Known mismatches are listed in `docs/progress.md`.
 

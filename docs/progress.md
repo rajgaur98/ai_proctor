@@ -37,7 +37,9 @@ Add rows as issues start. Status values: Not started · In progress · PR open �
 
 ## Blocked on Raj
 
-_Nothing yet._ Format: `- #<issue>: <exact question or action needed>`
+Format: `- #<issue>: <exact question or action needed>`
+
+- #27 and later UI issues: export the Claude Design file "AI Proctor Phase 1.dc.html" (link in `CLAUDE.md`) and commit it under `docs/design/`. Sessions can't open claude.ai/design links. Standalone Claude Design closes on 14 Dec 2026, so export before then.
 
 ## Accounts needed later (M6)
 
