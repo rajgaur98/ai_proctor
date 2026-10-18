@@ -4,6 +4,17 @@ You are running in Claude desktop on Raj's Mac, in a local clone of this repo. A
 
 Read `CLAUDE.md` and `docs/progress.md` first.
 
+## Before you start: confirm with Raj
+
+Do not install anything, create branches, write code or open PRs until Raj says go. First reply with:
+
+1. Your understanding of the scope, in 3–5 bullets.
+2. The environment check results (read-only: `xcode-select -p`, `rustc --version`, `cargo --version`, `node --version`, `pnpm --version`, `sw_vers`, display count) and the list of things you'd install.
+3. The order you'll run the spikes and roughly what you'll need Raj to do physically for each.
+4. Any questions or disagreements with this handoff.
+
+Then wait. Start only after an explicit go-ahead, and ask again before each install.
+
 ## Scope
 
 | Issue | What to prove on macOS | Output |
@@ -16,7 +27,7 @@ Out of scope: #12 and the Windows halves of #13/#14, anything under `apps/` or `
 
 ## Step 0: environment check
 
-1. Check for `xcode-select -p`, `rustc`, `cargo`, `node` (22+), `pnpm`. Install anything missing (Xcode CLT, rustup, `brew install node@22 pnpm`), asking Raj before each install.
+1. Install whatever the read-only check found missing (Xcode CLT, rustup, `brew install node@22 pnpm`), asking Raj before each install.
 2. Install the Tauri CLI: `cargo install tauri-cli --version "^2" --locked`.
 3. Ask Raj to confirm **System Settings → Privacy & Security → Screen Recording** includes **Claude** (needed for you to take verification screenshots with `screencapture`).
 4. Record the macOS version, chip and number of displays in each spike write-up.

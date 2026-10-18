@@ -30,6 +30,7 @@ If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > 
 - Every capture view, policy change, timesheet edit and export is audit-logged.
 
 ## Workflow
+- A new session, or a session given a handoff, first replies with its understanding and plan and waits for Raj's go-ahead. No installs, branches or code before that.
 - One issue → one branch → one PR. Branch: `<issue>-<short-name>` (e.g. `21-capture-pipeline`). PR body has `Closes #<n>` and the PRD IDs covered.
 - PRs are **stacked**: each targets the previous branch in its milestone stack. Rebase the rest of the stack after a lower PR merges.
 - Before pushing: lint, typecheck, unit tests, and a self-review of the diff. CI must be green.
