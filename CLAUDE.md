@@ -3,6 +3,7 @@
 Presence verification + timesheets for remote teams (Phase 1), AI daily summaries later (Phase 2). Sole developer: Raj. Not launched; building toward a US pilot.
 
 ## Read first
+- `docs/handoff/mac-session.md`: how this local session works (read once).
 - `docs/progress.md`: current status, build order, open decisions, blockers. **Update it as you work.**
 - `docs/prd/phase-1-presence-and-timesheets.md`: requirements with IDs (CHK-10, TS-05…). Every change traces to an ID.
 - `docs/tech-stack.md`: chosen stack, key flows, repo layout, pilot settings.
@@ -35,13 +36,15 @@ If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > 
 - One issue → one branch → one PR. Branch: `<issue>-<short-name>` (e.g. `21-capture-pipeline`). PR body has `Closes #<n>` and the PRD IDs covered.
 - PRs are **stacked**: each targets the previous branch in its milestone stack. Rebase the rest of the stack after a lower PR merges.
 - Before pushing: lint, typecheck, unit tests, and a self-review of the diff. CI must be green.
-- Platform code that can't be run where you are (macOS UI/permissions from Linux, anything on Windows) gets the `needs-device-test` label and a manual test checklist in the PR body; keep going.
+- Windows code (no Windows machine yet) gets the `needs-device-test` label and a manual test checklist in the PR body; it must still compile and pass tests on the Windows CI runner. Keep going.
 - Never put model names in commits, PRs or code.
 - When blocked on a decision only Raj can make, add it to "Blocked on Raj" in `docs/progress.md` with the exact question, then move to the next unblocked issue.
 
-## Where sessions run
-- **Cloud (claude.ai/code, Linux):** backend, dashboard, `packages/*`, cross-platform agent core. Docker is available for `supabase start`.
-- **Local (Claude desktop on Raj's Mac):** macOS spikes (#11, #13, #14 macOS parts) and macOS platform code. Needs Screen Recording permission for the Claude app; Raj clicks OS permission prompts.
+## Where development runs
+All development runs in a **local Claude desktop session on Raj's Mac** (`docs/handoff/mac-session.md`). The earlier cloud session only did planning and docs.
+- Docker (OrbStack or Docker Desktop) for `supabase start`; Rust, Node 22, pnpm, Tauri CLI, Xcode command line tools.
+- The Claude app needs Screen Recording permission so you can verify UI with `screencapture`. App permission prompts (Screen Recording, Camera) are clicked by Raj; test them on a bundled `.app`, not a binary launched from your shell (it inherits Claude's permissions).
+- When something needs Raj physically (open an app, click, approve a prompt), stop and give numbered steps.
 
 ## Commands
 Not scaffolded yet (issue #8). Fill this section in when it lands: install, dev, lint, typecheck, test, `supabase start`, agent dev build.

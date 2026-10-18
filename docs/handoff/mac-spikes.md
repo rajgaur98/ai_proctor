@@ -1,19 +1,6 @@
-# Handoff: macOS spikes (local Mac session)
+# Spike guide: macOS (#11, #13, #14)
 
-You are running in Claude desktop on Raj's Mac, in a local clone of this repo. A separate cloud session (Linux) builds the backend, dashboard and cross-platform code. Your job is the macOS work that needs a real Mac, a real screen and a real camera.
-
-Read `CLAUDE.md` and `docs/progress.md` first.
-
-## Before you start: confirm with Raj
-
-Do not install anything, create branches, write code or open PRs until Raj says go. First reply with:
-
-1. Your understanding of the scope, in 3–5 bullets.
-2. The environment check results (read-only: `xcode-select -p`, `rustc --version`, `cargo --version`, `node --version`, `pnpm --version`, `sw_vers`, display count) and the list of things you'd install.
-3. The order you'll run the spikes and roughly what you'll need Raj to do physically for each.
-4. Any questions or disagreements with this handoff.
-
-Then wait. Start only after an explicit go-ahead, and ask again before each install.
+Detailed guide for the week-1 macOS spikes. The overall session handoff is `docs/handoff/mac-session.md`; its confirm-first step covers these spikes too.
 
 ## Scope
 
@@ -23,18 +10,15 @@ Then wait. Start only after an explicit go-ahead, and ask again before each inst
 | #13 (macOS half) | Screenshot per monitor (ScreenCaptureKit), one webcam frame (AVFoundation), detect missing permissions without prompting, downscale + WebP sizes and timings | `docs/spikes/capture.md` (macOS section) |
 | #14 (macOS half) | Camera in use, mic in use, screen sharing / full-screen presentation, lock/unlock, sleep/wake, idle seconds | `docs/spikes/presence-signals.md` (macOS section) |
 
-Out of scope: #12 and the Windows halves of #13/#14, anything under `apps/` or `packages/` (the cloud session scaffolds those in #8), and production code. Spike code is throwaway.
+Out of scope: #12 and the Windows halves of #13/#14, and production code. Spike code is throwaway and lives in `spikes/macos/`, separate from `apps/` and `packages/`.
 
-## Step 0: environment check
+## Setup
 
-1. Install whatever the read-only check found missing (Xcode CLT, rustup, `brew install node@22 pnpm`), asking Raj before each install.
-2. Install the Tauri CLI: `cargo install tauri-cli --version "^2" --locked`.
-3. Ask Raj to confirm **System Settings → Privacy & Security → Screen Recording** includes **Claude** (needed for you to take verification screenshots with `screencapture`).
-4. Record the macOS version, chip and number of displays in each spike write-up.
+The session-level environment setup in `docs/handoff/mac-session.md` covers the tools. Record the macOS version, chip and number of displays in each spike write-up.
 
 ## How to run the spikes
 
-- Put all spike code in `spikes/macos/` as one minimal Tauri v2 app (Rust + a plain HTML page; no React needed). Add `spikes/` to nothing else; it must not affect future workspaces.
+- Put all spike code in `spikes/macos/` as one minimal Tauri v2 app (Rust + a plain HTML page; no React needed). Keep it out of the pnpm workspace and any Cargo workspace.
 - **Permission attribution matters.** A binary launched from your shell inherits Claude's macOS permissions, so prompts appear for Claude, not the app. For every permission result, also test a bundled build (`cargo tauri build --debug`, then `open` the `.app`) and report both. Only the bundled result counts.
 - **When you need Raj to do something physical**, stop and give numbered steps (e.g. "1. Open Keynote and start a full-screen slideshow. 2. Wait for the card. 3. Type `hello` while it is visible. 4. Click button 7. Tell me what happened."). Wait for the answer. Use `screencapture -x /tmp/shot.png` and read the image to verify what you can yourself.
 - Timebox: about 2 days of effort per spike. If an approach fails, write down why and try the next one; don't polish.
@@ -64,10 +48,9 @@ Out of scope: #12 and the Windows halves of #13/#14, anything under `apps/` or `
 
 ## Git and PRs
 
-- One branch and PR per spike: `11-spike-checkin-card-macos`, `13-spike-capture-macos`, `14-spike-presence-macos`, each based on the repo's default branch (independent, not stacked).
+- One branch and PR per spike: `11-spike-checkin-card-macos`, `13-spike-capture-macos`, `14-spike-presence-macos`, each based on the default branch (independent of the feature stacks).
 - PR body: `Closes #11` for the card spike. For #13 and #14 use `Refs #13` / `Refs #14`, since the Windows halves are still open.
 - Commit the write-up and the spike code. Don't commit build output (`spikes/macos/target`, `.app` bundles).
-- Before editing `docs/progress.md`, pull the latest default branch: the cloud session edits it too. Only change your own rows.
 - Raj reviews and merges unless `docs/progress.md` says otherwise.
 
 ## Done when

@@ -2,18 +2,15 @@
 
 Living status file. Update it in the same PR as the work.
 
-_Last updated: 18 Oct 2026. Planning done; no code yet._
+_Last updated: 18 Oct 2026. Planning done; development moving to the local Mac session; no code yet._
 
 ## Build order
 
-Front-loads work that can be fully verified in a Linux cloud session; batches macOS/Windows work for on-device testing.
+Milestone order, with the week-1 spikes early because they decide how the agent is built. All work runs locally on Raj's Mac.
 
-1. **M0 infra:** #8 monorepo → #9 local Supabase + first migration → #10 CI → #15 agent skeleton (with `FakePlatform`)
-2. **Shared logic + backend:** #40 `buildSegments()`, #30 status engine, #31 RLS, #17 devices, #23 sync RPCs, #24 storage policy, #41 rebuild-segments
-3. **Dashboard:** #27 skeleton → #28 org setup → #29 shifts → #32 live grid → #33 timeline → #34 capture viewer, then M3/M4/M5 dashboard items
-4. **Agent core (cross-platform):** #16 sign-in, #18 state machine, #19 scheduler, #22 outbox, #20 card logic, #25 activity aggregation
-5. **Platform code, batched for device testing:** spikes #11–#14, then macOS/Windows parts of #20, #21, #25, #26, #57–#59
-6. **M6 release work** once accounts exist: #55, #56, #57, #60, #61
+1. **M0:** #8 monorepo → #9 local Supabase + first migration → #10 CI → spikes #11, #13, #14 (macOS halves; guide in `docs/handoff/mac-spikes.md`) → #15 agent skeleton. #12 (Windows card spike) waits for a Windows machine.
+2. **M1 → M5** in order. Inside each milestone, do backend before the UI that uses it.
+3. **M6** release work once the accounts below exist.
 
 ## Status
 
@@ -22,18 +19,18 @@ Front-loads work that can be fully verified in a Linux cloud session; batches ma
 | #8 | Monorepo setup | Not started | |
 | #9 | Local Supabase + first migration | Not started | |
 | #10 | CI | Not started | |
-| #11–#14 | Week-1 spikes | Not started (needs Mac) | |
+| #11, #13, #14 | Week-1 spikes (macOS) | Not started | |
+| #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Not started | |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
 ## Open decisions (asked, not yet answered)
 
-1. **Branches:** the cloud session may only push to `claude/employee-activity-monitoring-z07n3t`. Stacked PRs need one branch per issue, and a `main` branch (created from the current branch) as the repo default. Allowed?
+1. **Branches:** create `main` from `claude/employee-activity-monitoring-z07n3t` and make it the default branch; one branch per issue for stacked PRs. OK?
 2. **Merging:** (a) Raj reviews and merges, with at most ~10 unmerged PRs in a stack; or (b) Claude merges each PR once CI is green and self-review is clean, Raj reviews afterwards.
-3. **Device testing:** label `needs-device-test` and keep going (recommended), or stop until tested?
+3. **Physical testing:** when a check needs Raj (permission prompts, clicking the card), stop and ask each time, or batch those checks and keep going?
 4. **Windows:** is a Windows machine or VM available, or do Windows items wait until M6?
-5. **Session split:** cloud for backend/dashboard/core, local Mac session for macOS work. OK?
 
 ## Blocked on Raj
 
@@ -56,5 +53,5 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 
 ## Environment notes
 
-- Cloud container: Linux, 4 CPUs, 15 GB RAM, Docker, Rust, Node 22, pnpm, psql. Ephemeral; push everything.
+- Development machine: Raj's Mac, local Claude desktop session. Keep it awake during long runs (`caffeinate -dims`).
 - CI budget: private repo, 2,000 free Actions minutes/month; macOS counts 10×, Windows 2×. Linux checks on every PR; macOS/Windows only on label or nightly.
