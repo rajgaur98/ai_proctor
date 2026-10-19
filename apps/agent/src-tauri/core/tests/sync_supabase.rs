@@ -124,7 +124,8 @@ fn queued_events_and_captures_reach_supabase() {
             permissions: json!({}),
         })
         .unwrap();
-    assert_eq!(reply.policy_version, 1);
+    // Starts at 1; schedule changes (#29) move it.
+    assert!(reply.policy_version >= 1);
     assert!(
         syncer.clock_offset().num_seconds().abs() < 5,
         "local stack shares this clock"

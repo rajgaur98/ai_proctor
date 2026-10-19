@@ -6,6 +6,7 @@ pub mod auth;
 pub mod capture;
 pub mod checkin;
 pub mod clock;
+pub mod config;
 pub mod contracts;
 #[cfg(any(test, feature = "fake"))]
 pub mod fake;

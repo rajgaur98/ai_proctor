@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use agent_core::auth::{self, Auth, AuthError};
 use agent_core::clock::Clock;
+use agent_core::config::AgentConfig;
 use agent_core::keystore::KeyStore;
 use agent_core::outbox::Outbox;
 use agent_core::sync::{Api, ApiConfig, DeviceIdentity, Heartbeat, SyncError, SyncStats, Syncer};
@@ -34,6 +35,9 @@ pub struct Account {
     clock: Arc<dyn Clock>,
     data_dir: PathBuf,
     syncer: Mutex<Option<Syncer>>,
+    /// Config fetched but not yet applied by the app, and the version it has.
+    pending_config: Mutex<Option<AgentConfig>>,
+    config_version: Mutex<Option<i64>>,
 }
 
 impl Account {
@@ -52,6 +56,8 @@ impl Account {
             clock,
             data_dir: data_dir.to_owned(),
             syncer: Mutex::new(None),
+            pending_config: Mutex::new(None),
+            config_version: Mutex::new(None),
         })
     }
 
@@ -122,8 +128,25 @@ impl Account {
                 user_id: session.user_id,
             },
         );
+        let config = syncer.config()?;
         *self.syncer.lock().unwrap() = Some(syncer);
+        self.keep_config(config);
         Ok(())
+    }
+
+    fn keep_config(&self, config: AgentConfig) {
+        tracing::info!(
+            policy_version = config.policy_version,
+            shifts = config.shifts.len(),
+            "config received"
+        );
+        *self.config_version.lock().unwrap() = Some(config.policy_version);
+        *self.pending_config.lock().unwrap() = Some(config);
+    }
+
+    /// New config from the server since the last call, for the app to apply.
+    pub fn take_config(&self) -> Option<AgentConfig> {
+        self.pending_config.lock().unwrap().take()
     }
 
     pub fn sync(&self) -> Result<SyncStats, SyncError> {
@@ -133,11 +156,22 @@ impl Account {
         }
     }
 
+    /// Sends a heartbeat; when its policy_version differs from the config in use
+    /// (shifts or policy changed), fetches the new config (`take_config`).
     pub fn heartbeat(&self, heartbeat: &Heartbeat) -> Result<(), SyncError> {
-        match self.syncer.lock().unwrap().as_ref() {
-            Some(syncer) => syncer.heartbeat(heartbeat).map(|_| ()),
-            None => Ok(()),
-        }
+        let config = {
+            let syncer = self.syncer.lock().unwrap();
+            let Some(syncer) = syncer.as_ref() else {
+                return Ok(());
+            };
+            let reply = syncer.heartbeat(heartbeat)?;
+            if *self.config_version.lock().unwrap() == Some(reply.policy_version) {
+                return Ok(());
+            }
+            syncer.config()?
+        };
+        self.keep_config(config);
+        Ok(())
     }
 
     /// A stable, non-identifying id for this install: SHA-256 of a random id kept

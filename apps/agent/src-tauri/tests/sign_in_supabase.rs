@@ -96,6 +96,10 @@ fn sign_in_register_sync_and_sign_out() {
     first.complete_sign_in(&redirect).unwrap();
     assert!(first.attached());
     assert_eq!(first.email().as_deref(), Some(EMAIL));
+    // Erin's seeded shift (Mon–Fri 09:00–17:00, Los Angeles) arrives with the config.
+    let config = first.take_config().expect("config fetched on attach");
+    assert_eq!(config.session_policy().shifts.len(), 1);
+    assert!(first.take_config().is_none(), "handed over once");
 
     // A shift recorded locally reaches the server, with a heartbeat in between.
     let platform = Arc::new(FakePlatform::default());
