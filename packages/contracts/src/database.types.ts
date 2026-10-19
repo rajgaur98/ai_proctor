@@ -302,6 +302,59 @@ export type Database = {
           },
         ];
       };
+      delegations: {
+        Row: {
+          created_at: string;
+          delegate_id: string;
+          ends_on: string;
+          id: string;
+          manager_id: string;
+          org_id: string;
+          starts_on: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          delegate_id: string;
+          ends_on: string;
+          id?: string;
+          manager_id: string;
+          org_id: string;
+          starts_on: string;
+        };
+        Update: {
+          created_at?: string;
+          delegate_id?: string;
+          ends_on?: string;
+          id?: string;
+          manager_id?: string;
+          org_id?: string;
+          starts_on?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "delegations_delegate_id_fkey";
+            columns: ["delegate_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "delegations_manager_id_fkey";
+            columns: ["manager_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "delegations_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       device_sessions: {
         Row: {
           created_at: string;
@@ -712,6 +765,8 @@ export type Database = {
         };
         Returns: Json;
       };
+      can_approve_for: { Args: { target: string }; Returns: boolean };
+      can_view_user: { Args: { target: string }; Returns: boolean };
       register_device: {
         Args: {
           agent_version: string;

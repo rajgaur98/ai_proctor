@@ -22,12 +22,13 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #11, #13, #14 | Week-1 spikes (macOS) | Draft PRs, manual checks pending Raj | #71, #72, #73 |
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
-| #17 | Device registration, revocation, deactivation (backend) | PR open | #75 |
-| #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | #76 |
-| #24 | Capture upload policy | In progress: bucket + policy PR open; agent uploader waits for the outbox (#22) | #77 |
-| #22 | Encrypted offline outbox | PR open | #78 |
-| #18 | Clock in/out and session state machine | PR open | #79 |
-| #19 | Check-in scheduler | PR open | |
+| #17 | Device registration, revocation, deactivation (backend) | Merged | #75 |
+| #23 | Sync RPCs | Server side merged (#76); agent client PR open | #81 |
+| #24 | Capture upload policy | Bucket + policy merged (#77); agent uploader PR open | #81 |
+| #22 | Encrypted offline outbox | Merged | #78 |
+| #18 | Clock in/out and session state machine | Merged | #79 |
+| #19 | Check-in scheduler | Merged | #80 |
+| #31 | Row-level security, can_view_user() | PR open | #82 |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
@@ -51,6 +52,7 @@ Format: `- #<issue>: <exact question or action needed>`
 
 - #11, #13: multi-monitor cases need a second display (CHK-10 card on a random monitor, CAP-03 one screenshot per display, PRD "≥20 check-ins across two monitors"). Tested on the built-in display only until one is connected.
 - #16: how do employees sign in to the agent? Supabase's browser authorize page only exists for OAuth providers; there is no hosted email+password page, and the PKCE verifier must stay in the agent. Options: (a) **magic link** (agent sends the email with its PKCE challenge, the link opens the browser and returns via `aiproctor://auth`), plus Google / Microsoft OAuth when those apps exist; (b) password sign-in on the dashboard, handed back to the agent through an Edge Function that mints the session. Default if no answer: (a). Needs Google Cloud / Azure app registrations for the OAuth part.
+- #43: TS-12 says admins never approve, and LLD 07 leaves owners out too. If an owner or admin is someone's direct manager (e.g. a small org where the owner manages the team leads), those people's timesheets have no approver. Allow an owner/admin to approve **their own direct reports only**? Default if no answer: yes, direct reports only; never anyone else's.
 - #23, #30 (before M1): during a pause or break, should the agent still send a heartbeat with no content (no idle, lock or app data), so `offline_sweep` doesn't mark the user Offline? Default if no answer: yes.
 - M6: PRD AGT-01/AGT-02 call for a device token and an MDM enrollment token, but tech-stack and the LLD only use the user's session plus `device_id`, and no issue builds the enrollment token. Should an issue be added?
 
