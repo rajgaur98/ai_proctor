@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* Tokens from the Claude Design StyleSheet (light theme). */
+  :root { --panel:#ffffff; --line:#e4e4df; --ink:#16171a; --ink2:#4b4e54; --acc:#2f5d9e; --accsoft:#e8eef8; }
+  html, body { margin:0; height:100%; background:var(--panel); color:var(--ink);
+    font-family: -apple-system, system-ui, sans-serif; user-select:none; -webkit-user-select:none; cursor:default; }
+  .card { box-sizing:border-box; height:100%; padding:18px 20px; display:flex; flex-direction:column; gap:14px;
+    border:1px solid var(--line); border-radius:12px; }
+  .title { font-size:13px; color:var(--ink2); }
+  .ask { font-size:22px; font-weight:600; letter-spacing:-0.02em; }
+  .row { display:flex; gap:12px; }
+  button { flex:1; height:56px; font-size:24px; font-weight:600; border:1px solid var(--line); border-radius:10px;
+    background:var(--accsoft); color:var(--acc); outline:none; }
+  .status { font-size:13px; color:var(--ink2); min-height:16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="title">Check-in · spike</div>
+  <div class="ask">Click <span id="target">–</span></div>
+  <div class="row" id="buttons"></div>
+  <div class="status" id="status"></div>
+</div>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+  let current = null;
+
+  function render(order) {
+    const row = document.getElementById("buttons");
+    row.innerHTML = "";
+    for (const n of order) {
+      const b = document.createElement("button");
+      b.textContent = n;
+      b.tabIndex = -1; // never focusable from the keyboard (CHK-11)
+      b.addEventListener("mousedown", (e) => e.preventDefault()); // no focus on click either
+      b.addEventListener("click", async () => {
+        const next = await invoke("card_click", { id: current, value: n });
+        if (next) { render(next); document.getElementById("status").textContent = "Wrong number, try again"; }
+        else { document.getElementById("status").textContent = "Done"; }
+      });
+      row.appendChild(b);
+    }
+  }
+
+  listen("card:challenge", (e) => {
+    current = e.payload.id;
+    document.getElementById("target").textContent = e.payload.target;
+    document.getElementById("status").textContent = "";
+    render(e.payload.order);
+    requestAnimationFrame(() => requestAnimationFrame(() => invoke("card_painted", { id: current })));
+  });
+
+  // Any key that reaches this webview is a CHK-11 failure; report it.
+  window.addEventListener("keydown", (e) => { invoke("card_key", { key: e.key }); e.preventDefault(); }, true);
+</script>
+</body>
+</html>
