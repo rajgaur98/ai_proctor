@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use agent_core::capture::{capture, CapturePolicy};
 use agent_core::checkin::{Card, CardPolicy};
 use agent_core::clock::{Clock, SystemClock};
 use agent_core::fake::FakePlatform;
@@ -130,8 +131,10 @@ fn sign_in_register_sync_and_sign_out() {
         &ThreadRandom,
         None,
     );
-    let pass = card.finish(Outcome::Pass, clock.now());
-    outbox
+    let mut pass = card.finish(Outcome::Pass, clock.now());
+    let captured = capture(fake_platform.as_ref(), &CapturePolicy::default());
+    captured.attach(&mut pass.payload);
+    let event = outbox
         .append(
             "checkin",
             pass.at,
@@ -140,7 +143,14 @@ fn sign_in_register_sync_and_sign_out() {
             clock.now(),
         )
         .unwrap();
-    assert_eq!(first.sync().unwrap().accepted, 1, "checkin accepted");
+    for (name, bytes) in &captured.files {
+        outbox
+            .add_upload(event.id, name, bytes, clock.now())
+            .unwrap();
+    }
+    let stats = first.sync().unwrap();
+    assert_eq!(stats.accepted, 1, "checkin accepted");
+    assert_eq!(stats.uploaded, 2, "screenshot and webcam frame stored");
 
     session.clock_out().unwrap();
     assert_eq!(first.sync().unwrap().accepted, 1, "clock_out accepted");
