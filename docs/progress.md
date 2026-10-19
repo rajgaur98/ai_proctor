@@ -29,6 +29,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #18 | Clock in/out and session state machine | PR open | #79 |
 | #19 | Check-in scheduler | PR open | |
 
+| #31 | Row-level security, can_view_user() | PR open | |
+
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
 ## Decisions
@@ -51,6 +53,7 @@ Format: `- #<issue>: <exact question or action needed>`
 
 - #11, #13: multi-monitor cases need a second display (CHK-10 card on a random monitor, CAP-03 one screenshot per display, PRD "≥20 check-ins across two monitors"). Tested on the built-in display only until one is connected.
 - #16: how do employees sign in to the agent? Supabase's browser authorize page only exists for OAuth providers; there is no hosted email+password page, and the PKCE verifier must stay in the agent. Options: (a) **magic link** (agent sends the email with its PKCE challenge, the link opens the browser and returns via `aiproctor://auth`), plus Google / Microsoft OAuth when those apps exist; (b) password sign-in on the dashboard, handed back to the agent through an Edge Function that mints the session. Default if no answer: (a). Needs Google Cloud / Azure app registrations for the OAuth part.
+- #43: TS-12 says admins never approve, and LLD 07 leaves owners out too. If an owner or admin is someone's direct manager (e.g. a small org where the owner manages the team leads), those people's timesheets have no approver. Allow an owner/admin to approve **their own direct reports only**? Default if no answer: yes, direct reports only; never anyone else's.
 - #23, #30 (before M1): during a pause or break, should the agent still send a heartbeat with no content (no idle, lock or app data), so `offline_sweep` doesn't mark the user Offline? Default if no answer: yes.
 - M6: PRD AGT-01/AGT-02 call for a device token and an MDM enrollment token, but tech-stack and the LLD only use the user's session plus `device_id`, and no issue builds the enrollment token. Should an issue be added?
 
