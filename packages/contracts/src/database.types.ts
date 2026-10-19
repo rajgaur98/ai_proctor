@@ -3,6 +3,72 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      activity_samples: {
+        Row: {
+          app_name: string;
+          device_id: string;
+          domain: string | null;
+          id: string;
+          minute: string;
+          org_id: string;
+          seconds: number;
+          user_id: string;
+          window_title: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          app_name: string;
+          device_id: string;
+          domain?: string | null;
+          id: string;
+          minute: string;
+          org_id: string;
+          seconds: number;
+          user_id: string;
+          window_title?: string | null;
+        };
+        Update: {
+          app_name?: string;
+          device_id?: string;
+          domain?: string | null;
+          id?: string;
+          minute?: string;
+          org_id?: string;
+          seconds?: number;
+          user_id?: string;
+          window_title?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "activity_samples_device_id_fkey";
+            columns: ["device_id"];
+            isOneToOne: false;
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "activity_samples_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "activity_samples_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "activity_samples_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       agent_event_rejections: {
         Row: {
           device_id: string;
