@@ -1,0 +1,25 @@
+[package]
+name = "ai-proctor-agent"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "AI Proctor desktop agent"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+agent-core.workspace = true
+agent-platform.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tauri = { version = "2", features = ["tray-icon"] }
+
+[dev-dependencies]
+agent-core = { workspace = true, features = ["fake"] }
+
+[lib]
+name = "ai_proctor_agent"
+path = "src/lib.rs"
