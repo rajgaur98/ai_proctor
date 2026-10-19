@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
+import { DayPage } from "./features/day/DayPage";
 import { People } from "./features/people/People";
 import { LiveTeam } from "./features/team/LiveTeam";
 import { homeFor, navFor } from "./lib/nav";
@@ -115,7 +116,11 @@ const dayRoute = createRoute({
   beforeLoad: ({ context }) => {
     if (context.profile.role === "employee") throw redirect({ to: homeFor(context.profile.role) });
   },
-  component: () => <Placeholder title="Employee day" issue={33} />,
+  validateSearch: (search: Record<string, unknown>): { date?: string } =>
+    typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date)
+      ? { date: search.date }
+      : {},
+  component: DayPage,
 });
 
 const routeTree = rootRoute.addChildren([

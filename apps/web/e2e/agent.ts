@@ -21,13 +21,11 @@ export async function agentFor(email: string) {
   });
   if (regError) throw regError;
   let seq = 0;
-  return async (type: string, payload: Record<string, unknown> = {}) => {
+  return async (type: string, payload: Record<string, unknown> = {}, id = crypto.randomUUID()) => {
     seq += 1;
     const { data: reply, error } = await client.rpc("agent_events", {
       device_id: data.device_id,
-      events: [
-        { id: crypto.randomUUID(), seq, type, at: new Date().toISOString(), mono_ms: seq, payload },
-      ],
+      events: [{ id, seq, type, at: new Date().toISOString(), mono_ms: seq, payload }],
     });
     if (error) throw error;
     return reply;
