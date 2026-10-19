@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(13);
+select plan(14);
 
 \set erin '''00000000-0000-4000-8000-0000000000c1'''
 \set lucas '''00000000-0000-4000-8000-0000000000c2'''
@@ -63,7 +63,7 @@ create temp table dev as select device_id from public.register_device('macos', '
 grant select on dev to authenticated;
 
 select is(pg_temp.send('app_session', pg_temp.app('Safari', 'Docs', 'example.com', 0, 30), (select t from m)),
-  'not_clocked_in', 'nothing is recorded off shift');
+  'not_working', 'nothing is recorded off shift');
 
 select pg_temp.send('clock_in', '{"reason": "manual"}', (select t from m) - interval '1 hour');
 
@@ -77,14 +77,18 @@ select is(pg_temp.send('app_session', pg_temp.app('1Password', 'Bank login', nul
   (select t from m) + interval '2 minutes'), null, 'an excluded app is accepted');
 
 select pg_temp.send('break_start', '{"planned_min": 15}', (select t from m) + interval '3 minutes');
-select is(pg_temp.send('app_session', pg_temp.app('Safari', 'Docs', null, 0, 30),
-  (select t from m) + interval '4 minutes'), 'app_session_while_on_break', 'nothing is recorded on a break');
+select is(pg_temp.send('app_session', pg_temp.app('Safari', 'Docs', null, 190, 220),
+  (select t from m) + interval '4 minutes'), 'not_working', 'nothing is recorded on a break');
 select pg_temp.send('break_end', '{}', (select t from m) + interval '5 minutes');
+select pg_temp.send('clock_out', '{"reason": "manual"}', (select t from m) + interval '6 minutes');
+select is(pg_temp.send('app_session', pg_temp.app('Xcode', 'Build', null, 330, 350),
+  (select t from m) + interval '6 minutes 1 second'), null,
+  'the last minute sent after clock-out is kept: judged by its own time');
 
 select pg_temp.act_as_postgres();
 select results_eq(
   $$ select app_name, window_title, domain, seconds from public.activity_samples
-     where user_id = '00000000-0000-4000-8000-0000000000c1' and app_name <> '1Password' order by seconds desc $$,
+     where user_id = '00000000-0000-4000-8000-0000000000c1' and app_name in ('Safari', 'Slack') order by seconds desc $$,
   $$ values ('Safari', 'Q3 plan - Docs', 'docs.example.com', 42), ('Slack', 'general', null, 18) $$,
   'one row per bucket with seconds; domains are lower-cased'
 );

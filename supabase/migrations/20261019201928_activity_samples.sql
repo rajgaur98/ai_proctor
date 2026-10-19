@@ -2,7 +2,8 @@
 -- window title and browser domain per minute; each becomes one row of
 -- activity_samples (PRD data model). Titles are dropped when the org turns window
 -- titles off (EU preset) and for excluded apps (CAP-04 / ACT-02), here as well as
--- on the device.
+-- on the device. Only minutes inside a clock session and outside breaks and
+-- pauses are kept.
 
 create table public.activity_samples (
   -- The agent event's id: a replayed event can't add the same minute twice.
@@ -56,6 +57,20 @@ begin
   -- One bucket: inside a single minute, at least a second long.
   if v_end < v_start or v_end > v_minute + interval '1 minute' or v_seconds < 1 then
     return 'invalid_app_session';
+  end if;
+  -- ACT-01: only time spent working, never on a break or pause.
+  if not exists (
+    select 1 from public.clock_sessions cs
+    where cs.user_id = p_device.user_id and cs.start_at <= v_start
+      and coalesce(cs.end_at, 'infinity') >= v_end
+  ) or exists (
+    select 1 from public.breaks b
+    where b.user_id = p_device.user_id and b.start_at < v_end and coalesce(b.end_at, 'infinity') > v_start
+  ) or exists (
+    select 1 from public.pauses p
+    where p.user_id = p_device.user_id and p.start_at < v_end and coalesce(p.end_at, 'infinity') > v_start
+  ) then
+    return 'not_working';
   end if;
   if not coalesce((v_policy ->> 'window_titles')::boolean, true)
     or exists (
@@ -181,6 +196,12 @@ begin
     set last_checkin_at = p_at, last_checkin_outcome = (p_payload ->> 'outcome')::public.checkin_outcome
     where user_id = p_device.user_id;
 
+  when 'app_session' then
+    -- Judged by its own time, not the current state: the agent sends the last
+    -- minute's bucket after the break or clock-out that ended it.
+    v_reason := internal.record_activity(p_device, p_event_id, p_payload);
+    if v_reason is not null then return v_reason; end if;
+
   when 'permission_change' then
     -- Tamper while a capture permission is missing (STS rule 2). Camera only
     -- counts when the org has the webcam on.
@@ -208,11 +229,6 @@ begin
     when 'call_end' then
       update public.presence set call_sources = array_remove(call_sources, p_payload ->> 'source')
       where user_id = p_device.user_id;
-    when 'app_session' then
-      -- ACT-01: only while working, never on a break or pause.
-      if s.state <> 'working' then return 'app_session_while_' || s.state; end if;
-      v_reason := internal.record_activity(p_device, p_event_id, p_payload);
-      if v_reason is not null then return v_reason; end if;
     else
       null;
     end case;
