@@ -32,6 +32,7 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #30 | Status engine and offline sweep | Merged | #83 |
 | #27 | Dashboard skeleton | Merged | #84 |
 | #32 | Live grid with Realtime | Merged | #85 |
+| #28 | Org setup: invites, roles, reporting lines, work location, audit log | PR open | |
 | #16 | Agent sign-in (magic link), device attach, sync + heartbeat loop | PR open | #87 |
 | #20 | Check-in card: challenge, countdown, outcomes | PR open; needs device test | |
 

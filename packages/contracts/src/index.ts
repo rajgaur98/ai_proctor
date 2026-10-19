@@ -8,4 +8,5 @@ export type {
   TablesUpdate,
 } from "./database.types";
 export * from "./events";
+export * from "./invites";
 export * from "./ipc";
