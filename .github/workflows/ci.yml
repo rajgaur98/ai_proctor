@@ -55,6 +55,8 @@ jobs:
               - ".github/workflows/ci.yml"
             sync:
               - "apps/agent/src-tauri/core/**"
+              - "apps/agent/src-tauri/src/**"
+              - "apps/agent/src-tauri/tests/**"
               - "supabase/**"
               - "packages/contracts/**"
               - "Cargo.lock"
@@ -150,11 +152,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm supabase start -x studio,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
       - uses: Swatinem/rust-cache@v2
-      - name: cargo test --test sync_supabase
+      # Mailpit (the stack's mail catcher) delivers the magic links for sign-in.
+      - name: cargo test (sync, magic-link sign-in, account)
         run: |
-          eval "$(pnpm --silent supabase status -o env | grep -E '^(API_URL|ANON_KEY)=')"
-          AI_PROCTOR_SUPABASE_URL="$API_URL" AI_PROCTOR_SUPABASE_ANON_KEY="$ANON_KEY" \
-            cargo test -p agent-core --locked --test sync_supabase -- --nocapture
+          eval "$(pnpm --silent supabase status -o env | grep -E '^(API_URL|ANON_KEY|MAILPIT_URL)=')"
+          export AI_PROCTOR_SUPABASE_URL="$API_URL" AI_PROCTOR_SUPABASE_ANON_KEY="$ANON_KEY" AI_PROCTOR_MAILPIT_URL="$MAILPIT_URL"
+          cargo test -p agent-core --locked --test sync_supabase --test auth_supabase -- --nocapture
+          cargo test -p ai-proctor-agent --locked --test sign_in_supabase -- --nocapture
 
   # Dashboard smoke test with axe-core (WCAG 2.1 AA) against a local Supabase.
   web-e2e:

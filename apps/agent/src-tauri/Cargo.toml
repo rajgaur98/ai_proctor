@@ -17,10 +17,19 @@ serde_json.workspace = true
 tracing.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+tauri-plugin-deep-link = "2"
+sha2 = "0.10"
+uuid = { version = "1", features = ["v7"] }
+
+# Windows and Linux start a second process for an aiproctor:// link; this hands the
+# link to the running agent instead (macOS delivers it to the running app itself).
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 [dev-dependencies]
 agent-core = { workspace = true, features = ["fake"] }
 tempfile = "3"
+reqwest = { version = "0.13", features = ["blocking", "json", "query"] }
 
 [lib]
 name = "ai_proctor_agent"
