@@ -34,7 +34,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #32 | Live grid with Realtime | Merged | #85 |
 | #28 | Org setup: invites, roles, reporting lines, work location, audit log | PR open | #93 |
 | #29 | Shift schedules per employee | Dashboard + server PR open; agent side next | #94 |
-| #33 | Day timeline per employee with check-in markers | PR open | |
+| #33 | Day timeline per employee with check-in markers | PR open | #95 |
+| #34 | Capture viewer with signed URLs and audit logging | PR open | |
 | #16 | Agent sign-in (magic link), device attach, sync + heartbeat loop | PR open | #87 |
 | #20 | Check-in card: challenge, countdown, outcomes | PR open; needs device test | |
 

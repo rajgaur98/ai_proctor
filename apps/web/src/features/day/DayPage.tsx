@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
 import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
+import { CaptureViewer } from "./CaptureViewer";
 import {
   barSpan,
   type Checkin,
@@ -280,7 +281,7 @@ export function DayPage() {
         )}
       </div>
 
-      {chosen && <CheckinDetails c={chosen} zone={zone} />}
+      {chosen && <CheckinDetails key={chosen.id} c={chosen} zone={zone} />}
 
       <div className="overflow-hidden rounded-xl border border-line bg-panel">
         <h2 className="border-b border-line px-5 py-3 text-sm font-semibold">Check-ins</h2>
@@ -354,6 +355,7 @@ function Marker({ outcome }: { outcome: Outcome }) {
 }
 
 function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
+  const [showCaptures, setShowCaptures] = useState(false);
   const rows: [string, React.ReactNode][] = [
     ["Scheduled", <Time key="s" iso={c.scheduledAt} employeeZone={zone} />],
   ];
@@ -389,6 +391,21 @@ function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
           </div>
         ))}
       </dl>
+      {c.outcome === "pass" && c.captures > 0 && (
+        <div className="mt-4 flex flex-col gap-3">
+          {showCaptures ? (
+            <CaptureViewer checkinId={c.id} zone={zone} />
+          ) : (
+            <Button
+              variant="secondary"
+              className="self-start"
+              onClick={() => setShowCaptures(true)}
+            >
+              View captures
+            </Button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
