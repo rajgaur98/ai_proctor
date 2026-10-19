@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin:16px; font-size:13px; }
+  fieldset { margin-bottom:12px; } button, select, input { font-size:13px; margin:2px; }
+  #log { white-space:pre-wrap; font-family: ui-monospace, monospace; font-size:11px; height:340px; overflow:auto;
+    border:1px solid #ccc; padding:6px; }
+</style>
+</head>
+<body>
+<fieldset><legend>#11 check-in card</legend>
+  <button onclick="invoke('show_card', { delayS: 0 })">Show now</button>
+  <button onclick="invoke('show_card', { delayS: 10 })">Show in 10 s</button>
+  <button onclick="invoke('hide_card')">Hide</button><br>
+  Level <select id="level" onchange="invoke('set_card_level', { level: this.value })">
+    <option value="floating">floating (3)</option>
+    <option value="mainmenu+1" selected>main menu + 1 (25)</option>
+    <option value="popup">pop-up menu (101)</option>
+    <option value="screensaver">screen saver (1000)</option>
+    <option value="screensaver+1">screen saver + 1 (1001)</option>
+  </select><br>
+  Auto: every <input id="every" type="number" value="30" style="width:50px"> s ×
+  <input id="count" type="number" value="20" style="width:50px">
+  <button onclick="invoke('start_auto', { intervalS: +every.value, count: +count.value })">Start</button>
+  <button onclick="invoke('stop_auto')">Stop</button>
+</fieldset>
+<div>Log: <span id="path"></span></div>
+<div id="log"></div>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  window.invoke = invoke;
+  invoke("log_path").then((p) => (document.getElementById("path").textContent = p));
+  window.__TAURI__.event.listen("log", (e) => {
+    const el = document.getElementById("log");
+    el.textContent += e.payload + "\n";
+    el.scrollTop = el.scrollHeight;
+  });
+</script>
+</body>
+</html>
