@@ -57,6 +57,59 @@
       },
       "required": ["ok", "error"],
       "additionalProperties": false
+    },
+    "CardChallenge": {
+      "type": "object",
+      "properties": {
+        "card_id": {
+          "type": "string"
+        },
+        "target": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "options": {
+          "minItems": 3,
+          "maxItems": 3,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "remaining_s": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "wrong_clicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sound": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "card_id",
+        "target",
+        "options",
+        "remaining_s",
+        "wrong_clicks",
+        "sound",
+        "project"
+      ],
+      "additionalProperties": false
+    },
+    "CardClickResult": {
+      "type": "string",
+      "enum": ["pass", "wrong", "failed", "ignored"]
     }
   }
 }

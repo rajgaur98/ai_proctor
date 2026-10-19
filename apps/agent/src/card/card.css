@@ -1,0 +1,74 @@
+@import "../tokens.css";
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--panel);
+  color: var(--ink);
+  font:
+    13px / 1.4 -apple-system,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  user-select: none;
+  cursor: default;
+}
+.card {
+  box-sizing: border-box;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.card.done {
+  justify-content: center;
+  text-align: center;
+}
+header,
+footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: var(--ink2);
+}
+.left {
+  font-variant-numeric: tabular-nums;
+}
+.ask {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.options {
+  display: flex;
+  gap: 12px;
+}
+.options button {
+  flex: 1;
+  height: 56px;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--acc);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  cursor: pointer;
+}
+.note {
+  color: var(--ink2);
+}
+button.link {
+  font: inherit;
+  color: var(--acc);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}

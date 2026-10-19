@@ -6,10 +6,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use agent_core::checkin::{Card, CardPolicy};
 use agent_core::clock::{Clock, SystemClock};
 use agent_core::fake::FakePlatform;
 use agent_core::keystore::{KeyStore, MemoryKeyStore};
 use agent_core::outbox::Outbox;
+use agent_core::scheduler::{Outcome, ThreadRandom};
 use agent_core::session::{FileSessionStore, OutboxSink, Session, SessionPolicy};
 use agent_core::sync::{ApiConfig, Heartbeat, SyncError};
 use ai_proctor_agent::account::Account;
@@ -96,6 +98,7 @@ fn sign_in_register_sync_and_sign_out() {
 
     // A shift recorded locally reaches the server, with a heartbeat in between.
     let platform = Arc::new(FakePlatform::default());
+    let fake_platform = platform.clone();
     let mut session = Session::new(
         SessionPolicy::default(),
         clock.clone(),
@@ -117,6 +120,28 @@ fn sign_in_register_sync_and_sign_out() {
             permissions: serde_json::json!({ "screen": "granted", "camera": "granted" }),
         })
         .unwrap();
+    // A check-in card that passed, queued the way the card runner does it.
+    let now = clock.now();
+    let card = Card::show(
+        now,
+        now,
+        &CardPolicy::default(),
+        fake_platform.as_ref(),
+        &ThreadRandom,
+        None,
+    );
+    let pass = card.finish(Outcome::Pass, clock.now());
+    outbox
+        .append(
+            "checkin",
+            pass.at,
+            clock.mono_ms(),
+            pass.payload,
+            clock.now(),
+        )
+        .unwrap();
+    assert_eq!(first.sync().unwrap().accepted, 1, "checkin accepted");
+
     session.clock_out().unwrap();
     assert_eq!(first.sync().unwrap().accepted, 1, "clock_out accepted");
     assert!(outbox.pending(10).unwrap().is_empty(), "everything acked");

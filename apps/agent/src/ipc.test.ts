@@ -44,6 +44,41 @@ describe("sign_in_start", () => {
   });
 });
 
+describe("card", () => {
+  const challenge = {
+    card_id: "0190f5b0-0000-7000-8000-000000000001",
+    target: 7,
+    options: [3, 7, 1],
+    remaining_s: 90,
+    wrong_clicks: 0,
+    sound: false,
+    project: null,
+  };
+
+  it("accepts a challenge and rejects one without three options", async () => {
+    const received: unknown[] = [];
+    await listen(
+      "card_challenge",
+      (payload) => received.push(payload),
+      async (_event, handler) => {
+        handler({ payload: challenge });
+        expect(() => handler({ payload: { ...challenge, options: [7, 1] } })).toThrow();
+        return () => {};
+      },
+    );
+    expect(received).toEqual([challenge]);
+  });
+
+  it("reports a click and reads the verdict", async () => {
+    const args = { card_id: challenge.card_id, value: 7, trusted: true };
+    const result = await invoke("card_click", args, async (_cmd, a) => {
+      expect(a).toEqual(args);
+      return "pass";
+    });
+    expect(result).toBe("pass");
+  });
+});
+
 describe("listen", () => {
   it("delivers validated payloads", async () => {
     const received: AgentStatus[] = [];

@@ -20,6 +20,11 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 tauri-plugin-deep-link = "2"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v7"] }
+fastrand = "2"
+
+# The check-in card as a non-activating NSPanel (spike #11).
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = "2.1"
 
 # Windows and Linux start a second process for an aiproctor:// link; this hands the
 # link to the running agent instead (macOS delivers it to the running app itself).

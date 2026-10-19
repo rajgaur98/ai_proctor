@@ -2,18 +2,24 @@
 //! defined in `packages/contracts`. Agent logic lives in `agent-core`.
 
 pub mod account;
+mod card;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use account::Account;
 use agent_core::auth::{AuthError, REDIRECT_URL};
+use agent_core::checkin::{Card, CardPolicy, ClickResult, Finished};
 use agent_core::clock::{Clock, SystemClock};
-use agent_core::contracts::{AgentStatus, CommandResult, ShiftState};
+use agent_core::contracts::{
+    AgentStatus, CardChallenge, CardClickResult, CommandResult, ShiftState,
+};
 use agent_core::keystore::KeyStore;
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
 use agent_core::platform::{Platform, SessionState};
-use agent_core::scheduler::{FileScheduleStore, SchedulePolicy, Scheduler, ThreadRandom};
+use agent_core::scheduler::{
+    Decision, FileScheduleStore, Outcome, Random, SchedulePolicy, Scheduler, ThreadRandom,
+};
 use agent_core::session::{
     EventSink, FileSessionStore, OutboxSink, Session, SessionPolicy, TransitionError,
 };
@@ -38,11 +44,31 @@ const SYNC_EVERY: Duration = Duration::from_secs(10);
 const HEARTBEAT_EVERY: Duration = Duration::from_secs(60);
 const PRUNE_EVERY: Duration = Duration::from_secs(3600);
 
+/// While a card is up, how often the runner checks its countdown.
+const CARD_TICK: Duration = Duration::from_millis(250);
+/// The card stays up briefly after the click so the result can be read.
+const PASS_LINGER: Duration = Duration::from_millis(800);
+
+/// What the card runner should do with the window.
+#[derive(Debug, PartialEq)]
+enum CardAction {
+    Nothing,
+    Show(CardChallenge),
+    Hide,
+}
+
 pub struct AgentState {
     platform: Arc<dyn Platform>,
+    clock: Arc<dyn Clock>,
     session: Mutex<Session>,
     /// Never exposed over IPC: the next check-in time stays in the core.
     scheduler: Scheduler,
+    /// Check-in outcomes are queued here; `None` when the keychain is unavailable.
+    outbox: Option<Arc<Outbox>>,
+    /// The card on screen, if any.
+    card: Mutex<Option<Card>>,
+    card_policy: CardPolicy,
+    random: Arc<dyn Random>,
     /// `None` when this build has no server configured (see `account::api_config`).
     account: Option<Arc<Account>>,
     /// The last sign-in link handled, so a link delivered twice is used once.
@@ -52,14 +78,22 @@ pub struct AgentState {
 impl AgentState {
     pub fn new(
         platform: Arc<dyn Platform>,
+        clock: Arc<dyn Clock>,
         session: Session,
         scheduler: Scheduler,
+        outbox: Option<Arc<Outbox>>,
         account: Option<Arc<Account>>,
     ) -> Self {
         let state = Self {
             platform,
+            clock,
             session: Mutex::new(session),
             scheduler,
+            outbox,
+            card: Mutex::new(None),
+            // Org card settings arrive with the policy work; defaults until then.
+            card_policy: CardPolicy::default(),
+            random: Arc::new(ThreadRandom),
             account,
             last_redirect: Mutex::new(None),
         };
@@ -87,6 +121,111 @@ impl AgentState {
             email,
             env!("CARGO_PKG_VERSION"),
         )
+    }
+
+    /// The card runner's step: show a due check-in, end one that ran out, or drop
+    /// one that a break, pause or clock-out cancelled (no miss then, LLD 02).
+    fn card_tick(&self) -> CardAction {
+        let now = self.clock.now();
+        let mut card = self.card.lock().unwrap();
+        if let Some(current) = card.as_ref() {
+            if self.session.lock().unwrap().shift() != ShiftState::Working {
+                tracing::info!("check-in cancelled by a shift change");
+                *card = None;
+                return CardAction::Hide;
+            }
+            if current.expired(now) {
+                let finished = current.finish(Outcome::Miss, now);
+                *card = None;
+                self.record(finished);
+                return CardAction::Hide;
+            }
+            return CardAction::Nothing;
+        }
+        let Decision::Show { scheduled_at } = self.scheduler.poll() else {
+            return CardAction::Nothing;
+        };
+        let shown = Card::show(
+            scheduled_at,
+            now,
+            &self.card_policy,
+            self.platform.as_ref(),
+            self.random.as_ref(),
+            self.session.lock().unwrap().project_id(),
+        );
+        tracing::info!(card = %shown.id, "check-in shown");
+        if self.card_policy.notify {
+            self.platform
+                .notify("Check-in", "Click the number shown on the card.");
+        }
+        let challenge = self.challenge(&shown);
+        *card = Some(shown);
+        CardAction::Show(challenge)
+    }
+
+    /// A click on the card. Only real pointer clicks count (CHK-11); anything for
+    /// a card that is no longer up is ignored.
+    fn card_click(
+        &self,
+        card_id: &str,
+        value: i64,
+        trusted: bool,
+    ) -> (CardClickResult, Option<CardChallenge>) {
+        let mut card = self.card.lock().unwrap();
+        let Some(current) = card.as_mut().filter(|c| c.id.to_string() == card_id) else {
+            return (CardClickResult::Ignored, None);
+        };
+        if !trusted || !(1..=9).contains(&value) {
+            tracing::warn!(trusted, value, "card click ignored");
+            return (CardClickResult::Ignored, None);
+        }
+        let now = self.clock.now();
+        match current.click(value as u8, self.random.as_ref()) {
+            ClickResult::Wrong => (CardClickResult::Wrong, Some(self.challenge(current))),
+            result => {
+                let (outcome, reply) = match result {
+                    ClickResult::Pass => (Outcome::Pass, CardClickResult::Pass),
+                    _ => (Outcome::Failed, CardClickResult::Failed),
+                };
+                let finished = current.finish(outcome, now);
+                *card = None;
+                self.record(finished);
+                (reply, None)
+            }
+        }
+    }
+
+    fn challenge(&self, card: &Card) -> CardChallenge {
+        CardChallenge {
+            card_id: card.id.to_string(),
+            target: card.challenge.target.into(),
+            options: card.challenge.options.map(i64::from),
+            remaining_s: card.remaining_s(self.clock.now()).into(),
+            wrong_clicks: card.wrong_clicks.into(),
+            sound: self.card_policy.sound,
+            // Project names arrive with #38.
+            project: None,
+        }
+    }
+
+    /// Queues the `checkin` event and arms the next check-in (CHK-01/02).
+    fn record(&self, finished: Finished) {
+        tracing::info!(outcome = ?finished.outcome, "check-in finished");
+        match &self.outbox {
+            Some(outbox) => {
+                if let Err(error) = outbox.append(
+                    "checkin",
+                    finished.at,
+                    self.clock.mono_ms(),
+                    finished.payload,
+                    self.clock.now(),
+                ) {
+                    tracing::error!(%error, "check-in not queued");
+                }
+            }
+            None => tracing::error!("check-in not queued: the local queue is unavailable"),
+        }
+        self.scheduler.finished(finished.outcome);
     }
 
     fn account(&self) -> Result<&Arc<Account>, String> {
@@ -269,6 +408,43 @@ async fn sign_out(app: AppHandle) -> CommandResult {
     .await
 }
 
+/// `card_click`: judged here, in Rust. A wrong click sends the reshuffled card.
+#[tauri::command]
+fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> CardClickResult {
+    let state = app.state::<AgentState>();
+    let (result, next) = state.card_click(&card_id, value, trusted);
+    match (result, next) {
+        (CardClickResult::Wrong, Some(challenge)) => card::update(&app, challenge),
+        (CardClickResult::Pass | CardClickResult::Failed, _) => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(PASS_LINGER);
+                card::hide(&app);
+            });
+        }
+        _ => {}
+    }
+    result
+}
+
+/// `card_switch_project`: opens the popover next to the card; the card stays.
+#[tauri::command]
+fn card_switch_project(app: AppHandle) -> CommandResult {
+    if let Some(popover) = app.get_webview_window(POPOVER) {
+        let _ = popover.show();
+        let _ = popover.set_focus();
+        let _ = app.emit_to(
+            POPOVER,
+            EVENT_STATUS_CHANGED,
+            app.state::<AgentState>().status(),
+        );
+    }
+    CommandResult {
+        ok: true,
+        error: None,
+    }
+}
+
 /// Network calls block; run them on a worker thread, never the UI thread.
 async fn off_main_thread(f: impl FnOnce() -> Result<(), String> + Send + 'static) -> CommandResult {
     let result = tauri::async_runtime::spawn_blocking(f)
@@ -293,6 +469,25 @@ fn handle_deep_links(app: &AppHandle, urls: Vec<tauri::Url>) {
             let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
         });
     }
+}
+
+/// Org intervals arrive with the policy work; defaults until then. Debug builds
+/// accept `AI_PROCTOR_DEV_CHECKIN_S` (one fixed interval, in seconds) so the card
+/// can be tried by hand.
+fn schedule_policy() -> SchedulePolicy {
+    #[cfg(debug_assertions)]
+    if let Some(s) = std::env::var("AI_PROCTOR_DEV_CHECKIN_S")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+    {
+        tracing::warn!(seconds = s, "dev check-in interval");
+        let every = chrono::Duration::seconds(s.max(5));
+        return SchedulePolicy {
+            min: every,
+            max: every,
+        };
+    }
+    SchedulePolicy::default()
 }
 
 fn open_account(
@@ -322,7 +517,13 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}));
     builder
         .plugin(tauri_plugin_deep_link::init())
-        .invoke_handler(tauri::generate_handler![get_status, sign_in_start, sign_out])
+        .invoke_handler(tauri::generate_handler![
+            get_status,
+            sign_in_start,
+            sign_out,
+            card_click,
+            card_switch_project
+        ])
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
             std::fs::create_dir_all(&log_dir)?;
@@ -360,16 +561,25 @@ pub fn run() {
             tracing::info!(shift = ?session.shift(), signed_in = session.signed_in(), "session restored");
             let account = open_account(&data_dir, clock.clone(), outbox.clone());
             let scheduler = Scheduler::new(
-                SchedulePolicy::default(),
-                clock,
+                schedule_policy(),
+                clock.clone(),
                 platform.clone(),
                 Arc::new(ThreadRandom),
                 Arc::new(FileScheduleStore::new(&data_dir)),
             );
-            app.manage(AgentState::new(platform, session, scheduler, account));
+            app.manage(AgentState::new(
+                platform,
+                clock.clone(),
+                session,
+                scheduler,
+                outbox.clone(),
+                account,
+            ));
             app.manage(OutboxState(outbox));
             spawn_ticker(app.handle().clone());
             spawn_sync(app.handle().clone());
+            card::create(app.handle())?;
+            spawn_card_runner(app.handle().clone());
 
             let handle = app.handle().clone();
             app.deep_link()
@@ -410,6 +620,25 @@ fn spawn_ticker(app: AppHandle) {
         if after != before {
             let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, after);
         }
+    });
+}
+
+/// Shows check-ins when the scheduler says so and ends them when they run out.
+/// Sleeps until the next one is due (≤ 500 ms late, NFR-PERF-02).
+fn spawn_card_runner(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        let state = app.state::<AgentState>();
+        match state.card_tick() {
+            CardAction::Show(challenge) => card::show(&app, challenge),
+            CardAction::Hide => card::hide(&app),
+            CardAction::Nothing => {}
+        }
+        let wait = if state.card.lock().unwrap().is_some() {
+            CARD_TICK
+        } else {
+            state.scheduler.wake_in().unwrap_or(TICK).min(TICK)
+        };
+        std::thread::sleep(wait);
     });
 }
 
@@ -546,12 +775,87 @@ mod tests {
         );
         let scheduler = Scheduler::new(
             SchedulePolicy::default(),
-            clock,
+            clock.clone(),
             platform.clone(),
             Arc::new(ThreadRandom),
             Arc::new(FileScheduleStore::new(dir)),
         );
-        AgentState::new(platform, session, scheduler, None)
+        AgentState::new(platform, clock, session, scheduler, None, None)
+    }
+
+    /// Signed in and working, with one clock shared by everything and the outbox
+    /// wired to both the session and the check-ins.
+    struct Working {
+        state: AgentState,
+        outbox: Arc<Outbox>,
+        clock: Arc<FakeClock>,
+        _dir: tempfile::TempDir,
+    }
+
+    fn working() -> Working {
+        let dir = tempfile::tempdir().unwrap();
+        let platform = Arc::new(FakePlatform::default());
+        let clock = Arc::new(FakeClock::at("2026-10-19T09:00:00Z"));
+        let outbox = Arc::new(Outbox::open(&dir.path().join("outbox"), &[1u8; 32]).unwrap());
+        let session = Session::new(
+            SessionPolicy::default(),
+            clock.clone(),
+            platform.clone(),
+            Arc::new(OutboxSink {
+                outbox: outbox.clone(),
+                clock: clock.clone(),
+            }),
+            Arc::new(FileSessionStore::new(dir.path())),
+        );
+        let scheduler = Scheduler::new(
+            SchedulePolicy::default(),
+            clock.clone(),
+            platform.clone(),
+            Arc::new(ThreadRandom),
+            Arc::new(FileScheduleStore::new(dir.path())),
+        );
+        let state = AgentState::new(
+            platform,
+            clock.clone(),
+            session,
+            scheduler,
+            Some(outbox.clone()),
+            None,
+        );
+        state.session.lock().unwrap().sign_in();
+        state.act("clock in", |s| s.clock_in(None));
+        Working {
+            state,
+            outbox,
+            clock,
+            _dir: dir,
+        }
+    }
+
+    impl Working {
+        /// Past the longest interval (90 min): the card is due.
+        fn card_due(&self) -> CardChallenge {
+            assert_eq!(self.state.card_tick(), CardAction::Nothing, "not due yet");
+            self.clock.advance(chrono::Duration::minutes(91));
+            match self.state.card_tick() {
+                CardAction::Show(challenge) => challenge,
+                other => panic!("expected a card, got {other:?}"),
+            }
+        }
+
+        fn checkins(&self) -> Vec<serde_json::Value> {
+            self.outbox
+                .pending(100)
+                .unwrap()
+                .into_iter()
+                .filter(|e| e.event_type == "checkin")
+                .map(|e| e.payload)
+                .collect()
+        }
+    }
+
+    fn wrong(c: &CardChallenge) -> i64 {
+        c.options.iter().find(|n| **n != c.target).copied().unwrap()
     }
 
     #[test]
@@ -597,6 +901,94 @@ mod tests {
 
         state.act("start a break", |s| s.start_break(None));
         assert_eq!(state.scheduler.wake_in(), None, "a break cancels it");
+    }
+
+    #[test]
+    fn a_right_click_passes_and_arms_the_next_checkin() {
+        let w = working();
+        let card = w.card_due();
+        assert_eq!(card.remaining_s, 90);
+        assert!(card.options.contains(&card.target));
+        assert_eq!(
+            w.state.card_tick(),
+            CardAction::Nothing,
+            "one card at a time"
+        );
+
+        w.clock.advance(chrono::Duration::seconds(4));
+        let (result, next) = w.state.card_click(&card.card_id, card.target, true);
+        assert_eq!((result, next), (CardClickResult::Pass, None));
+
+        let checkins = w.checkins();
+        assert_eq!(checkins.len(), 1);
+        assert_eq!(checkins[0]["outcome"], "pass");
+        assert_eq!(checkins[0]["response_ms"], 4000);
+        assert!(w.state.scheduler.wake_in().is_some(), "next check-in armed");
+        assert_eq!(
+            w.state.card_click(&card.card_id, card.target, true).0,
+            CardClickResult::Ignored,
+            "the card is gone"
+        );
+    }
+
+    #[test]
+    fn a_wrong_click_reshuffles_and_two_fail() {
+        let w = working();
+        let card = w.card_due();
+        let (result, next) = w.state.card_click(&card.card_id, wrong(&card), true);
+        assert_eq!(result, CardClickResult::Wrong);
+        let next = next.unwrap();
+        assert_eq!((next.target, next.wrong_clicks), (card.target, 1));
+        assert!(w.checkins().is_empty());
+
+        let (result, _) = w.state.card_click(&card.card_id, wrong(&next), true);
+        assert_eq!(result, CardClickResult::Failed);
+        let checkins = w.checkins();
+        assert_eq!(checkins[0]["outcome"], "failed");
+        assert_eq!(checkins[0]["wrong_clicks"], 2);
+    }
+
+    #[test]
+    fn only_real_clicks_on_the_current_card_count() {
+        let w = working();
+        let card = w.card_due();
+        assert_eq!(
+            w.state.card_click("someone-else", card.target, true).0,
+            CardClickResult::Ignored
+        );
+        assert_eq!(
+            w.state.card_click(&card.card_id, card.target, false).0,
+            CardClickResult::Ignored
+        );
+        assert_eq!(
+            w.state.card_click(&card.card_id, 0, true).0,
+            CardClickResult::Ignored
+        );
+        assert!(w.checkins().is_empty());
+    }
+
+    #[test]
+    fn a_card_that_runs_out_is_a_miss() {
+        let w = working();
+        w.card_due();
+        w.clock.advance(chrono::Duration::seconds(89));
+        assert_eq!(w.state.card_tick(), CardAction::Nothing);
+        w.clock.advance(chrono::Duration::seconds(2));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        let checkins = w.checkins();
+        assert_eq!(checkins[0]["outcome"], "miss");
+        assert!(checkins[0]["response_ms"].is_null());
+        assert!(w.state.scheduler.wake_in().unwrap() <= Duration::from_secs(60));
+    }
+
+    #[test]
+    fn a_break_during_the_card_cancels_it_without_a_miss() {
+        let w = working();
+        w.card_due();
+        w.state.act("start a break", |s| s.start_break(None));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        assert!(w.checkins().is_empty());
+        assert_eq!(w.state.scheduler.wake_in(), None);
     }
 
     #[test]
