@@ -63,4 +63,4 @@ Toolchain on Raj's Mac: Node 22 is asdf's (`.nvmrc`), Rust is Homebrew's rustup 
 - Sync integration test (agent ↔ local Supabase): with the stack up, `eval "$(pnpm --silent supabase status -o env | grep -E '^(API_URL|ANON_KEY)=')"; AI_PROCTOR_SUPABASE_URL=$API_URL AI_PROCTOR_SUPABASE_ANON_KEY=$ANON_KEY cargo test -p agent-core --test sync_supabase`. Skips itself without those variables.
 - Status rules: `packages/core/src/status.ts` and SQL `internal.compute_status` must agree. Add cases to `packages/core/vectors/status.json`, then `pnpm core:gen` (regenerates `supabase/tests/database/status_vectors.test.sql`; CI checks it).
 - CI (`.github/workflows/ci.yml`): the single required check is **CI OK**.
-- Not yet: dashboard dev (#27).
+- Dashboard (`apps/web`): copy `apps/web/.env.example` to `apps/web/.env.local` with the URL and anon key from `pnpm supabase status`, then `pnpm --filter @ai-proctor/web dev` (http://localhost:5173). Smoke + axe tests: `pnpm --filter @ai-proctor/web e2e` (local Supabase up; drives the installed Chrome).

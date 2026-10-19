@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="height:56px;box-sizing:border-box;display:flex;align-items:center;gap:20px;padding:0 24px;border-bottom:1px solid var(--line);background:var(--panel);color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif">
+  <div style="display:flex;align-items:center;gap:9px;flex:none">
+    <div style="width:22px;height:22px;border-radius:6px;background:var(--acc);position:relative;flex:none"><div style="position:absolute;left:10px;top:5px;width:2px;height:7px;background:var(--accink);border-radius:1px"></div><div style="position:absolute;left:10px;top:10px;width:6px;height:2px;background:var(--accink);border-radius:1px"></div></div>
+    <span style="font-weight:600;font-size:14.5px;letter-spacing:-0.01em">AI Proctor</span>
+  </div>
+  <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}">
+    <nav style="display:flex;gap:2px;margin-left:12px">
+      <sc-for list="{{ links }}" as="l" hint-placeholder-count="4">
+        <a style="{{ l.style }}">{{ l.label }}</a>
+      </sc-for>
+    </nav>
+  </sc-if>
+  <span style="flex:1"></span>
+  <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;color:var(--ink3)">Brightline Digital</span></sc-if>
+  <span style="width:32px;height:32px;border-radius:50%;background:var(--sunk);border:1px solid var(--line);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--ink2);flex:none">{{ initials }}</span>
+  <sc-if value="{{ compact }}">
+    <span style="width:44px;height:44px;margin-right:-10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px"><span style="width:18px;height:1.5px;background:var(--ink)"></span><span style="width:18px;height:1.5px;background:var(--ink)"></span><span style="width:18px;height:1.5px;background:var(--ink)"></span></span>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:56},&quot;active&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;team&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;manager&quot;,&quot;employee&quot;,&quot;admin&quot;],&quot;default&quot;:&quot;manager&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const role = this.props.role ?? 'manager';
+    const active = this.props.active ?? 'team';
+    const sets = {
+      manager: [['team', 'Live team'], ['timesheets', 'Timesheets'], ['projects', 'Projects'], ['policy', 'Policy']],
+      employee: [['mydata', 'My data'], ['timesheet', 'My timesheet'], ['notice', 'Monitoring notice']],
+      admin: [['team', 'Live team'], ['timesheets', 'Timesheets'], ['people', 'People'], ['policy', 'Policy']]
+    };
+    const links = sets[role].map(([k, label]) => ({
+      label,
+      style: { height: 34, display: 'flex', alignItems: 'center', padding: '0 12px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, textDecoration: 'none', cursor: 'pointer',
+        color: k === active ? 'var(--ink)' : 'var(--ink2)', background: k === active ? 'var(--sunk)' : 'transparent' }
+    }));
+    const compact = !!this.props.compact;
+    return { links, compact, full: !compact, initials: role === 'employee' ? 'LM' : role === 'admin' ? 'NR' : 'SL' };
+  }
+}
+</script>
+</body>
+</html>
