@@ -16,10 +16,10 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 
 | Issue | Title | Status | PR |
 |---|---|---|---|
-| #8 | Monorepo setup | PR open | #68 |
-| #9 | Local Supabase + first migration | PR open | #69 |
-| #10 | CI | PR open | |
-| #11, #13, #14 | Week-1 spikes (macOS) | Not started | |
+| #8 | Monorepo setup | Merged | #68 |
+| #9 | Local Supabase + first migration | Merged | #69 |
+| #10 | CI | Merged | #70 |
+| #11, #13, #14 | Week-1 spikes (macOS) | Draft PRs, manual checks pending Raj | #71, #72, #73 |
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
 | #17 | Device registration, revocation, deactivation (backend) | PR open | #75 |
