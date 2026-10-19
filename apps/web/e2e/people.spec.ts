@@ -90,7 +90,7 @@ test("an admin changes someone's manager, and the rules are explained", async ({
   await page.getByRole("button", { name: "Edit Lucas Martin" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Lucas Martin" });
   await dialog.getByLabel("Direct manager").selectOption({ label: "Ada Admin" });
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save details" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("row").filter({ hasText: "Lucas Martin" })).toContainText(
     "Ada Admin",
@@ -104,14 +104,38 @@ test("an admin changes someone's manager, and the rules are explained", async ({
     .selectOption({ label: "Max Manager" });
   await page
     .getByRole("dialog", { name: "Edit Lucas Martin" })
-    .getByRole("button", { name: "Save" })
+    .getByRole("button", { name: "Save details" })
     .click();
 
   await page.getByRole("button", { name: "Edit Max Manager" }).click();
   const max = page.getByRole("dialog", { name: "Edit Max Manager" });
   await max.getByLabel("Role").selectOption("employee");
-  await max.getByRole("button", { name: "Save" }).click();
+  await max.getByRole("button", { name: "Save details" }).click();
   await expect(max.getByRole("alert")).toHaveText(
     "Move this person's reports to another manager first.",
   );
+});
+
+test("an admin sets a night shift that crosses midnight", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/people");
+  await page.getByRole("button", { name: "Edit Lucas Martin" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Lucas Martin" });
+  await expect(dialog.getByText("Shifts (America/Chicago)")).toBeVisible();
+  for (const remove of await dialog.getByRole("button", { name: /^Remove shift/ }).all()) {
+    await remove.click();
+  }
+  await dialog.getByRole("button", { name: "Add shift" }).click();
+  await dialog.getByLabel("Shift 1 start").fill("22:00");
+  await dialog.getByLabel("Shift 1 end").fill("06:00");
+  await expect(dialog.getByText("8 h, ends next day")).toBeVisible();
+  await expectNoA11yViolations(page);
+  await dialog.getByRole("button", { name: "Save schedule" }).click();
+  await expect(dialog.getByRole("button", { name: "Schedule saved" })).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Edit Lucas Martin" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Edit Lucas Martin" }).getByLabel("Shift 1 start"),
+  ).toHaveValue("22:00");
 });

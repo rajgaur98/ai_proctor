@@ -135,4 +135,42 @@ mod tests {
             Some(t("2026-10-20T00:00:00Z"))
         );
     }
+
+    /// Same cases as packages/core/src/shift.test.ts, so the agent and the
+    /// dashboard agree on DST days.
+    #[test]
+    fn night_shifts_across_dst_changes_are_an_hour_shorter_or_longer() {
+        let night = Shift {
+            days: vec![1, 2, 3, 4, 5, 6, 7],
+            start: NaiveTime::from_hms_opt(22, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(6, 0, 0).unwrap(),
+            tz: chrono_tz::America::Los_Angeles,
+        };
+        let shifts = std::slice::from_ref(&night);
+        // Fall back: Saturday 2026-10-31 22:00 PDT to Sunday 06:00 PST, 9 hours.
+        let (start, end) = window_containing(shifts, t("2026-11-01T09:00:00Z")).unwrap();
+        assert_eq!(
+            (start, end),
+            (t("2026-11-01T05:00:00Z"), t("2026-11-01T14:00:00Z"))
+        );
+        // Spring forward: Saturday 2027-03-13 22:00 PST to Sunday 06:00 PDT, 7 hours.
+        let (start, end) = window_containing(shifts, t("2027-03-14T09:00:00Z")).unwrap();
+        assert_eq!(
+            (start, end),
+            (t("2027-03-14T06:00:00Z"), t("2027-03-14T13:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn a_start_inside_the_dst_gap_moves_forward() {
+        let early = Shift {
+            days: vec![7],
+            start: NaiveTime::from_hms_opt(2, 30, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(6, 0, 0).unwrap(),
+            tz: chrono_tz::America::Los_Angeles,
+        };
+        // 02:30 doesn't exist on 2027-03-14 in LA; it becomes 03:30 PDT (10:30 UTC).
+        let (start, _) = window_containing(&[early], t("2027-03-14T11:00:00Z")).unwrap();
+        assert_eq!(start, t("2027-03-14T10:30:00Z"));
+    }
 }

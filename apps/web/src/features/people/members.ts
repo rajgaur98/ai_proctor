@@ -88,6 +88,8 @@ const messages: Record<string, string> = {
   invalid_timezone: "Choose a time zone.",
   invalid_country: "Use a two-letter country code.",
   invalid_name: "Enter a name.",
+  invalid_shifts: "Each shift needs at least one day and different start and end times.",
+  manager_or_admin_only: "Only their manager or an admin can change this.",
 };
 
 export function explain(code: string): string {
