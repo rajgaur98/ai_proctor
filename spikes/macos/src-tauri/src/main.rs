@@ -4,6 +4,7 @@ mod capture;
 mod card;
 mod log;
 mod macos;
+mod signals;
 
 use std::time::{Duration, Instant};
 
@@ -78,6 +79,11 @@ fn capture_now(native: bool) {
 }
 
 #[tauri::command]
+fn log_signals() {
+    signals::log_all();
+}
+
+#[tauri::command]
 fn log_path() -> String {
     log::path().display().to_string()
 }
@@ -97,6 +103,7 @@ fn main() {
             check_permissions,
             request_access,
             capture_now,
+            log_signals,
             log_path
         ])
         .setup(|app| {
@@ -111,6 +118,7 @@ fn main() {
                     .unwrap_or(false)
             ));
             capture::log_permissions("startup");
+            signals::start();
             // SPIKE_CAPTURE=1 runs one capture at launch (headless runs).
             if std::env::var("SPIKE_CAPTURE").is_ok() {
                 let started = Instant::now();

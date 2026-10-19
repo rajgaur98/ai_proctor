@@ -32,6 +32,10 @@
   <button onclick="invoke('capture_now', { native: false })">Capture now (SCK scales)</button>
   <button onclick="invoke('capture_now', { native: true })">Capture now (native + CPU resize)</button>
 </fieldset>
+<fieldset><legend>#14 presence signals</legend>
+  Changes are logged automatically every second.
+  <button onclick="invoke('log_signals')">Log all signals now</button>
+</fieldset>
 <div>Log: <span id="path"></span></div>
 <div id="log"></div>
 <script>
