@@ -9,6 +9,7 @@ pub mod keystore;
 pub mod logging;
 pub mod outbox;
 pub mod platform;
+pub mod scheduler;
 pub mod session;
 pub mod shift;
 pub mod status;

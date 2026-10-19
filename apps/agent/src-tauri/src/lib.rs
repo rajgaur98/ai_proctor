@@ -8,6 +8,7 @@ use agent_core::clock::{Clock, SystemClock};
 use agent_core::contracts::AgentStatus;
 use agent_core::outbox::{Outbox, OutboxError};
 use agent_core::platform::Platform;
+use agent_core::scheduler::{FileScheduleStore, SchedulePolicy, Scheduler, ThreadRandom};
 use agent_core::session::{
     EventSink, FileSessionStore, OutboxSink, Session, SessionPolicy, TransitionError,
 };
@@ -27,13 +28,28 @@ const TICK: Duration = Duration::from_secs(5);
 pub struct AgentState {
     platform: Arc<dyn Platform>,
     session: Mutex<Session>,
+    /// Never exposed over IPC: the next check-in time stays in the core.
+    scheduler: Scheduler,
 }
 
 impl AgentState {
-    pub fn new(platform: Arc<dyn Platform>, session: Session) -> Self {
-        Self {
+    pub fn new(platform: Arc<dyn Platform>, session: Session, scheduler: Scheduler) -> Self {
+        let state = Self {
             platform,
             session: Mutex::new(session),
+            scheduler,
+        };
+        state.sync_schedule();
+        state
+    }
+
+    /// Working arms the next check-in; a break, a pause or clock-out cancels it
+    /// without a miss (LLD 02). The card loop that polls it arrives with #20.
+    fn sync_schedule(&self) {
+        if self.session.lock().unwrap().shift() == agent_core::contracts::ShiftState::Working {
+            self.scheduler.start();
+        } else {
+            self.scheduler.cancel();
         }
     }
 
@@ -49,11 +65,13 @@ impl AgentState {
 
     /// Runs a transition; failures are logged and shown as a notification.
     fn act(&self, what: &str, f: impl FnOnce(&mut Session) -> Result<(), TransitionError>) {
-        if let Err(error) = f(&mut self.session.lock().unwrap()) {
+        let result = f(&mut self.session.lock().unwrap());
+        if let Err(error) = result {
             tracing::warn!(%error, what, "transition refused");
             self.platform
                 .notify(&format!("Couldn't {what}"), &error.to_string());
         }
+        self.sync_schedule();
     }
 }
 
@@ -124,13 +142,20 @@ pub fn run() {
             // heartbeat once sign-in (#16) lands; until then, defaults.
             let session = Session::new(
                 SessionPolicy::default(),
-                clock,
+                clock.clone(),
                 platform.clone(),
                 sink,
                 Arc::new(FileSessionStore::new(&data_dir)),
             );
             tracing::info!(shift = ?session.shift(), signed_in = session.signed_in(), "session restored");
-            app.manage(AgentState::new(platform, session));
+            let scheduler = Scheduler::new(
+                SchedulePolicy::default(),
+                clock,
+                platform.clone(),
+                Arc::new(ThreadRandom),
+                Arc::new(FileScheduleStore::new(&data_dir)),
+            );
+            app.manage(AgentState::new(platform, session, scheduler));
             app.manage(OutboxState(outbox));
             spawn_ticker(app.handle().clone());
 
@@ -249,14 +274,22 @@ mod tests {
 
     fn state(dir: &std::path::Path, sink: Arc<dyn EventSink>) -> AgentState {
         let platform = Arc::new(FakePlatform::default());
+        let clock = Arc::new(FakeClock::at("2026-10-19T09:00:00Z"));
         let session = Session::new(
             SessionPolicy::default(),
-            Arc::new(FakeClock::at("2026-10-19T09:00:00Z")),
+            clock.clone(),
             platform.clone(),
             sink,
             Arc::new(FileSessionStore::new(dir)),
         );
-        AgentState::new(platform, session)
+        let scheduler = Scheduler::new(
+            SchedulePolicy::default(),
+            clock,
+            platform.clone(),
+            Arc::new(ThreadRandom),
+            Arc::new(FileScheduleStore::new(dir)),
+        );
+        AgentState::new(platform, session, scheduler)
     }
 
     #[test]
@@ -295,5 +328,12 @@ mod tests {
         assert_eq!(state.status().shift, ShiftState::Working);
         let pending = outbox.pending(10).unwrap();
         assert_eq!(pending[0].event_type, "clock_in");
+        assert!(
+            state.scheduler.wake_in().is_some(),
+            "clocking in arms a check-in"
+        );
+
+        state.act("start a break", |s| s.start_break(None));
+        assert_eq!(state.scheduler.wake_in(), None, "a break cancels it");
     }
 }
