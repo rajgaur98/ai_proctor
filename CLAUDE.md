@@ -10,7 +10,7 @@ Presence verification + timesheets for remote teams (Phase 1), AI daily summarie
 - `docs/architecture-lld.html`: modules, state machines, sync protocol, schema, access control.
 - `docs/development-tracking.md`: epics, labels, branch/PR conventions.
 - Issues: https://github.com/rajgaur98/ai_proctor/issues (epics #1–#7, later #62).
-- UI design (Claude Design, file "AI Proctor Phase 1.dc.html"): https://claude.ai/design/p/2d6757e9-b833-4f16-829e-c2c507023b77?file=AI+Proctor+Phase+1.dc.html. Sessions can't open this link; use the exported copy under `docs/design/` once it's committed. It's the visual reference for the dashboard, tray popover and check-in card; the brief it came from is `docs/design/phase-1-design-brief.md`.
+- UI design (Claude Design, file "AI Proctor Phase 1.dc.html"): https://claude.ai/design/p/2d6757e9-b833-4f16-829e-c2c507023b77?file=AI+Proctor+Phase+1.dc.html. Read it with the `DesignSync` tool (project `2d6757e9-b833-4f16-829e-c2c507023b77`; one file per screen: `CheckIn`, `Tray`, `Onboarding`, `TeamGrid`, `DayView`, `Timesheet`, `MyData`, `Policy`, plus `StyleSheet` and `WebNav`). Each UI PR commits a copy of the screen files it used under `docs/design/`, because standalone Claude Design closes on 14 Dec 2026. It's the visual reference for the dashboard, tray popover and check-in card; the brief it came from is `docs/design/phase-1-design-brief.md`.
 
 If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > issue). Known mismatches are listed in `docs/progress.md`.
 
@@ -19,7 +19,7 @@ If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > 
 - **Backend:** Supabase (Postgres RLS, RPC functions, Auth, Storage, Realtime, pg_cron, Edge Functions in Deno). US region only.
 - **Dashboard:** React + Vite SPA, TanStack Router/Query/Table, Tailwind + shadcn/ui, Recharts, React Hook Form + Zod, Luxon. Hosted on Cloudflare Pages.
 - **Shared:** `packages/core` (status rules, `buildSegments()`, pure TS), `packages/contracts` (Zod → JSON Schema → Rust serde), `packages/ui`.
-- **Tooling:** pnpm workspaces, TypeScript strict, Biome, Vitest + fast-check, Playwright, cargo clippy/fmt. Turborepo only if builds get slow.
+- **Tooling:** pnpm workspaces, TypeScript strict, Biome, Vitest + fast-check, Playwright, cargo clippy/fmt. Turborepo for task running.
 - **Ops:** Resend (email), Sentry + Better Stack, Cloudflare R2 (updates + backups), GitHub Actions.
 
 ## Rules that matter
@@ -47,4 +47,11 @@ All development runs in a **local Claude desktop session on Raj's Mac** (`docs/h
 - When something needs Raj physically (open an app, click, approve a prompt), stop and give numbered steps.
 
 ## Commands
-Not scaffolded yet (issue #8). Fill this section in when it lands: install, dev, lint, typecheck, test, `supabase start`, agent dev build.
+Toolchain on Raj's Mac: Node 22 is asdf's (`.nvmrc`), Rust is Homebrew's rustup (pinned by `rust-toolchain.toml`). The shell's default `node` is an older nvm one, so prepend both:
+`export PATH="$HOME/.asdf/installs/nodejs/22.21.1/bin:/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"`
+
+- Install: `pnpm install`
+- Lint + format check: `pnpm lint` (fix: `pnpm format`)
+- Typecheck: `pnpm typecheck` (Turborepo runs `tsc` in every package)
+- Test: `pnpm test` (Turborepo runs Vitest in every package)
+- Not yet: `supabase start` (#9), agent dev build (#15), dashboard dev (#27).

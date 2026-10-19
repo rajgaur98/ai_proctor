@@ -2,7 +2,7 @@
 
 Living status file. Update it in the same PR as the work.
 
-_Last updated: 18 Oct 2026. Planning done; development moving to the local Mac session; no code yet._
+_Last updated: 19 Oct 2026. Development started on Raj's Mac; M0 in progress._
 
 ## Build order
 
@@ -16,7 +16,7 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 
 | Issue | Title | Status | PR |
 |---|---|---|---|
-| #8 | Monorepo setup | Not started | |
+| #8 | Monorepo setup | PR open | |
 | #9 | Local Supabase + first migration | Not started | |
 | #10 | CI | Not started | |
 | #11, #13, #14 | Week-1 spikes (macOS) | Not started | |
@@ -25,18 +25,27 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
-## Open decisions (asked, not yet answered)
+## Decisions
 
-1. **Branches:** create `main` from `claude/employee-activity-monitoring-z07n3t` and make it the default branch; one branch per issue for stacked PRs. OK?
-2. **Merging:** (a) Raj reviews and merges, with at most ~10 unmerged PRs in a stack; or (b) Claude merges each PR once CI is green and self-review is clean, Raj reviews afterwards.
-3. **Physical testing:** when a check needs Raj (permission prompts, clicking the card), stop and ask each time, or batch those checks and keep going?
-4. **Windows:** is a Windows machine or VM available, or do Windows items wait until M6?
+Answered by Raj on 19 Oct 2026.
+
+1. **Branches:** `main` (created from `claude/employee-activity-monitoring-z07n3t`) is the default branch. One branch per issue, PRs stacked per milestone.
+2. **Merging:** Claude merges every PR once CI is green and the self-review is clean. Raj reviews afterwards.
+3. **Physical testing:** checks that need Raj are batched into one numbered list per spike or milestone; work continues meanwhile. Stop at once only when a result decides what gets built next.
+4. **Windows:** no Windows machine or VM. Windows code must compile and pass tests on the Windows CI runner; real-machine testing and #12 wait until M6.
+5. **Second display:** none available. Multi-monitor cases are tested on one display and listed under "Blocked on Raj".
+6. **Labels:** `ci:full` and `needs-device-test` created.
+7. **Turborepo:** used from #8 (overrides "only if builds get slow" in issue #8).
+8. **Windows CI:** the Windows job runs automatically on PRs that touch Windows code, plus on `ci:full` and nightly. Label-only would let stacked PRs go green with no Windows run.
+9. **UI design:** UI work doesn't wait for an export. Sessions read the Claude Design project with `DesignSync` and commit copies of the screens they use under `docs/design/`.
 
 ## Blocked on Raj
 
 Format: `- #<issue>: <exact question or action needed>`
 
-- #27 and later UI issues: export the Claude Design file "AI Proctor Phase 1.dc.html" (link in `CLAUDE.md`) and commit it under `docs/design/`. Sessions can't open claude.ai/design links. Standalone Claude Design closes on 14 Dec 2026, so export before then.
+- #11, #13: multi-monitor cases need a second display (CHK-10 card on a random monitor, CAP-03 one screenshot per display, PRD "≥20 check-ins across two monitors"). Tested on the built-in display only until one is connected.
+- #23, #30 (before M1): during a pause or break, should the agent still send a heartbeat with no content (no idle, lock or app data), so `offline_sweep` doesn't mark the user Offline? Default if no answer: yes.
+- M6: PRD AGT-01/AGT-02 call for a device token and an MDM enrollment token, but tech-stack and the LLD only use the user's session plus `device_id`, and no issue builds the enrollment token. Should an issue be added?
 
 ## Accounts needed later (M6)
 
@@ -49,9 +58,13 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - macOS release builds: tech-stack says build on the local Mac (macOS CI minutes cost 10×); issue #55 says a CI macOS runner. Build releases locally; CI only compiles and runs tests on macOS, on a label or nightly.
 - XLSX export is P0 in the PRD (TS-20) but deferred to #65 to keep the pilot small.
 - ALR-01 (P0) includes a late clock-in alert, but recording late clock-ins (SHF-06) is P1 (#67). Needs a decision before #50.
+- First migration (#9) lists `checkins` and `captures` tables; the LLD has `checkin_events` (with `object_keys[]`), a separate `last_seen` table, and no `captures` table. Use the LLD. #23 and #24 use the issue names too.
+- macOS minimum: PRD says macOS 13+, so the spike guide's 12.3 fallback is dropped, but the macOS 13 `SCStream` path is still needed (`SCScreenshotManager` is 14+). Only compile-checked on Raj's macOS 26 Mac.
 - LLD pg_cron table lists 6 jobs; there are 7 (`send_emails` missing). Fix when touching the LLD.
 
 ## Environment notes
 
 - Development machine: Raj's Mac, local Claude desktop session. Keep it awake during long runs (`caffeinate -dims`).
-- CI budget: private repo, 2,000 free Actions minutes/month; macOS counts 10×, Windows 2×. Linux checks on every PR; macOS/Windows only on label or nightly.
+- CI budget: private repo, 2,000 free Actions minutes/month; macOS counts 10×, Windows 2×. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
+- Homebrew refuses formula builds because the Command Line Tools are outdated (it wants the Xcode 27 version; fixing needs `sudo`). Full Xcode 26.6 works for Rust builds. The Supabase CLI comes from the `supabase` npm devDependency instead of Homebrew (#9).
+- Rust comes from Homebrew's `rustup` (proxies in `/opt/homebrew/opt/rustup/bin`, not on the default PATH); Node 22 from asdf. See the Commands section of `CLAUDE.md`.

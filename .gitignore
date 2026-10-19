@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+# Rust / Tauri
+target/
+spikes/**/target/
+*.app/
+
+# Supabase local state
+supabase/.branches/
+supabase/.temp/
+
+.DS_Store

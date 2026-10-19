@@ -24,11 +24,13 @@ Work the milestones in order. M0's spikes can change the approach for M1, so fin
 | `area:agent` `area:dashboard` `area:backend` `area:infra` | where the code lives |
 | `type:feature` `type:bug` `type:spike` `type:chore` | kind of work |
 | `platform:macos` `platform:windows` | OS-specific work |
+| `ci:full` | run the macOS and Windows CI jobs on this PR |
+| `needs-device-test` | needs manual testing on a real device; checklist in the PR body |
 
 ## Conventions
 
 - One branch per issue: `<issue-number>-<short-name>`, e.g. `21-capture-pipeline`.
-- Pull request description includes `Closes #<n>` so merging closes the issue and moves the board card to Done.
+- Pull request description includes `Closes #<n>` so merging closes the issue and moves the board card to Done. GitHub only auto-closes when the PR merges into `main`, so for stacked PRs the issue closes when its PR (or the stack below it) lands on `main`.
 - Every issue body lists the PRD requirement IDs it covers. If scope changes, update the PRD first, then the issue.
 - Spikes end with a write-up in `docs/spikes/`.
 

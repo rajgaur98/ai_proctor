@@ -51,9 +51,9 @@ For each issue in the build order (`docs/progress.md`):
 
 **Windows:** code must compile and pass tests on the Windows CI runner; label PRs needing real-machine testing `needs-device-test` with a checklist. #12 waits for a Windows machine.
 
-**UI work** (#20 card, #27 onwards, #37 tray): the design reference is the Claude Design export under `docs/design/`. If it isn't committed yet, ask Raj for it before starting UI; do backend work meanwhile.
+**UI work** (#20 card, #27 onwards, #37 tray): the design reference is the Claude Design project linked in `CLAUDE.md`. Read the screen files with the `DesignSync` tool and commit a copy of the ones you used under `docs/design/` in the same PR.
 
-**CI budget:** Linux jobs on every PR. macOS and Windows jobs only on a `ci:full` label or nightly, since they cost 10× and 2× the free minutes. macOS release builds happen locally.
+**CI budget:** Linux jobs on every PR. The Windows job also runs automatically on PRs that touch Windows code. Otherwise macOS and Windows jobs run only on the `ci:full` label or nightly, since they cost 10× and 2× the free minutes. macOS release builds happen locally.
 
 ## Running long
 

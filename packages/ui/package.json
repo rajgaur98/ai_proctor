@@ -1,0 +1,14 @@
+{
+  "name": "@ai-proctor/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared React components for the dashboard and the agent UI",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}
