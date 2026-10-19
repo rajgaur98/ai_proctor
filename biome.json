@@ -31,5 +31,17 @@
     "parser": {
       "tailwindDirectives": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["supabase/functions/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noUndeclaredEnvVars": "off"
+          }
+        }
+      }
+    }
+  ]
 }

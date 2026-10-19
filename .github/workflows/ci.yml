@@ -176,11 +176,13 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm supabase start -x studio,imgproxy,edge-runtime,postgres-meta,supavisor
+      # Edge runtime on: the invite flow calls the invite-users function.
+      - run: pnpm supabase start -x studio,imgproxy,postgres-meta,supavisor
       - name: Point the dashboard at the local stack
         run: |
-          eval "$(pnpm --silent supabase status -o env | grep -E '^(API_URL|ANON_KEY)=')"
+          eval "$(pnpm --silent supabase status -o env | grep -E '^(API_URL|ANON_KEY|MAILPIT_URL)=')"
           printf 'VITE_SUPABASE_URL=%s\nVITE_SUPABASE_ANON_KEY=%s\n' "$API_URL" "$ANON_KEY" > apps/web/.env.local
+          echo "MAILPIT_URL=$MAILPIT_URL" >> "$GITHUB_ENV"
       - run: pnpm --filter @ai-proctor/web exec playwright install --with-deps chromium
       - run: pnpm --filter @ai-proctor/web e2e
         env:

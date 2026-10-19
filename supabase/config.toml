@@ -162,7 +162,7 @@ site_url = "http://127.0.0.1:3000"
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 # aiproctor://auth: the desktop agent's magic-link sign-in returns here (#16).
-additional_redirect_urls = ["https://127.0.0.1:3000", "http://localhost:5173", "aiproctor://auth"]
+additional_redirect_urls = ["https://127.0.0.1:3000", "http://localhost:5173", "http://localhost:5173/**", "aiproctor://auth"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -245,10 +245,10 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+# The link goes to the dashboard's /join page, which verifies the token itself (#28).
+[auth.email.template.invite]
+subject = "You're invited to AI Proctor"
+content_path = "./supabase/templates/invite.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]

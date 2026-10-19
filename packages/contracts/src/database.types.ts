@@ -171,6 +171,73 @@ export type Database = {
           },
         ];
       };
+      audit_log: {
+        Row: {
+          action: string;
+          actor_id: string | null;
+          at: string;
+          id: number;
+          metadata: NonNullable<Json>;
+          org_id: string;
+          target_user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          action: string;
+          actor_id?: string | null;
+          at?: string;
+          id?: never;
+          metadata?: NonNullable<Json>;
+          org_id: string;
+          target_user_id?: string | null;
+        };
+        Update: {
+          action?: string;
+          actor_id?: string | null;
+          at?: string;
+          id?: never;
+          metadata?: NonNullable<Json>;
+          org_id?: string;
+          target_user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "audit_log_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audit_log_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audit_log_target_user_id_fkey";
+            columns: ["target_user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "audit_log_target_user_id_fkey";
+            columns: ["target_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       breaks: {
         Row: {
           clock_session_id: string;
@@ -1015,6 +1082,20 @@ export type Database = {
       };
     };
     Functions: {
+      add_invited_member: {
+        Args: {
+          p_email: string;
+          p_full_name: string;
+          p_inviter_id: string;
+          p_manager_id: string;
+          p_role: Database["public"]["Enums"]["user_role"];
+          p_timezone: string;
+          p_user_id: string;
+          p_work_country: string;
+          p_work_state: string;
+        };
+        Returns: undefined;
+      };
       agent_events: { Args: { device_id: string; events: Json }; Returns: Json };
       agent_heartbeat: {
         Args: {
@@ -1050,6 +1131,18 @@ export type Database = {
       };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
+      update_member: {
+        Args: {
+          p_full_name: string;
+          p_manager_id: string;
+          p_role: Database["public"]["Enums"]["user_role"];
+          p_timezone: string;
+          p_user_id: string;
+          p_work_country: string;
+          p_work_state: string;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       checkin_outcome: "pass" | "miss" | "failed";

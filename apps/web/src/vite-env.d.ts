@@ -5,4 +5,6 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VITE_SENTRY_DSN?: string;
   readonly VITE_AUTH_PROVIDERS?: string;
+  readonly VITE_AGENT_DOWNLOAD_MAC?: string;
+  readonly VITE_AGENT_DOWNLOAD_WINDOWS?: string;
 }

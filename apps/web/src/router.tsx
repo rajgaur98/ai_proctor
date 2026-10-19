@@ -7,9 +7,11 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
+import { People } from "./features/people/People";
 import { LiveTeam } from "./features/team/LiveTeam";
 import { homeFor, navFor } from "./lib/nav";
 import { currentSession, needsMfa, type Profile, profileQuery } from "./lib/session";
+import { Join } from "./routes/Join";
 import { Mfa } from "./routes/Mfa";
 import { Onboarding } from "./routes/Onboarding";
 import { Placeholder } from "./routes/Placeholder";
@@ -44,6 +46,13 @@ const onboardingRoute = createRoute({
       throw redirect({ to: "/" });
   },
   component: Onboarding,
+});
+
+/** Invite links land here (#28); verifies the link itself, so no session needed. */
+const joinRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/join",
+  component: Join,
 });
 
 const mfaRoute = createRoute({
@@ -113,6 +122,7 @@ const routeTree = rootRoute.addChildren([
   signInRoute,
   signUpRoute,
   onboardingRoute,
+  joinRoute,
   mfaRoute,
   appRoute.addChildren([
     indexRoute,
@@ -120,7 +130,7 @@ const routeTree = rootRoute.addChildren([
     dayRoute,
     page("/timesheets", "Timesheets", 43),
     page("/projects", "Projects", 38),
-    page("/people", "People", 28),
+    page("/people", "People", 28, People),
     page("/policy", "Policy", 52),
     page("/me", "My data", 49),
     page("/my-timesheet", "My timesheet", 43),
