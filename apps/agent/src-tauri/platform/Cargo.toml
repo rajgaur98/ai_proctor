@@ -10,3 +10,13 @@ description = "Platform implementations: macOS (objc2) and Windows (windows-rs)"
 agent-core.workspace = true
 tracing.workspace = true
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSRunningApplication", "NSWorkspace"] }
+objc2-core-audio = "0.3"
+objc2-core-foundation = "0.3"
+objc2-core-graphics = "0.3"
+objc2-core-media-io = "0.3"
+objc2-foundation = "0.3"
