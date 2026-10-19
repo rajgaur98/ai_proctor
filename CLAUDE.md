@@ -56,4 +56,5 @@ Toolchain on Raj's Mac: Node 22 is asdf's (`.nvmrc`), Rust is Homebrew's rustup 
 - Test: `pnpm test` (Turborepo runs Vitest in every package)
 - Local backend (Docker must be running): `pnpm db:start` / `pnpm db:stop`; rebuild from migrations + seed: `pnpm db:reset`; pgTAP tests: `pnpm db:test`; regenerate `packages/contracts/src/database.types.ts`: `pnpm db:types` (commit it with the migration). Any other CLI command: `pnpm supabase <args>`. Seed users (`supabase/seed.sql`) sign in with `password123`.
 - New migration: `pnpm supabase migration new <name>`.
+- CI (`.github/workflows/ci.yml`): the single required check is **CI OK**. Rust jobs run once a root `Cargo.toml` workspace exists, so #15 puts the agent crates in a root workspace (spikes stay out of it).
 - Not yet: agent dev build (#15), dashboard dev (#27).

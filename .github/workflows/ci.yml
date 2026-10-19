@@ -1,0 +1,170 @@
+name: CI
+
+# Linux jobs run on every PR, including PRs stacked on other feature branches.
+# Windows runs on PRs that touch Windows code; macOS and Windows both run on the
+# `ci:full` label and nightly (they cost 10x and 2x the free minutes).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  changes:
+    name: Detect changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      windows: ${{ steps.filter.outputs.windows }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            windows:
+              - "**/windows/**"
+              - "**/*windows*.rs"
+              - "**/Cargo.toml"
+              - "Cargo.lock"
+              - "rust-toolchain.toml"
+              - ".github/workflows/ci.yml"
+
+  js:
+    name: Lint, typecheck, test (TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  # Rust jobs run only once the Cargo workspace exists (root Cargo.toml, #15);
+  # until then they skip instead of failing on an empty repo.
+  rust:
+    name: Rust fmt, clippy, test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: cargo
+        run: echo "present=$([ -f Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Tauri system libraries
+        if: steps.cargo.outputs.present == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+      - uses: Swatinem/rust-cache@v2
+        if: steps.cargo.outputs.present == 'true'
+      # rustup reads rust-toolchain.toml and installs the pinned toolchain.
+      - if: steps.cargo.outputs.present == 'true'
+        run: cargo fmt --all --check
+      - if: steps.cargo.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - if: steps.cargo.outputs.present == 'true'
+        run: cargo test --workspace --locked
+      - if: steps.cargo.outputs.present != 'true'
+        run: echo "No Cargo workspace yet; Rust checks skipped."
+
+  db:
+    name: Database tests (pgTAP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Postgres only: applies migrations and seed, which is all pgTAP needs.
+      - run: pnpm supabase db start
+      - run: pnpm db:test
+      - name: Generated types are up to date
+        run: |
+          pnpm db:types
+          git diff --exit-code packages/contracts/src/database.types.ts
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows:
+    name: Rust test (Windows)
+    needs: changes
+    # always(): still run on schedule/dispatch, when the PR-only changes job is skipped.
+    if: >-
+      always() && needs.changes.result != 'failure' && (
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.windows == 'true' ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full'))
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: cargo
+        shell: bash
+        run: echo "present=$([ -f Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: Swatinem/rust-cache@v2
+        if: steps.cargo.outputs.present == 'true'
+      - if: steps.cargo.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - if: steps.cargo.outputs.present == 'true'
+        run: cargo test --workspace --locked
+
+  macos:
+    name: Rust test (macOS)
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: cargo
+        run: echo "present=$([ -f Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: Swatinem/rust-cache@v2
+        if: steps.cargo.outputs.present == 'true'
+      - if: steps.cargo.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - if: steps.cargo.outputs.present == 'true'
+        run: cargo test --workspace --locked
+
+  # Single required check for branch protection: fails if any job failed or was
+  # cancelled; skipped optional jobs (Windows, macOS) are fine.
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [js, rust, db, secrets, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "All required jobs passed."
