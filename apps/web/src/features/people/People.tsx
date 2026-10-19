@@ -9,6 +9,7 @@ import { initials } from "../../lib/nav";
 import { InviteDialog } from "./InviteDialog";
 import { MemberFields } from "./MemberFields";
 import { type Member, managersOf, membersQuery, setActive, updateMember } from "./members";
+import { ShiftEditor } from "./ShiftEditor";
 
 export const roleLabel: Record<Enums<"user_role">, string> = {
   owner: "Owner",
@@ -191,6 +192,7 @@ function EditDialog({
             {error.message}
           </p>
         )}
+        <ShiftEditor userId={member.id} timezone={draft.timezone} />
         <div className="flex flex-wrap gap-2">
           {!isSelf && member.role !== "owner" && (
             <Button
@@ -206,7 +208,7 @@ function EditDialog({
             Cancel
           </Button>
           <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save"}
+            {save.isPending ? "Saving…" : "Save details"}
           </Button>
         </div>
       </form>

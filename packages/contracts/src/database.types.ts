@@ -1096,6 +1096,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      agent_config: { Args: { p_device_id: string }; Returns: Json };
       agent_events: { Args: { device_id: string; events: Json }; Returns: Json };
       agent_heartbeat: {
         Args: {
@@ -1130,6 +1131,7 @@ export type Database = {
         Returns: Record<string, unknown>;
       };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
+      set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
       update_member: {
         Args: {

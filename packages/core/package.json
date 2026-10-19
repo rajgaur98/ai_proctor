@@ -13,6 +13,10 @@
     "gen": "node scripts/gen-sql-vectors.ts"
   },
   "devDependencies": {
-    "@types/node": "^22"
+    "@types/node": "^22",
+    "@types/luxon": "3.7.6"
+  },
+  "dependencies": {
+    "luxon": "3.7.2"
   }
 }
