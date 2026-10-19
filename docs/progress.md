@@ -22,14 +22,13 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #11, #13, #14 | Week-1 spikes (macOS) | Draft PRs, manual checks pending Raj | #71, #72, #73 |
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
-| #17 | Device registration, revocation, deactivation (backend) | PR open | #75 |
-| #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | #76 |
-| #24 | Capture upload policy | In progress: bucket + policy PR open; agent uploader waits for the outbox (#22) | #77 |
-| #22 | Encrypted offline outbox | PR open | #78 |
-| #18 | Clock in/out and session state machine | PR open | #79 |
-| #19 | Check-in scheduler | PR open | |
-
-| #31 | Row-level security, can_view_user() | PR open | |
+| #17 | Device registration, revocation, deactivation (backend) | Merged | #75 |
+| #23 | Sync RPCs | Server side merged (#76); agent client PR open | #81 |
+| #24 | Capture upload policy | Bucket + policy merged (#77); agent uploader PR open | #81 |
+| #22 | Encrypted offline outbox | Merged | #78 |
+| #18 | Clock in/out and session state machine | Merged | #79 |
+| #19 | Check-in scheduler | Merged | #80 |
+| #31 | Row-level security, can_view_user() | PR open | #82 |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
