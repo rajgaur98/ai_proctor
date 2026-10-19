@@ -34,3 +34,8 @@ reqwest = { version = "0.13", features = ["blocking", "json", "query"] }
 [lib]
 name = "ai_proctor_agent"
 path = "src/lib.rs"
+
+# tauri-plugin-deep-link 2.6.2's Linux code builds `ini::ParseOption` with two
+# fields; rust-ini 0.21.2+ added more, which breaks it. Drop when the plugin moves on.
+[target.'cfg(target_os = "linux")'.dependencies]
+rust-ini = "=0.21.1"
