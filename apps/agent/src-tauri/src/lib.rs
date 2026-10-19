@@ -4,6 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use agent_core::contracts::{AgentStatus, ShiftState};
+use agent_core::outbox::{Outbox, OutboxError};
 use agent_core::platform::Platform;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -39,6 +40,20 @@ impl AgentState {
     }
 }
 
+/// The encrypted outbox, or `None` when the keychain could not provide its key
+/// (nothing is collected then; the watchdog will surface it as Tamper, #58).
+pub struct OutboxState(pub Option<Arc<Outbox>>);
+
+/// Name of the outbox key in the OS keychain.
+const OUTBOX_KEY: &str = "outbox-key";
+
+fn open_outbox(data_dir: &std::path::Path) -> Result<Outbox, String> {
+    let keychain = agent_platform::keychain::OsKeychain;
+    let key =
+        agent_core::keystore::get_or_create(&keychain, OUTBOX_KEY).map_err(|e| e.to_string())?;
+    Outbox::open(&data_dir.join("outbox"), &key).map_err(|e: OutboxError| e.to_string())
+}
+
 /// `get_status`: what the tray popover shows.
 #[tauri::command]
 fn get_status(state: tauri::State<'_, AgentState>) -> AgentStatus {
@@ -56,6 +71,18 @@ pub fn run() {
             let guard = agent_core::logging::init(&log_dir).map_err(|e| e.to_string())?;
             Box::leak(Box::new(guard));
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "agent started");
+
+            let outbox = match open_outbox(&app.path().app_data_dir()?) {
+                Ok(outbox) => {
+                    tracing::info!(stats = ?outbox.stats().ok(), "outbox open");
+                    Some(Arc::new(outbox))
+                }
+                Err(error) => {
+                    tracing::error!(%error, "outbox unavailable; nothing will be collected");
+                    None
+                }
+            };
+            app.manage(OutboxState(outbox));
 
             // Menu bar agent: no Dock icon, never takes over as the active app.
             #[cfg(target_os = "macos")]
