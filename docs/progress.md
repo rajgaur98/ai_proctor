@@ -24,7 +24,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #15 | Agent skeleton | Merged | #74 |
 | #17 | Device registration, revocation, deactivation (backend) | PR open | #75 |
 | #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | #76 |
-| #24 | Capture upload policy | In progress: bucket + policy PR open; agent uploader waits for the outbox (#22) | |
+| #24 | Capture upload policy | In progress: bucket + policy PR open; agent uploader waits for the outbox (#22) | #77 |
+| #22 | Encrypted offline outbox | PR open | |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
@@ -70,6 +71,8 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 ## Notes for later issues
 
 - #24 uploader: Storage answers denials with HTTP 400 and the real status in the JSON body (`statusCode` "409" = already uploaded, treat as done; "403" = policy refused, don't retry).
+
+- Device re-registration: the outbox's `seq` keeps counting per install, but the server's `acked_seq` starts at 0 for a new device row, so its contiguous cursor would never pass the gap. The sync client (#23) must reset the outbox seq when the device id changes (or the server must start the cursor at the first seq it sees).
 
 ## Environment notes
 

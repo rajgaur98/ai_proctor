@@ -9,3 +9,4 @@ description = "Platform implementations: macOS (objc2) and Windows (windows-rs)"
 [dependencies]
 agent-core.workspace = true
 tracing.workspace = true
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
