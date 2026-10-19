@@ -25,7 +25,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #17 | Device registration, revocation, deactivation (backend) | PR open | #75 |
 | #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | #76 |
 | #24 | Capture upload policy | In progress: bucket + policy PR open; agent uploader waits for the outbox (#22) | #77 |
-| #22 | Encrypted offline outbox | PR open | |
+| #22 | Encrypted offline outbox | PR open | #78 |
+| #18 | Clock in/out and session state machine | PR open | |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
@@ -48,6 +49,7 @@ Answered by Raj on 19 Oct 2026.
 Format: `- #<issue>: <exact question or action needed>`
 
 - #11, #13: multi-monitor cases need a second display (CHK-10 card on a random monitor, CAP-03 one screenshot per display, PRD "≥20 check-ins across two monitors"). Tested on the built-in display only until one is connected.
+- #16: how do employees sign in to the agent? Supabase's browser authorize page only exists for OAuth providers; there is no hosted email+password page, and the PKCE verifier must stay in the agent. Options: (a) **magic link** (agent sends the email with its PKCE challenge, the link opens the browser and returns via `aiproctor://auth`), plus Google / Microsoft OAuth when those apps exist; (b) password sign-in on the dashboard, handed back to the agent through an Edge Function that mints the session. Default if no answer: (a). Needs Google Cloud / Azure app registrations for the OAuth part.
 - #23, #30 (before M1): during a pause or break, should the agent still send a heartbeat with no content (no idle, lock or app data), so `offline_sweep` doesn't mark the user Offline? Default if no answer: yes.
 - M6: PRD AGT-01/AGT-02 call for a device token and an MDM enrollment token, but tech-stack and the LLD only use the user's session plus `device_id`, and no issue builds the enrollment token. Should an issue be added?
 

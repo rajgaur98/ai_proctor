@@ -16,9 +16,11 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 agent-core = { workspace = true, features = ["fake"] }
+tempfile = "3"
 
 [lib]
 name = "ai_proctor_agent"
