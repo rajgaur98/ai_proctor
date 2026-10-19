@@ -19,7 +19,7 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #8 | Monorepo setup | Merged | #68 |
 | #9 | Local Supabase + first migration | Merged | #69 |
 | #10 | CI | Merged | #70 |
-| #11, #13, #14 | Week-1 spikes (macOS) | Done; PRs open (#13 / #14 keep their Windows halves open) | #71, #72, #73 |
+| #11, #13, #14 | Week-1 spikes (macOS) | Merged (#13 / #14 stay open for their Windows halves) | #71, #72, #73 |
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
 | #17 | Device registration, revocation, deactivation (backend) | Merged | #75 |
@@ -29,9 +29,10 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #18 | Clock in/out and session state machine | Merged | #79 |
 | #19 | Check-in scheduler | Merged | #80 |
 | #31 | Row-level security, can_view_user() | Merged | #82 |
-| #30 | Status engine and offline sweep | PR open | #83 |
-| #27 | Dashboard skeleton | PR open | #84 |
-| #32 | Live grid with Realtime | PR open | #85 |
+| #30 | Status engine and offline sweep | Merged | #83 |
+| #27 | Dashboard skeleton | Merged | #84 |
+| #32 | Live grid with Realtime | Merged | #85 |
+| #16 | Agent sign-in (magic link), device attach, sync + heartbeat loop | PR open | |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 

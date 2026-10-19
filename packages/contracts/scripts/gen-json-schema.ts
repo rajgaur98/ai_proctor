@@ -6,10 +6,16 @@
 import { writeFileSync } from "node:fs";
 import { z } from "zod";
 import { AgentEvent } from "../src/events.ts";
-import { AgentStatus, PermissionState, Permissions, ShiftState } from "../src/ipc.ts";
+import {
+  AgentStatus,
+  CommandResult,
+  PermissionState,
+  Permissions,
+  ShiftState,
+} from "../src/ipc.ts";
 
 const registry = z.registry<{ id: string }>();
-for (const schema of [PermissionState, Permissions, ShiftState, AgentStatus]) {
+for (const schema of [PermissionState, Permissions, ShiftState, AgentStatus, CommandResult]) {
   const id = schema.meta()?.id;
   if (typeof id !== "string") throw new Error("every IPC schema needs a meta id");
   registry.add(schema, { id });

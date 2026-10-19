@@ -32,6 +32,9 @@
         "signed_in": {
           "type": "boolean"
         },
+        "account_email": {
+          "type": ["string", "null"]
+        },
         "agent_version": {
           "type": "string"
         },
@@ -39,7 +42,20 @@
           "$ref": "#/definitions/Permissions"
         }
       },
-      "required": ["shift", "signed_in", "agent_version", "permissions"],
+      "required": ["shift", "signed_in", "account_email", "agent_version", "permissions"],
+      "additionalProperties": false
+    },
+    "CommandResult": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["ok", "error"],
       "additionalProperties": false
     }
   }

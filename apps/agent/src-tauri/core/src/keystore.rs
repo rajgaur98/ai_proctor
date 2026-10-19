@@ -1,5 +1,6 @@
-//! Where the outbox encryption key lives. Production uses the OS keychain
-//! (`agent-platform`); tests use `MemoryKeyStore`.
+//! Secrets kept in the OS keychain: the outbox encryption key, the refresh token,
+//! a pending PKCE verifier. Production uses `agent-platform`'s keychain; tests use
+//! `MemoryKeyStore`.
 
 use std::sync::Mutex;
 
@@ -15,15 +16,18 @@ pub enum KeyStoreError {
 }
 
 pub trait KeyStore: Send + Sync {
-    /// The key under `name`, or `None` if it was never created.
-    fn get(&self, name: &str) -> Result<Option<Key>, KeyStoreError>;
-    fn set(&self, name: &str, key: &Key) -> Result<(), KeyStoreError>;
+    /// The secret under `name`, or `None` if it was never stored.
+    fn get(&self, name: &str) -> Result<Option<Vec<u8>>, KeyStoreError>;
+    fn set(&self, name: &str, secret: &[u8]) -> Result<(), KeyStoreError>;
+    /// Removes the secret; a missing one is not an error.
+    fn delete(&self, name: &str) -> Result<(), KeyStoreError>;
 }
 
-/// Returns the key under `name`, creating and storing a random one on first run.
+/// Returns the 32-byte key under `name`, creating and storing a random one on
+/// first run.
 pub fn get_or_create(store: &dyn KeyStore, name: &str) -> Result<Key, KeyStoreError> {
-    if let Some(key) = store.get(name)? {
-        return Ok(key);
+    if let Some(bytes) = store.get(name)? {
+        return bytes.try_into().map_err(|_| KeyStoreError::Corrupt);
     }
     let mut key = [0u8; KEY_LEN];
     getrandom::fill(&mut key).map_err(|e| KeyStoreError::Unavailable(e.to_string()))?;
@@ -34,7 +38,7 @@ pub fn get_or_create(store: &dyn KeyStore, name: &str) -> Result<Key, KeyStoreEr
 /// In-memory store for tests; can be switched to fail like a locked keychain.
 #[derive(Default)]
 pub struct MemoryKeyStore {
-    keys: Mutex<std::collections::HashMap<String, Key>>,
+    secrets: Mutex<std::collections::HashMap<String, Vec<u8>>>,
     unavailable: Mutex<bool>,
 }
 
@@ -52,14 +56,23 @@ impl MemoryKeyStore {
 }
 
 impl KeyStore for MemoryKeyStore {
-    fn get(&self, name: &str) -> Result<Option<Key>, KeyStoreError> {
+    fn get(&self, name: &str) -> Result<Option<Vec<u8>>, KeyStoreError> {
         self.check()?;
-        Ok(self.keys.lock().unwrap().get(name).copied())
+        Ok(self.secrets.lock().unwrap().get(name).cloned())
     }
 
-    fn set(&self, name: &str, key: &Key) -> Result<(), KeyStoreError> {
+    fn set(&self, name: &str, secret: &[u8]) -> Result<(), KeyStoreError> {
         self.check()?;
-        self.keys.lock().unwrap().insert(name.into(), *key);
+        self.secrets
+            .lock()
+            .unwrap()
+            .insert(name.into(), secret.to_vec());
+        Ok(())
+    }
+
+    fn delete(&self, name: &str) -> Result<(), KeyStoreError> {
+        self.check()?;
+        self.secrets.lock().unwrap().remove(name);
         Ok(())
     }
 }
@@ -75,6 +88,16 @@ mod tests {
         let second = get_or_create(&store, "outbox").unwrap();
         assert_eq!(first, second);
         assert_ne!(first, [0u8; KEY_LEN]);
+    }
+
+    #[test]
+    fn a_wrong_length_key_is_corrupt() {
+        let store = MemoryKeyStore::default();
+        store.set("outbox", b"short").unwrap();
+        assert!(matches!(
+            get_or_create(&store, "outbox"),
+            Err(KeyStoreError::Corrupt)
+        ));
     }
 
     #[test]

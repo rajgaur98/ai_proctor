@@ -85,3 +85,52 @@ footer {
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
+.account {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sign-in p {
+  margin: 0;
+  color: var(--ink2);
+}
+label {
+  color: var(--ink2);
+}
+input {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  user-select: text;
+}
+button {
+  font: inherit;
+  color: #fff;
+  background: var(--acc);
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+button.link {
+  align-self: flex-start;
+  color: var(--acc);
+  background: none;
+  padding: 0;
+}
+.error {
+  color: var(--ink);
+}

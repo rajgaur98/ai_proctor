@@ -5,6 +5,7 @@ import { invoke, listen } from "./ipc";
 const status: AgentStatus = {
   shift: "off_shift",
   signed_in: false,
+  account_email: null,
   agent_version: "0.1.0",
   permissions: { screen: "granted", camera: "not_determined" },
 };
@@ -24,6 +25,22 @@ describe("invoke", () => {
     await expect(
       invoke("get_status", {}, async () => ({ ...status, shift: "lunch" })),
     ).rejects.toThrow();
+  });
+});
+
+describe("sign_in_start", () => {
+  it("passes the email and validates the result", async () => {
+    const calls: unknown[] = [];
+    const result = await invoke(
+      "sign_in_start",
+      { email: "lucas@acme.test" },
+      async (cmd, args) => {
+        calls.push([cmd, args]);
+        return { ok: false, error: "This email isn't invited yet." };
+      },
+    );
+    expect(result).toEqual({ ok: false, error: "This email isn't invited yet." });
+    expect(calls).toEqual([["sign_in_start", { email: "lucas@acme.test" }]]);
   });
 });
 
