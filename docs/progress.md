@@ -32,8 +32,11 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #30 | Status engine and offline sweep | Merged | #83 |
 | #27 | Dashboard skeleton | Merged | #84 |
 | #32 | Live grid with Realtime | Merged | #85 |
-| #16 | Agent sign-in (magic link), device attach, sync + heartbeat loop | PR open | #87 |
-| #20 | Check-in card: challenge, countdown, outcomes | PR open; needs device test | |
+| #16 | Agent sign-in (magic link), device attach, sync + heartbeat loop | Merged; needs device test | #87 |
+| #20 | Check-in card: challenge, countdown, outcomes | PR open; needs device test | #88 |
+| #14 (macOS) | Presence signals in the macOS Platform | PR open; needs device test | #89 |
+| #21 | Capture pipeline: screenshots, webcam, blur, excluded apps | PR open; needs device test | |
+| #25 | Activity sampling | Server side PR open; agent side next | #90 |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 

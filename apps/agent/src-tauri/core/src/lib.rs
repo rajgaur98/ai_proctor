@@ -2,6 +2,7 @@
 //! `FakePlatform`; OS calls live behind the `Platform` trait in `agent-platform`.
 
 pub mod auth;
+pub mod capture;
 pub mod checkin;
 pub mod clock;
 pub mod contracts;

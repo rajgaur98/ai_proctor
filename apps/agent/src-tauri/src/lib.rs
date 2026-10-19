@@ -9,14 +9,15 @@ use std::time::{Duration, Instant};
 
 use account::Account;
 use agent_core::auth::{AuthError, REDIRECT_URL};
+use agent_core::capture::{self, CapturePolicy, Captured};
 use agent_core::checkin::{Card, CardPolicy, ClickResult, Finished};
 use agent_core::clock::{Clock, SystemClock};
 use agent_core::contracts::{
-    AgentStatus, CardChallenge, CardClickResult, CommandResult, ShiftState,
+    AgentStatus, CardChallenge, CardClickResult, CommandResult, PermissionState, ShiftState,
 };
 use agent_core::keystore::KeyStore;
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
-use agent_core::platform::{Platform, SessionState};
+use agent_core::platform::{CaptureError, Platform, SessionState};
 use agent_core::scheduler::{
     Decision, FileScheduleStore, Outcome, Random, SchedulePolicy, Scheduler, ThreadRandom,
 };
@@ -49,6 +50,38 @@ const CARD_TICK: Duration = Duration::from_millis(250);
 /// The card stays up briefly after the click so the result can be read.
 const PASS_LINGER: Duration = Duration::from_millis(800);
 
+/// CAP-08: this many permission failures in a row report the permission as
+/// missing (Tamper on the server, STS rule 2).
+const PERMISSION_FAILURES_FOR_TAMPER: u32 = 2;
+
+/// What a click on the card did. A pass comes back unqueued: its captures are
+/// taken off the UI thread (`finish_pass`).
+#[derive(Debug, PartialEq)]
+struct ClickReply {
+    result: CardClickResult,
+    /// The reshuffled card after a wrong click.
+    next: Option<CardChallenge>,
+    pass: Option<Finished>,
+}
+
+impl ClickReply {
+    fn just(result: CardClickResult) -> Self {
+        Self {
+            result,
+            next: None,
+            pass: None,
+        }
+    }
+}
+
+/// Consecutive capture permission failures, and what was last reported.
+#[derive(Debug, Default)]
+struct PermissionWatch {
+    screen_failures: u32,
+    camera_failures: u32,
+    reported_missing: bool,
+}
+
 /// What the card runner should do with the window.
 #[derive(Debug, PartialEq)]
 enum CardAction {
@@ -68,6 +101,8 @@ pub struct AgentState {
     /// The card on screen, if any.
     card: Mutex<Option<Card>>,
     card_policy: CardPolicy,
+    capture_policy: CapturePolicy,
+    permission_watch: Mutex<PermissionWatch>,
     random: Arc<dyn Random>,
     /// `None` when this build has no server configured (see `account::api_config`).
     account: Option<Arc<Account>>,
@@ -93,6 +128,8 @@ impl AgentState {
             card: Mutex::new(None),
             // Org card settings arrive with the policy work; defaults until then.
             card_policy: CardPolicy::default(),
+            capture_policy: CapturePolicy::default(),
+            permission_watch: Mutex::new(PermissionWatch::default()),
             random: Arc::new(ThreadRandom),
             account,
             last_redirect: Mutex::new(None),
@@ -165,34 +202,106 @@ impl AgentState {
 
     /// A click on the card. Only real pointer clicks count (CHK-11); anything for
     /// a card that is no longer up is ignored.
-    fn card_click(
-        &self,
-        card_id: &str,
-        value: i64,
-        trusted: bool,
-    ) -> (CardClickResult, Option<CardChallenge>) {
+    fn card_click(&self, card_id: &str, value: i64, trusted: bool) -> ClickReply {
         let mut card = self.card.lock().unwrap();
         let Some(current) = card.as_mut().filter(|c| c.id.to_string() == card_id) else {
-            return (CardClickResult::Ignored, None);
+            return ClickReply::just(CardClickResult::Ignored);
         };
         if !trusted || !(1..=9).contains(&value) {
             tracing::warn!(trusted, value, "card click ignored");
-            return (CardClickResult::Ignored, None);
+            return ClickReply::just(CardClickResult::Ignored);
         }
         let now = self.clock.now();
         match current.click(value as u8, self.random.as_ref()) {
-            ClickResult::Wrong => (CardClickResult::Wrong, Some(self.challenge(current))),
-            result => {
-                let (outcome, reply) = match result {
-                    ClickResult::Pass => (Outcome::Pass, CardClickResult::Pass),
-                    _ => (Outcome::Failed, CardClickResult::Failed),
-                };
-                let finished = current.finish(outcome, now);
+            ClickResult::Wrong => ClickReply {
+                next: Some(self.challenge(current)),
+                ..ClickReply::just(CardClickResult::Wrong)
+            },
+            ClickResult::Pass => {
+                let finished = current.finish(Outcome::Pass, now);
+                *card = None;
+                self.scheduler.finished(Outcome::Pass);
+                ClickReply {
+                    pass: Some(finished),
+                    ..ClickReply::just(CardClickResult::Pass)
+                }
+            }
+            ClickResult::Failed => {
+                let finished = current.finish(Outcome::Failed, now);
                 *card = None;
                 self.record(finished);
-                (reply, None)
+                ClickReply::just(CardClickResult::Failed)
             }
         }
+    }
+
+    /// CAP-01: a pass captures screens and the webcam (per policy), then queues the
+    /// check-in with the file names; the files upload once the server has
+    /// accepted it. Takes ~2 s (camera warm-up): never on the UI thread.
+    fn finish_pass(&self, mut finished: Finished) {
+        let captured = capture::capture(self.platform.as_ref(), &self.capture_policy);
+        tracing::info!(
+            files = captured.files.len(),
+            screen_error = ?captured.screen_error,
+            webcam_error = ?captured.webcam_error,
+            "captured"
+        );
+        self.watch_permissions(&captured);
+        captured.attach(&mut finished.payload);
+        let Some(id) = self.queue(finished) else {
+            return;
+        };
+        if let Some(outbox) = &self.outbox {
+            for (name, bytes) in &captured.files {
+                if let Err(error) = outbox.add_upload(id, name, bytes, self.clock.now()) {
+                    tracing::error!(%error, name, "capture not queued");
+                }
+            }
+        }
+    }
+
+    /// CAP-08: a capture that fails for lack of permission twice in a row reports
+    /// the permission missing (`permission_change`), which the server turns into
+    /// Tamper; the next good capture reports it back. Covers macOS keeping a stale
+    /// "granted" after Screen Recording is revoked (spike #13).
+    fn watch_permissions(&self, captured: &Captured) {
+        let mut watch = self.permission_watch.lock().unwrap();
+        let count = |failures: &mut u32, error: &Option<CaptureError>| match error {
+            Some(CaptureError::PermissionMissing) => *failures += 1,
+            Some(_) => {}
+            None => *failures = 0,
+        };
+        if self.capture_policy.screenshots != capture::ScreenshotMode::Off {
+            count(&mut watch.screen_failures, &captured.screen_error);
+        }
+        if self.capture_policy.webcam {
+            count(&mut watch.camera_failures, &captured.webcam_error);
+        }
+        let screen_missing = watch.screen_failures >= PERMISSION_FAILURES_FOR_TAMPER;
+        let camera_missing = watch.camera_failures >= PERMISSION_FAILURES_FOR_TAMPER;
+        let missing = screen_missing || camera_missing;
+        if missing == watch.reported_missing {
+            return;
+        }
+        let mut permissions = self.platform.permissions();
+        if screen_missing {
+            permissions.screen = PermissionState::Denied;
+        }
+        if camera_missing {
+            permissions.camera = PermissionState::Denied;
+        }
+        tracing::warn!(?permissions, "capture permissions changed");
+        let payload = serde_json::to_value(&permissions).unwrap_or_default();
+        if let Some(outbox) = &self.outbox {
+            let now = self.clock.now();
+            if let Err(error) =
+                outbox.append("permission_change", now, self.clock.mono_ms(), payload, now)
+            {
+                tracing::error!(%error, "permission change not queued");
+                return;
+            }
+        }
+        watch.reported_missing = missing;
     }
 
     fn challenge(&self, card: &Card) -> CardChallenge {
@@ -210,22 +319,29 @@ impl AgentState {
 
     /// Queues the `checkin` event and arms the next check-in (CHK-01/02).
     fn record(&self, finished: Finished) {
+        let outcome = finished.outcome;
+        self.queue(finished);
+        self.scheduler.finished(outcome);
+    }
+
+    /// Queues a `checkin` event; its id keys the capture uploads.
+    fn queue(&self, finished: Finished) -> Option<uuid::Uuid> {
         tracing::info!(outcome = ?finished.outcome, "check-in finished");
-        match &self.outbox {
-            Some(outbox) => {
-                if let Err(error) = outbox.append(
-                    "checkin",
-                    finished.at,
-                    self.clock.mono_ms(),
-                    finished.payload,
-                    self.clock.now(),
-                ) {
-                    tracing::error!(%error, "check-in not queued");
-                }
-            }
-            None => tracing::error!("check-in not queued: the local queue is unavailable"),
-        }
-        self.scheduler.finished(finished.outcome);
+        let Some(outbox) = &self.outbox else {
+            tracing::error!("check-in not queued: the local queue is unavailable");
+            return None;
+        };
+        outbox
+            .append(
+                "checkin",
+                finished.at,
+                self.clock.mono_ms(),
+                finished.payload,
+                self.clock.now(),
+            )
+            .map(|event| event.id)
+            .map_err(|error| tracing::error!(%error, "check-in not queued"))
+            .ok()
     }
 
     fn account(&self) -> Result<&Arc<Account>, String> {
@@ -412,19 +528,25 @@ async fn sign_out(app: AppHandle) -> CommandResult {
 #[tauri::command]
 fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> CardClickResult {
     let state = app.state::<AgentState>();
-    let (result, next) = state.card_click(&card_id, value, trusted);
-    match (result, next) {
-        (CardClickResult::Wrong, Some(challenge)) => card::update(&app, challenge),
-        (CardClickResult::Pass | CardClickResult::Failed, _) => {
-            let app = app.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(PASS_LINGER);
-                card::hide(&app);
-            });
-        }
-        _ => {}
+    let reply = state.card_click(&card_id, value, trusted);
+    if let Some(challenge) = reply.next {
+        card::update(&app, challenge);
     }
-    result
+    if matches!(
+        reply.result,
+        CardClickResult::Pass | CardClickResult::Failed
+    ) {
+        let hide = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(PASS_LINGER);
+            card::hide(&hide);
+        });
+    }
+    if let Some(pass) = reply.pass {
+        let app = app.clone();
+        std::thread::spawn(move || app.state::<AgentState>().finish_pass(pass));
+    }
+    reply.result
 }
 
 /// `card_switch_project`: opens the popover next to the card; the card stays.
@@ -789,6 +911,7 @@ mod tests {
         state: AgentState,
         outbox: Arc<Outbox>,
         clock: Arc<FakeClock>,
+        platform: Arc<FakePlatform>,
         _dir: tempfile::TempDir,
     }
 
@@ -815,7 +938,7 @@ mod tests {
             Arc::new(FileScheduleStore::new(dir.path())),
         );
         let state = AgentState::new(
-            platform,
+            platform.clone(),
             clock.clone(),
             session,
             scheduler,
@@ -828,6 +951,7 @@ mod tests {
             state,
             outbox,
             clock,
+            platform,
             _dir: dir,
         }
     }
@@ -844,13 +968,24 @@ mod tests {
         }
 
         fn checkins(&self) -> Vec<serde_json::Value> {
+            self.events("checkin")
+        }
+
+        fn events(&self, event_type: &str) -> Vec<serde_json::Value> {
             self.outbox
                 .pending(100)
                 .unwrap()
                 .into_iter()
-                .filter(|e| e.event_type == "checkin")
+                .filter(|e| e.event_type == event_type)
                 .map(|e| e.payload)
                 .collect()
+        }
+
+        /// A card that passes; its captures and event, as the command does them.
+        fn pass(&self) {
+            let card = self.card_due();
+            let reply = self.state.card_click(&card.card_id, card.target, true);
+            self.state.finish_pass(reply.pass.unwrap());
         }
     }
 
@@ -916,8 +1051,10 @@ mod tests {
         );
 
         w.clock.advance(chrono::Duration::seconds(4));
-        let (result, next) = w.state.card_click(&card.card_id, card.target, true);
-        assert_eq!((result, next), (CardClickResult::Pass, None));
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        assert_eq!((reply.result, &reply.next), (CardClickResult::Pass, &None));
+        assert!(w.checkins().is_empty(), "queued once the captures are done");
+        w.state.finish_pass(reply.pass.unwrap());
 
         let checkins = w.checkins();
         assert_eq!(checkins.len(), 1);
@@ -925,7 +1062,7 @@ mod tests {
         assert_eq!(checkins[0]["response_ms"], 4000);
         assert!(w.state.scheduler.wake_in().is_some(), "next check-in armed");
         assert_eq!(
-            w.state.card_click(&card.card_id, card.target, true).0,
+            w.state.card_click(&card.card_id, card.target, true).result,
             CardClickResult::Ignored,
             "the card is gone"
         );
@@ -935,14 +1072,15 @@ mod tests {
     fn a_wrong_click_reshuffles_and_two_fail() {
         let w = working();
         let card = w.card_due();
-        let (result, next) = w.state.card_click(&card.card_id, wrong(&card), true);
-        assert_eq!(result, CardClickResult::Wrong);
-        let next = next.unwrap();
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        assert_eq!(reply.result, CardClickResult::Wrong);
+        let next = reply.next.unwrap();
         assert_eq!((next.target, next.wrong_clicks), (card.target, 1));
         assert!(w.checkins().is_empty());
 
-        let (result, _) = w.state.card_click(&card.card_id, wrong(&next), true);
-        assert_eq!(result, CardClickResult::Failed);
+        let reply = w.state.card_click(&card.card_id, wrong(&next), true);
+        assert_eq!(reply.result, CardClickResult::Failed);
+        assert_eq!(reply.pass, None);
         let checkins = w.checkins();
         assert_eq!(checkins[0]["outcome"], "failed");
         assert_eq!(checkins[0]["wrong_clicks"], 2);
@@ -953,18 +1091,63 @@ mod tests {
         let w = working();
         let card = w.card_due();
         assert_eq!(
-            w.state.card_click("someone-else", card.target, true).0,
+            w.state.card_click("someone-else", card.target, true).result,
             CardClickResult::Ignored
         );
         assert_eq!(
-            w.state.card_click(&card.card_id, card.target, false).0,
+            w.state.card_click(&card.card_id, card.target, false).result,
             CardClickResult::Ignored
         );
         assert_eq!(
-            w.state.card_click(&card.card_id, 0, true).0,
+            w.state.card_click(&card.card_id, 0, true).result,
             CardClickResult::Ignored
         );
         assert!(w.checkins().is_empty());
+    }
+
+    #[test]
+    fn a_pass_lists_its_captures_and_queues_the_files() {
+        let w = working();
+        w.pass();
+        let checkins = w.checkins();
+        assert_eq!(
+            checkins[0]["object_keys"],
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+        assert!(checkins[0].get("capture_errors").is_none());
+        assert_eq!(w.outbox.stats().unwrap().uploads, 2);
+    }
+
+    #[test]
+    fn a_failed_capture_still_passes_and_repeated_permission_failures_report_it() {
+        let w = working();
+        w.platform
+            .update(|s| s.permissions.screen = PermissionState::Denied);
+        w.pass();
+        let first = &w.checkins()[0];
+        assert_eq!(first["outcome"], "pass");
+        assert_eq!(first["capture_errors"]["screen"], "permission_missing");
+        assert_eq!(first["object_keys"], serde_json::json!(["webcam.webp"]));
+        assert!(
+            w.events("permission_change").is_empty(),
+            "once isn't repeated"
+        );
+
+        w.pass();
+        let changes = w.events("permission_change");
+        assert_eq!(
+            changes,
+            [serde_json::json!({ "screen": "denied", "camera": "granted" })]
+        );
+        w.pass();
+        assert_eq!(w.events("permission_change").len(), 1, "reported once");
+
+        w.platform
+            .update(|s| s.permissions.screen = PermissionState::Granted);
+        w.pass();
+        let changes = w.events("permission_change");
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[1]["screen"], "granted", "reported back");
     }
 
     #[test]
