@@ -23,7 +23,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
 | #17 | Device registration, revocation, deactivation (backend) | PR open | #75 |
-| #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | |
+| #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | #76 |
+| #24 | Capture upload policy | In progress: bucket + policy PR open; agent uploader waits for the outbox (#22) | |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
@@ -65,6 +66,10 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - Device token (AGT-02): implemented as the Supabase JWT plus a `device_id` claim added by an Auth access-token hook, bound per Auth session (`device_sessions`, not in the LLD). The hook refuses tokens for deactivated users and revoked devices. Agent RPCs still take `device_id` (LLD) and check it matches the claim.
 - #23 / LLD: `agent_events` returns `acked_seq` (highest contiguous seq processed) next to the LLD's accepted / duplicates / rejected / server_time, so the agent can drop everything at or below it. Rejected events are stored in `agent_event_rejections` so they count toward it.
 - LLD pg_cron table lists 6 jobs; there are 7 (`send_emails` missing). Fix when touching the LLD.
+
+## Notes for later issues
+
+- #24 uploader: Storage answers denials with HTTP 400 and the real status in the JSON body (`statusCode` "409" = already uploaded, treat as done; "403" = policy refused, don't retry).
 
 ## Environment notes
 
