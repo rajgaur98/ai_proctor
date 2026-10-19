@@ -1,27 +1,5 @@
-/* Tokens from the Claude Design StyleSheet (light, then dark). */
-:root {
-  --bg: #f5f5f2;
-  --panel: #ffffff;
-  --line: #e4e4df;
-  --ink: #16171a;
-  --ink2: #4b4e54;
-  --ink3: #6c7077;
-  --acc: #2f5d9e;
-  --soff: oklch(0.8 0.005 255);
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1012;
-    --panel: #18191c;
-    --line: #2a2c31;
-    --ink: #ededeb;
-    --ink2: #b6b8bd;
-    --ink3: #8f939a;
-    --acc: #7fa6e3;
-    --soff: oklch(0.45 0.005 255);
-  }
-}
+@import "./tokens.css";
+
 html,
 body {
   margin: 0;

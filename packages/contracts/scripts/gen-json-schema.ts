@@ -8,6 +8,8 @@ import { z } from "zod";
 import { AgentEvent } from "../src/events.ts";
 import {
   AgentStatus,
+  CardChallenge,
+  CardClickResult,
   CommandResult,
   PermissionState,
   Permissions,
@@ -15,7 +17,15 @@ import {
 } from "../src/ipc.ts";
 
 const registry = z.registry<{ id: string }>();
-for (const schema of [PermissionState, Permissions, ShiftState, AgentStatus, CommandResult]) {
+for (const schema of [
+  PermissionState,
+  Permissions,
+  ShiftState,
+  AgentStatus,
+  CommandResult,
+  CardChallenge,
+  CardClickResult,
+]) {
   const id = schema.meta()?.id;
   if (typeof id !== "string") throw new Error("every IPC schema needs a meta id");
   registry.add(schema, { id });
