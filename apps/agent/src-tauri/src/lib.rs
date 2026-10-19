@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use account::Account;
+use agent_core::activity::{self, ActivityPolicy, Sampler};
 use agent_core::auth::{AuthError, REDIRECT_URL};
 use agent_core::capture::{self, CapturePolicy, Captured};
 use agent_core::checkin::{Card, CardPolicy, ClickResult, Finished};
@@ -103,6 +104,8 @@ pub struct AgentState {
     card_policy: CardPolicy,
     capture_policy: CapturePolicy,
     permission_watch: Mutex<PermissionWatch>,
+    /// Activity sampling (#25); org settings arrive with the policy work.
+    activity: Mutex<Sampler>,
     random: Arc<dyn Random>,
     /// `None` when this build has no server configured (see `account::api_config`).
     account: Option<Arc<Account>>,
@@ -130,6 +133,7 @@ impl AgentState {
             card_policy: CardPolicy::default(),
             capture_policy: CapturePolicy::default(),
             permission_watch: Mutex::new(PermissionWatch::default()),
+            activity: Mutex::new(Sampler::new(ActivityPolicy::default())),
             random: Arc::new(ThreadRandom),
             account,
             last_redirect: Mutex::new(None),
@@ -302,6 +306,36 @@ impl AgentState {
             }
         }
         watch.reported_missing = missing;
+    }
+
+    /// ACT-01: samples the frontmost app while working (and unlocked); anything
+    /// else ends the current buckets. Finished minutes go to the outbox.
+    fn activity_tick(&self) {
+        let collecting = self.session.lock().unwrap().collecting();
+        let foreground = collecting.then(|| self.platform.foreground()).flatten();
+        let now = self.clock.now();
+        let sessions = {
+            let mut sampler = self.activity.lock().unwrap();
+            if collecting {
+                sampler.sample(now, foreground)
+            } else {
+                sampler.stop()
+            }
+        };
+        let Some(outbox) = &self.outbox else {
+            return;
+        };
+        for session in sessions {
+            if let Err(error) = outbox.append(
+                "app_session",
+                session.end,
+                self.clock.mono_ms(),
+                session.payload(),
+                now,
+            ) {
+                tracing::error!(%error, "activity not queued");
+            }
+        }
     }
 
     fn challenge(&self, card: &Card) -> CardChallenge {
@@ -702,6 +736,7 @@ pub fn run() {
             spawn_sync(app.handle().clone());
             card::create(app.handle())?;
             spawn_card_runner(app.handle().clone());
+            spawn_activity(app.handle().clone());
 
             let handle = app.handle().clone();
             app.deep_link()
@@ -761,6 +796,13 @@ fn spawn_card_runner(app: AppHandle) {
             state.scheduler.wake_in().unwrap_or(TICK).min(TICK)
         };
         std::thread::sleep(wait);
+    });
+}
+
+fn spawn_activity(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(activity::SAMPLE_EVERY);
+        app.state::<AgentState>().activity_tick();
     });
 }
 
@@ -1148,6 +1190,38 @@ mod tests {
         let changes = w.events("permission_change");
         assert_eq!(changes.len(), 2);
         assert_eq!(changes[1]["screen"], "granted", "reported back");
+    }
+
+    #[test]
+    fn activity_is_sampled_while_working_and_flushed_on_a_break() {
+        let w = working();
+        w.platform.update(|s| {
+            s.foreground = Some(agent_core::platform::Foreground {
+                app: "Safari".into(),
+                title: Some("Docs".into()),
+                domain: Some("docs.example.com".into()),
+            })
+        });
+        // 09:00:00 .. 09:01:30 in 5 s steps.
+        for _ in 0..=18 {
+            w.state.activity_tick();
+            w.clock.advance(chrono::Duration::seconds(5));
+        }
+        let sessions = w.events("app_session");
+        assert_eq!(sessions.len(), 1, "the 09:00 minute is over");
+        assert_eq!(sessions[0]["app"], "Safari");
+        assert_eq!(sessions[0]["start"], "2026-10-19T09:00:00Z");
+        assert_eq!(sessions[0]["end"], "2026-10-19T09:01:00Z");
+
+        w.state.act("start a break", |s| s.start_break(None));
+        w.state.activity_tick();
+        let sessions = w.events("app_session");
+        assert_eq!(sessions.len(), 2, "the open minute is sent when work stops");
+        assert_eq!(sessions[1]["end"], "2026-10-19T09:01:30Z");
+
+        w.clock.advance(chrono::Duration::seconds(5));
+        w.state.activity_tick();
+        assert_eq!(w.events("app_session").len(), 2, "nothing on a break");
     }
 
     #[test]

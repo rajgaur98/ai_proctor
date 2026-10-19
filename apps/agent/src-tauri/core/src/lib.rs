@@ -1,6 +1,7 @@
 //! Platform-independent agent core. Everything here runs in CI on Linux with
 //! `FakePlatform`; OS calls live behind the `Platform` trait in `agent-platform`.
 
+pub mod activity;
 pub mod auth;
 pub mod capture;
 pub mod checkin;
