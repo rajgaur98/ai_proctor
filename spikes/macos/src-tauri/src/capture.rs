@@ -24,9 +24,10 @@ use objc2_core_graphics::{
 };
 use objc2_core_media::CMSampleBuffer;
 use objc2_core_video::{
-    kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_32BGRA, CVPixelBufferGetBaseAddress,
-    CVPixelBufferGetBytesPerRow, CVPixelBufferGetHeight, CVPixelBufferGetWidth,
-    CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
+    kCVPixelBufferHeightKey, kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey,
+    kCVPixelFormatType_32BGRA, CVPixelBufferGetBaseAddress, CVPixelBufferGetBytesPerRow,
+    CVPixelBufferGetHeight, CVPixelBufferGetWidth, CVPixelBufferLockBaseAddress,
+    CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
 };
 use objc2_foundation::{
     NSArray, NSDictionary, NSError, NSNumber, NSObject, NSObjectProtocol, NSString,
@@ -182,7 +183,11 @@ fn capture_screens(dir: &Path, mode: ScreenMode) -> Vec<usize> {
         return Vec::new();
     };
     let Some(content) = content else {
-        log(&format!("SCREEN shareable content error: {error:?}"));
+        // After a revoke + "Later", CGPreflightScreenCaptureAccess can still say
+        // true while ScreenCaptureKit refuses: treat it as the permission missing.
+        log(&format!(
+            "SCREEN shareable content error: {error:?} (CAP-08 reason: permission_missing)"
+        ));
         return Vec::new();
     };
     let displays = unsafe { content.displays() };
@@ -388,9 +393,20 @@ impl FrameGrabber {
             "WEBCAM frame {n} at {:.0} ms, {w}x{h}, mean luma {luma:.1}",
             ivars.started.elapsed().as_secs_f64() * 1000.0
         ));
-        let settled = n >= 3 && last.is_some_and(|prev| (luma - prev).abs() < 2.0);
+        // Warm-up frames are black and identical, so "stable" alone isn't enough:
+        // also require real exposure. SPIKE_MIN_LUMA / SPIKE_MAX_FRAMES tune it.
+        let min_luma: f64 = std::env::var("SPIKE_MIN_LUMA")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(15.0);
+        let max_frames: u32 = std::env::var("SPIKE_MAX_FRAMES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(90);
+        let settled =
+            n >= 3 && luma >= min_luma && last.is_some_and(|prev| (luma - prev).abs() < 2.0);
         *last = Some(luma);
-        if settled || n >= 30 {
+        if settled || n >= max_frames {
             if let Some(tx) = ivars.tx.lock().unwrap().take() {
                 let _ = tx.send((w, h, rgb, n));
             }
@@ -425,12 +441,24 @@ fn capture_webcam(dir: &Path) -> Option<usize> {
         session.beginConfiguration();
         session.setSessionPreset(AVCaptureSessionPreset320x240);
         session.addInput(&input);
-        // Ask for BGRA so frames copy straight into RGB.
-        let key: &NSString =
-            &*(kCVPixelBufferPixelFormatTypeKey as *const CFString as *const NSString);
+        // BGRA scaled to 320x240 by the capture pipeline: the 320x240 session preset
+        // alone was ignored by the built-in camera (frames came at 1920x1080).
+        let ns = |k: &CFString| -> &NSString { &*(k as *const CFString as *const NSString) };
         let format = NSNumber::new_u32(kCVPixelFormatType_32BGRA);
-        let settings =
-            NSDictionary::<NSString, AnyObject>::from_slices(&[key], &[&*format as &AnyObject]);
+        let width = NSNumber::new_u32(320);
+        let height = NSNumber::new_u32(240);
+        let settings = NSDictionary::<NSString, AnyObject>::from_slices(
+            &[
+                ns(kCVPixelBufferPixelFormatTypeKey),
+                ns(kCVPixelBufferWidthKey),
+                ns(kCVPixelBufferHeightKey),
+            ],
+            &[
+                &*format as &AnyObject,
+                &*width as &AnyObject,
+                &*height as &AnyObject,
+            ],
+        );
         output.setVideoSettings(Some(&settings));
         output.setAlwaysDiscardsLateVideoFrames(true);
         output
