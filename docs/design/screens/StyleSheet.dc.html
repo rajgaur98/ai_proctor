@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:1200px;box-sizing:border-box;background:var(--bg);color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;padding:40px;display:flex;flex-direction:column;gap:28px;border:1px solid var(--line);border-radius:12px">
+  <div style="display:flex;align-items:center;gap:16px">
+    <div style="width:48px;height:48px;border-radius:13px;background:var(--acc);position:relative;flex:none"><div style="position:absolute;left:22px;top:11px;width:4px;height:15px;background:var(--accink);border-radius:2px"></div><div style="position:absolute;left:22px;top:22px;width:13px;height:4px;background:var(--accink);border-radius:2px"></div></div>
+    <div>
+      <div style="font-size:30px;font-weight:600;letter-spacing:-0.03em">AI Proctor</div>
+      <div style="font-size:13.5px;color:var(--ink2);margin-top:2px">Style sheet · {{ themeName }} · working name. Mark: two clock hands — time, not watching.</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <span style="font-size:13px;font-weight:600;color:var(--ink2)">Colour · neutrals &amp; accent</span>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+        <sc-for list="{{ swatches }}" as="s" hint-placeholder-count="12">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="{{ s.chip }}"></span>
+            <span style="font-size:12px;font-weight:500">{{ s.name }}</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">{{ s.val }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size:12px;line-height:1.5;color:var(--ink2)">One accent (steel blue) for actions and links only. Status never uses the accent.</span>
+    </div>
+
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:10px">
+      <span style="font-size:13px;font-weight:600;color:var(--ink2)">Status · colour + shape + label, ordered by lightness</span>
+      <sc-for list="{{ statuses }}" as="s" hint-placeholder-count="10">
+        <div style="display:grid;grid-template-columns:190px 1fr 70px;gap:10px;align-items:center;font-size:12.5px">
+          <span><span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px 0 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-weight:500"><span style="{{ s.dot }}"></span>{{ s.label }}</span></span>
+          <span style="color:var(--ink2)">{{ s.use }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3);text-align:right">{{ s.l }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px">
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <span style="font-size:13px;font-weight:600;color:var(--ink2)">Type · Geist and Geist Mono (times, durations, counts)</span>
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--line);padding-bottom:10px"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:32px;font-weight:500;letter-spacing:-0.04em">5 h 12 min</span><span style="margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">Figure · Mono 32/500</span></div>
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--line);padding-bottom:10px"><span style="font-size:24px;font-weight:600;letter-spacing:-0.025em">Live team</span><span style="margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">Page title · 24/600</span></div>
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--line);padding-bottom:10px"><span style="font-size:17px;font-weight:600;letter-spacing:-0.015em">Missed check-in · 14:03</span><span style="margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">Section · 17/600</span></div>
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--line);padding-bottom:10px"><span style="font-size:14px">Nothing is being collected while you're paused.</span><span style="margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3);white-space:nowrap">Body · 14/400</span></div>
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--line);padding-bottom:10px"><span style="font-size:12.5px;color:var(--ink2)">Your view is logged and visible to Lucas.</span><span style="margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3);white-space:nowrap">Small · 12.5/400</span></div>
+      <div style="display:flex;align-items:baseline;gap:16px"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px">09:00–18:00 IST</span><span style="margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">Time · Mono 12.5</span></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px">
+        <span style="font-size:13px;font-weight:600;color:var(--ink2)">Buttons · 44 px minimum</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button style="height:44px;padding:0 18px;border-radius:9px;border:none;background:var(--acc);color:var(--accink);font-family:inherit;font-size:14px;font-weight:600">Approve week</button>
+          <button style="height:44px;padding:0 16px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500">Break</button>
+          <button style="height:44px;padding:0 14px;border-radius:9px;border:none;background:transparent;color:var(--ink2);font-family:inherit;font-size:14px;font-weight:500">Clock out</button>
+          <button style="height:44px;padding:0 18px;border-radius:9px;border:none;background:var(--acc);color:var(--accink);font-family:inherit;font-size:14px;font-weight:600;opacity:0.45">Disabled</button>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <div style="display:flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden"><span style="height:44px;display:flex;align-items:center;padding:0 16px;background:var(--ink);color:var(--panel);font-size:13.5px;font-weight:500">Keep</span><span style="height:44px;display:flex;align-items:center;padding:0 16px;border-left:1px solid var(--line2);font-size:13.5px;font-weight:500">Exclude</span></div>
+          <span style="height:44px;box-sizing:border-box;display:flex;align-items:center;padding:0 14px;border-radius:9px;border:1.5px solid var(--acc);background:var(--accsoft);font-size:13.5px;font-weight:500">Phone call</span>
+          <a style="color:var(--acctext);font-size:13.5px;font-weight:500">View day</a>
+        </div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px">
+        <span style="font-size:13px;font-weight:600;color:var(--ink2)">Timeline · flagged time is hatched</span>
+        <div style="display:flex;gap:1px;height:28px;border-radius:6px;overflow:hidden;background:var(--line)"><sc-for list="{{ segs }}" as="g" hint-placeholder-count="6"><span style="{{ g.style }}"></span></sc-for></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink2)"><sc-for list="{{ segs }}" as="g" hint-placeholder-count="6"><span style="display:flex;align-items:center;gap:6px"><span style="{{ g.key }}"></span>{{ g.label }}</span></sc-for></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:1000},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const VALS = {
+  light: { bg: '#f5f5f2', panel: '#ffffff', sunk: '#f0f0ec', line: '#e4e4df', line2: '#cfcfc9', ink: '#16171a', ink2: '#4b4e54', ink3: '#6c7077', acc: '#2f5d9e', accsoft: '#e8eef8', acctext: '#2a5592', warnbg: '#fbf3df' },
+  dark: { bg: '#0f1012', panel: '#18191c', sunk: '#1f2024', line: '#2a2c31', line2: '#3b3e44', ink: '#ededeb', ink2: '#b6b8bd', ink3: '#8f939a', acc: '#7fa6e3', accsoft: '#1d2a3f', acctext: '#93b6ee', warnbg: '#2a2416' }
+};
+const ST = [
+  ['idle', 'Idle', 'c', 'No input for 5+ min while clocked in', [0.84, 0.86]],
+  ['off', 'Off shift', 'dash', 'Outside scheduled hours', [0.80, 0.45]],
+  ['break', 'On break', 'c', 'Break started from tray', [0.76, 0.80]],
+  ['away', 'Away', 'c', 'Missed check-in or long idle', [0.70, 0.76]],
+  ['offline', 'Offline', 'ring', 'App closed or no connection', [0.70, 0.58]],
+  ['active', 'Active', 'c', 'Working, check-ins passing', [0.62, 0.72]],
+  ['paused', 'Paused', 'sq', 'Nothing collected, allowance ticking', [0.60, 0.66]],
+  ['meeting', 'In meeting', 'c', 'Calendar or call app detected', [0.55, 0.68]],
+  ['tamper', 'Capture blocked', 'dia', 'Tamper: permission off or capture blocked', [0.54, 0.66]],
+  ['locked', 'Away · locked', 'c', 'Screen locked while clocked in', [0.48, 0.58]]
+];
+const hatch = c => `repeating-linear-gradient(135deg, ${c} 0 4px, color-mix(in oklch, ${c} 35%, var(--panel)) 4px 8px)`;
+class Component extends DCLogic {
+  renderVals() {
+    const dark = (this.props.theme ?? 'light') === 'dark';
+    const V = VALS[dark ? 'dark' : 'light'];
+    const sw = (name, key, border) => ({ name, val: V[key], chip: { height: 44, borderRadius: 8, background: `var(--${key})`, border: '1px solid var(--line)', display: 'block' } });
+    const swatches = [sw('Background', 'bg'), sw('Panel', 'panel'), sw('Sunk', 'sunk'), sw('Line', 'line'), sw('Line strong', 'line2'), sw('Ink', 'ink'), sw('Ink 2', 'ink2'), sw('Ink 3', 'ink3'), sw('Accent', 'acc'), sw('Accent soft', 'accsoft'), sw('Accent text', 'acctext'), sw('Warning bg', 'warnbg')];
+    const statuses = ST.map(([k, label, sh, use, L]) => {
+      const c = `var(--s${k})`;
+      return { label, use, l: `L ${L[dark ? 1 : 0].toFixed(2)}`, dot: { width: 8, height: 8, flex: 'none', boxSizing: 'border-box', borderRadius: sh === 'sq' ? 2 : sh === 'dia' ? 1 : '50%', background: sh === 'ring' || sh === 'dash' ? 'transparent' : c, border: sh === 'ring' ? `2px solid ${c}` : sh === 'dash' ? `1.5px dashed ${c}` : 'none', transform: sh === 'dia' ? 'rotate(45deg) scale(0.85)' : 'none' } };
+    });
+    const segs = [['Verified', 'var(--sactive)', 4], ['Meeting', 'var(--smeeting)', 2], ['Idle (flagged)', hatch('var(--sidle)'), 1], ['Unverified (flagged)', hatch('var(--saway)'), 1.5], ['Pause', 'var(--spaused)', 1], ['Break', 'var(--sbreak)', 2]]
+      .map(([label, bg, n]) => ({ label, style: { flex: n, background: bg, display: 'block' }, key: { width: 16, height: 9, borderRadius: 2, background: bg, display: 'block' } }));
+    return { themeName: dark ? 'Dark' : 'Light', swatches, statuses, segs };
+  }
+}
+</script>
+</body>
+</html>

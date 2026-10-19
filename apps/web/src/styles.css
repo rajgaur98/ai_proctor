@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Tokens from the Claude Design StyleSheet (light, then dark). Status colours are
+   used only with a shape and a label, never alone (NFR-UX-01). */
+:root {
+  --bg: #f5f5f2;
+  --panel: #ffffff;
+  --sunk: #f0f0ec;
+  --line: #e4e4df;
+  --line2: #cfcfc9;
+  --ink: #16171a;
+  --ink2: #4b4e54;
+  --ink3: #6c7077;
+  --acc: #2f5d9e;
+  --accink: #ffffff;
+  --accsoft: #e8eef8;
+  --acctext: #2a5592;
+  --warnbg: #fbf3df;
+  --warnline: #ecd9a6;
+  --warnink: #5e4410;
+  --sactive: oklch(0.62 0.15 150);
+  --sidle: oklch(0.84 0.14 88);
+  --saway: oklch(0.7 0.15 55);
+  --slocked: oklch(0.48 0.11 45);
+  --sbreak: oklch(0.76 0.1 205);
+  --spaused: oklch(0.6 0.03 255);
+  --smeeting: oklch(0.55 0.15 295);
+  --soffline: oklch(0.7 0.01 255);
+  --stamper: oklch(0.54 0.18 25);
+  --soff: oklch(0.8 0.005 255);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1012;
+    --panel: #18191c;
+    --sunk: #1f2024;
+    --line: #2a2c31;
+    --line2: #3b3e44;
+    --ink: #ededeb;
+    --ink2: #b6b8bd;
+    --ink3: #8f939a;
+    --acc: #7fa6e3;
+    --accink: #0c1422;
+    --accsoft: #1d2a3f;
+    --acctext: #93b6ee;
+    --warnbg: #2a2416;
+    --warnline: #4a3d1f;
+    --warnink: #f0d89a;
+    --sactive: oklch(0.72 0.15 150);
+    --sidle: oklch(0.86 0.13 88);
+    --saway: oklch(0.76 0.14 55);
+    --slocked: oklch(0.58 0.11 45);
+    --sbreak: oklch(0.8 0.09 205);
+    --spaused: oklch(0.66 0.03 255);
+    --smeeting: oklch(0.68 0.14 295);
+    --soffline: oklch(0.58 0.01 255);
+    --stamper: oklch(0.66 0.17 25);
+    --soff: oklch(0.45 0.005 255);
+  }
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-sunk: var(--sunk);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-ink3: var(--ink3);
+  --color-acc: var(--acc);
+  --color-accink: var(--accink);
+  --color-accsoft: var(--accsoft);
+  --color-acctext: var(--acctext);
+  --color-warnbg: var(--warnbg);
+  --color-warnline: var(--warnline);
+  --color-warnink: var(--warnink);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}

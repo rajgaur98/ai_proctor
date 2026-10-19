@@ -825,6 +825,15 @@ export type Database = {
       };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
+      create_org: {
+        Args: {
+          full_name?: string;
+          org_name: string;
+          region_preset?: Database["public"]["Enums"]["region_preset"];
+          timezone?: string;
+        };
+        Returns: string;
+      };
       register_device: {
         Args: {
           agent_version: string;
