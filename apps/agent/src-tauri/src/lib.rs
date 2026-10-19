@@ -2,10 +2,15 @@
 //! defined in `packages/contracts`. Agent logic lives in `agent-core`.
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use agent_core::contracts::{AgentStatus, ShiftState};
+use agent_core::clock::{Clock, SystemClock};
+use agent_core::contracts::AgentStatus;
 use agent_core::outbox::{Outbox, OutboxError};
 use agent_core::platform::Platform;
+use agent_core::session::{
+    EventSink, FileSessionStore, OutboxSink, Session, SessionPolicy, TransitionError,
+};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WindowEvent};
@@ -15,28 +20,55 @@ const POPOVER: &str = "popover";
 /// Event names; must match `ipcEvents` in packages/contracts/src/ipc.ts.
 pub const EVENT_STATUS_CHANGED: &str = "status_changed";
 
+/// How often the session's time-driven rules run (auto clock-in, pause end,
+/// forgotten clock-out).
+const TICK: Duration = Duration::from_secs(5);
+
 pub struct AgentState {
     platform: Arc<dyn Platform>,
-    shift: Mutex<ShiftState>,
-    signed_in: Mutex<bool>,
+    session: Mutex<Session>,
 }
 
 impl AgentState {
-    pub fn new(platform: Arc<dyn Platform>) -> Self {
+    pub fn new(platform: Arc<dyn Platform>, session: Session) -> Self {
         Self {
             platform,
-            shift: Mutex::new(ShiftState::OffShift),
-            signed_in: Mutex::new(false),
+            session: Mutex::new(session),
         }
     }
 
     pub fn status(&self) -> AgentStatus {
+        let session = self.session.lock().unwrap();
         agent_core::status::agent_status(
             self.platform.as_ref(),
-            *self.shift.lock().unwrap(),
-            *self.signed_in.lock().unwrap(),
+            session.shift(),
+            session.signed_in(),
             env!("CARGO_PKG_VERSION"),
         )
+    }
+
+    /// Runs a transition; failures are logged and shown as a notification.
+    fn act(&self, what: &str, f: impl FnOnce(&mut Session) -> Result<(), TransitionError>) {
+        if let Err(error) = f(&mut self.session.lock().unwrap()) {
+            tracing::warn!(%error, what, "transition refused");
+            self.platform
+                .notify(&format!("Couldn't {what}"), &error.to_string());
+        }
+    }
+}
+
+/// Used when the outbox is unavailable: every transition fails, so nothing is
+/// recorded or collected without the encrypted queue.
+struct UnavailableSink;
+
+impl EventSink for UnavailableSink {
+    fn emit(
+        &self,
+        _: &str,
+        _: chrono::DateTime<chrono::Utc>,
+        _: serde_json::Value,
+    ) -> Result<(), String> {
+        Err("the local queue is unavailable (keychain)".into())
     }
 }
 
@@ -62,7 +94,6 @@ fn get_status(state: tauri::State<'_, AgentState>) -> AgentStatus {
 
 pub fn run() {
     tauri::Builder::default()
-        .manage(AgentState::new(agent_platform::current()))
         .invoke_handler(tauri::generate_handler![get_status])
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
@@ -72,7 +103,8 @@ pub fn run() {
             Box::leak(Box::new(guard));
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "agent started");
 
-            let outbox = match open_outbox(&app.path().app_data_dir()?) {
+            let data_dir = app.path().app_data_dir()?;
+            let outbox = match open_outbox(&data_dir) {
                 Ok(outbox) => {
                     tracing::info!(stats = ?outbox.stats().ok(), "outbox open");
                     Some(Arc::new(outbox))
@@ -82,7 +114,25 @@ pub fn run() {
                     None
                 }
             };
+            let clock: Arc<dyn Clock> = Arc::new(SystemClock::default());
+            let platform = agent_platform::current();
+            let sink: Arc<dyn EventSink> = match &outbox {
+                Some(outbox) => Arc::new(OutboxSink { outbox: outbox.clone(), clock: clock.clone() }),
+                None => Arc::new(UnavailableSink),
+            };
+            // Org policy (auto clock-in, shifts) arrives with register_device / the
+            // heartbeat once sign-in (#16) lands; until then, defaults.
+            let session = Session::new(
+                SessionPolicy::default(),
+                clock,
+                platform.clone(),
+                sink,
+                Arc::new(FileSessionStore::new(&data_dir)),
+            );
+            tracing::info!(shift = ?session.shift(), signed_in = session.signed_in(), "session restored");
+            app.manage(AgentState::new(platform, session));
             app.manage(OutboxState(outbox));
+            spawn_ticker(app.handle().clone());
 
             // Menu bar agent: no Dock icon, never takes over as the active app.
             #[cfg(target_os = "macos")]
@@ -105,19 +155,41 @@ pub fn run() {
         .expect("error while running the agent");
 }
 
+fn spawn_ticker(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(TICK);
+        let state = app.state::<AgentState>();
+        let before = state.status();
+        state.act("update the shift", |s| s.tick());
+        let after = state.status();
+        if after != before {
+            let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, after);
+        }
+    });
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+    let clock_in = MenuItem::with_id(app, "clock_in", "Clock in", true, None::<&str>)?;
+    let clock_out = MenuItem::with_id(app, "clock_out", "Clock out", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit AI Proctor", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&quit])?;
+    let menu = Menu::with_items(app, &[&clock_in, &clock_out, &quit])?;
     TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().cloned().expect("bundle icon"))
         .tooltip("AI Proctor")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {
-            if event.id.as_ref() == "quit" {
-                tracing::info!("quit from tray menu");
-                app.exit(0);
+            let state = app.state::<AgentState>();
+            match event.id.as_ref() {
+                "clock_in" => state.act("clock in", |s| s.clock_in(None)),
+                "clock_out" => state.act("clock out", |s| s.clock_out()),
+                "quit" => {
+                    tracing::info!("quit from tray menu");
+                    app.exit(0);
+                }
+                _ => {}
             }
+            let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -169,18 +241,59 @@ fn toggle_popover(app: &AppHandle, tray: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use agent_core::contracts::PermissionState;
+    use agent_core::clock::FakeClock;
+    use agent_core::contracts::{PermissionState, ShiftState};
     use agent_core::fake::FakePlatform;
 
     use super::*;
 
+    fn state(dir: &std::path::Path, sink: Arc<dyn EventSink>) -> AgentState {
+        let platform = Arc::new(FakePlatform::default());
+        let session = Session::new(
+            SessionPolicy::default(),
+            Arc::new(FakeClock::at("2026-10-19T09:00:00Z")),
+            platform.clone(),
+            sink,
+            Arc::new(FileSessionStore::new(dir)),
+        );
+        AgentState::new(platform, session)
+    }
+
     #[test]
     fn status_starts_off_shift_and_signed_out() {
-        let state = AgentState::new(Arc::new(FakePlatform::default()));
-        let status = state.status();
+        let dir = tempfile::tempdir().unwrap();
+        let status = state(dir.path(), Arc::new(UnavailableSink)).status();
         assert_eq!(status.shift, ShiftState::OffShift);
         assert!(!status.signed_in);
         assert_eq!(status.agent_version, env!("CARGO_PKG_VERSION"));
         assert_eq!(status.permissions.screen, PermissionState::Granted);
+    }
+
+    #[test]
+    fn without_the_outbox_nothing_can_be_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state(dir.path(), Arc::new(UnavailableSink));
+        state.session.lock().unwrap().sign_in();
+        state.act("clock in", |s| s.clock_in(None));
+        assert_eq!(state.status().shift, ShiftState::OffShift);
+    }
+
+    #[test]
+    fn clocking_in_writes_to_the_outbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let outbox = Arc::new(Outbox::open(&dir.path().join("outbox"), &[1u8; 32]).unwrap());
+        let clock = Arc::new(FakeClock::at("2026-10-19T09:00:00Z"));
+        let state = state(
+            dir.path(),
+            Arc::new(OutboxSink {
+                outbox: outbox.clone(),
+                clock,
+            }),
+        );
+        state.session.lock().unwrap().sign_in();
+        state.act("clock in", |s| s.clock_in(None));
+        assert_eq!(state.status().shift, ShiftState::Working);
+        let pending = outbox.pending(10).unwrap();
+        assert_eq!(pending[0].event_type, "clock_in");
     }
 }
