@@ -32,7 +32,7 @@ test("a manager gets the team navigation", async ({ page }) => {
   for (const label of ["Live team", "Timesheets", "Projects", "Policy"]) {
     await expect(nav.getByRole("link", { name: label })).toBeVisible();
   }
-  await expect(page.getByText("Acme Remote")).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Acme Remote")).toBeVisible();
   await expectNoA11yViolations(page);
 });
 
@@ -59,7 +59,7 @@ test("a new owner signs up and creates their organisation", async ({ page }) => 
   await page.getByLabel("Organisation name").fill("NewCo");
   await page.getByRole("button", { name: "Create organisation" }).click();
   await expect(page).toHaveURL(/\/team$/);
-  await expect(page.getByText("NewCo")).toBeVisible();
+  await expect(page.getByRole("banner").getByText("NewCo")).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "People" }),
   ).toBeVisible();

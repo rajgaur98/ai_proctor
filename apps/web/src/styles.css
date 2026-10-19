@@ -12,7 +12,9 @@
   --line2: #cfcfc9;
   --ink: #16171a;
   --ink2: #4b4e54;
-  --ink3: #6c7077;
+  /* Design value #6c7077 is 4.35:1 on --sunk; darkened just enough for WCAG AA
+     (4.55:1) since table headers and hovered rows put small ink3 text on sunk. */
+  --ink3: #696d74;
   --acc: #2f5d9e;
   --accink: #ffffff;
   --accsoft: #e8eef8;

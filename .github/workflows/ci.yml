@@ -172,7 +172,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm supabase start -x studio,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
+      - run: pnpm supabase start -x studio,imgproxy,edge-runtime,postgres-meta,supavisor
       - name: Point the dashboard at the local stack
         run: |
           eval "$(pnpm --silent supabase status -o env | grep -E '^(API_URL|ANON_KEY)=')"

@@ -19,7 +19,7 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #8 | Monorepo setup | Merged | #68 |
 | #9 | Local Supabase + first migration | Merged | #69 |
 | #10 | CI | Merged | #70 |
-| #11, #13, #14 | Week-1 spikes (macOS) | Draft PRs, manual checks pending Raj | #71, #72, #73 |
+| #11, #13, #14 | Week-1 spikes (macOS) | Done; PRs open (#13 / #14 keep their Windows halves open) | #71, #72, #73 |
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
 | #17 | Device registration, revocation, deactivation (backend) | Merged | #75 |
@@ -30,7 +30,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #19 | Check-in scheduler | Merged | #80 |
 | #31 | Row-level security, can_view_user() | Merged | #82 |
 | #30 | Status engine and offline sweep | PR open | #83 |
-| #27 | Dashboard skeleton | PR open | |
+| #27 | Dashboard skeleton | PR open | #84 |
+| #32 | Live grid with Realtime | PR open | #85 |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
@@ -42,26 +43,42 @@ Answered by Raj on 19 Oct 2026.
 2. **Merging:** Claude merges every PR once CI is green and the self-review is clean. Raj reviews afterwards.
 3. **Physical testing:** checks that need Raj are batched into one numbered list per spike or milestone; work continues meanwhile. Stop at once only when a result decides what gets built next.
 4. **Windows:** no Windows machine or VM. Windows code must compile and pass tests on the Windows CI runner; real-machine testing and #12 wait until M6.
-5. **Second display:** none available. Multi-monitor cases are tested on one display and listed under "Blocked on Raj".
+5. **Second display:** none available. Multi-monitor cases are tested on one display; see the M6 device-test checklist.
 6. **Labels:** `ci:full` and `needs-device-test` created.
 7. **Turborepo:** used from #8 (overrides "only if builds get slow" in issue #8).
 8. **Windows CI:** the Windows job runs automatically on PRs that touch Windows code, plus on `ci:full` and nightly. Label-only would let stacked PRs go green with no Windows run.
 9. **UI design:** UI work doesn't wait for an export. Sessions read the Claude Design project with `DesignSync` and commit copies of the screens they use under `docs/design/`.
 
+Answered by Raj on 20 Oct 2026.
+
+10. **Agent sign-in (#16):** magic link. The agent sends the email with its PKCE challenge; the link opens the browser and returns via `aiproctor://auth`. Google / Microsoft OAuth added when those apps exist (M6).
+11. **Approvals (#43):** an owner or admin may approve their **own direct reports only**; never anyone else's. (Refines TS-12 / LLD 07; `can_approve_for` changes with #43.)
+12. **Heartbeat during pause or break:** yes, a content-free heartbeat (alive + agent version only), so the person stays Paused / On break, not Offline.
+13. **Accounts (Cloudflare Pages previews, Google/Microsoft OAuth apps, Sentry DSN):** wait for M6. #27 stays open for those items.
+14. **MDM enrollment token (AGT-01):** tracked as P1 #86 under #62; pilot installs are manual.
+15. **Branch protection:** not enabled (needs GitHub Pro). The session merges only on green CI.
+16. **Second display / second Space:** multi-monitor and Spaces testing move to the M6 device-test checklist below.
+17. **Spike checks:** done step by step with Raj on 19–20 Oct; results in `docs/spikes/`.
+
 ## Blocked on Raj
 
 Format: `- #<issue>: <exact question or action needed>`
 
-- #11, #13: multi-monitor cases need a second display (CHK-10 card on a random monitor, CAP-03 one screenshot per display, PRD "≥20 check-ins across two monitors"). Tested on the built-in display only until one is connected.
-- #16: how do employees sign in to the agent? Supabase's browser authorize page only exists for OAuth providers; there is no hosted email+password page, and the PKCE verifier must stay in the agent. Options: (a) **magic link** (agent sends the email with its PKCE challenge, the link opens the browser and returns via `aiproctor://auth`), plus Google / Microsoft OAuth when those apps exist; (b) password sign-in on the dashboard, handed back to the agent through an Edge Function that mints the session. Default if no answer: (a). Needs Google Cloud / Azure app registrations for the OAuth part.
-- #43: TS-12 says admins never approve, and LLD 07 leaves owners out too. If an owner or admin is someone's direct manager (e.g. a small org where the owner manages the team leads), those people's timesheets have no approver. Allow an owner/admin to approve **their own direct reports only**? Default if no answer: yes, direct reports only; never anyone else's.
-- #27: three accounts unlock the rest of the dashboard setup: (1) **Cloudflare** account + API token for Pages preview deploys on every PR; (2) **Google Cloud** and **Microsoft Entra** OAuth apps for "Continue with Google / Microsoft" (the buttons are wired, off until `VITE_AUTH_PROVIDERS` lists them); (3) **Sentry** DSN (wired; off until `VITE_SENTRY_DSN` is set). Create them now, or wait for M6?
-- #23, #30 (before M1): during a pause or break, should the agent still send a heartbeat with no content (no idle, lock or app data), so `offline_sweep` doesn't mark the user Offline? Default if no answer: yes.
-- M6: PRD AGT-01/AGT-02 call for a device token and an MDM enrollment token, but tech-stack and the LLD only use the user's session plus `device_id`, and no issue builds the enrollment token. Should an issue be added?
+- #21 / tech-stack week-1 spike: the target "webcam frame < 1 s" isn't reachable on Raj's Mac: the camera takes ~1.3 s to deliver a usable frame, so the light is on 1.6–1.7 s (spike #13). Accept **≤ 2 s camera-on time** as the target? Default if no answer: yes.
+
+## M6 device-test checklist
+
+Physical checks deferred to pilot readiness:
+- Two monitors: card on a random monitor (CHK-10), one screenshot per display (CAP-03), "≥ 20 check-ins across two monitors" (PRD).
+- Card on a second Space (desktop 2).
+- PowerPoint slideshow presentation detection; Zoom and Microsoft Teams screen-share indicators.
+- macOS 13 (PRD minimum): the `SCStream` single-frame fallback for screenshots.
+- Webcam exposure in a dark room.
+- All Windows items (#12, Windows halves of #13 / #14, #26, #56).
 
 ## Accounts needed later (M6)
 
-Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Signing) · Supabase Pro project · Cloudflare (Pages + R2) · Resend · Sentry · Better Stack. Not needed before M6; everything earlier runs locally.
+Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Signing) · Supabase Pro project · Cloudflare (Pages + R2, also PR previews for #27) · Google Cloud + Microsoft Entra OAuth apps (#27, #16) · Resend · Sentry · Better Stack. Not needed before M6; everything earlier runs locally.
 
 ## Known mismatches (docs win)
 
@@ -75,6 +92,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - Device token (AGT-02): implemented as the Supabase JWT plus a `device_id` claim added by an Auth access-token hook, bound per Auth session (`device_sessions`, not in the LLD). The hook refuses tokens for deactivated users and revoked devices. Agent RPCs still take `device_id` (LLD) and check it matches the claim.
 - #23 / LLD: `agent_events` returns `acked_seq` (highest contiguous seq processed) next to the LLD's accepted / duplicates / rejected / server_time, so the agent can drop everything at or below it. Rejected events are stored in `agent_event_rejections` so they count toward it.
 - #30 Tamper from a heartbeat gap: recorded only when the agent went silent during clock-in with no queued events from the gap and no lock/sleep before it (agent killed or blocked). A gap with queued events is offline work (NFR-REL-01), not Tamper. The PRD's "device online elsewhere" isn't observable server-side.
+- Design token: the light theme's `--ink3` is `#696d74` in code, not the design's `#6c7077`, which is 4.35:1 on `--sunk` (table headers, hovered rows) and fails WCAG AA (NFR-UX-01). Update the Claude Design style sheet to match.
 - LLD pg_cron table lists 6 jobs; there are 7 (`send_emails` missing). Fix when touching the LLD.
 
 ## Notes for later issues

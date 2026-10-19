@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
+import { LiveTeam } from "./features/team/LiveTeam";
 import { homeFor, navFor } from "./lib/nav";
 import { currentSession, needsMfa, type Profile, profileQuery } from "./lib/session";
 import { Mfa } from "./routes/Mfa";
@@ -85,7 +86,7 @@ const indexRoute = createRoute({
 });
 
 /** A page only its roles can open; others go to their own home. */
-function page(path: string, title: string, issue: number) {
+function page(path: string, title: string, issue: number, component?: () => React.JSX.Element) {
   return createRoute({
     getParentRoute: () => appRoute,
     path,
@@ -94,9 +95,19 @@ function page(path: string, title: string, issue: number) {
         throw redirect({ to: homeFor(context.profile.role) });
       }
     },
-    component: () => <Placeholder title={title} issue={issue} />,
+    component: component ?? (() => <Placeholder title={title} issue={issue} />),
   });
 }
+
+/** One employee's day (#33); reached from the live grid. */
+const dayRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/team/$userId",
+  beforeLoad: ({ context }) => {
+    if (context.profile.role === "employee") throw redirect({ to: homeFor(context.profile.role) });
+  },
+  component: () => <Placeholder title="Employee day" issue={33} />,
+});
 
 const routeTree = rootRoute.addChildren([
   signInRoute,
@@ -105,7 +116,8 @@ const routeTree = rootRoute.addChildren([
   mfaRoute,
   appRoute.addChildren([
     indexRoute,
-    page("/team", "Live team", 32),
+    page("/team", "Live team", 32, LiveTeam),
+    dayRoute,
     page("/timesheets", "Timesheets", 43),
     page("/projects", "Projects", 38),
     page("/people", "People", 28),
