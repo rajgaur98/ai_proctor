@@ -4,6 +4,7 @@
 //! from spike #13 (`docs/spikes/capture.md`); they return raw RGBA pixels, encoding
 //! happens in `agent_core::capture`. The rest stays a stub until its feature lands.
 
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -20,6 +21,7 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass};
 use objc2_app_kit::NSWorkspace;
+use objc2_application_services::{AXError, AXIsProcessTrusted, AXUIElement};
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput,
     AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput,
@@ -30,7 +32,7 @@ use objc2_core_audio::{
     kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject,
     AudioObjectGetPropertyData, AudioObjectPropertyAddress,
 };
-use objc2_core_foundation::{CFArray, CFDictionary, CFString};
+use objc2_core_foundation::{CFArray, CFDictionary, CFRetained, CFString, CFType, CFURL};
 use objc2_core_graphics::{
     CGDataProvider, CGDisplayBounds, CGEventSource, CGEventSourceStateID, CGEventType,
     CGGetActiveDisplayList, CGImage, CGPreflightScreenCaptureAccess,
@@ -68,6 +70,38 @@ const MAX_WEBCAM_FRAMES: u32 = 90;
 
 /// `SCStreamErrorUserDeclined`: Screen Recording refused by the user (TCC).
 const SC_ERROR_USER_DECLINED: isize = -3801;
+
+/// Longest window title we keep (the `foreground` contract's maximum).
+const MAX_TITLE_CHARS: usize = 500;
+
+/// Accessibility reads: per-message timeout so a hung browser cannot block, and
+/// the bounds of the search for the page's `AXWebArea` (called every ~5 s).
+const AX_MESSAGE_TIMEOUT_SECS: f32 = 0.25;
+const AX_MAX_DEPTH: usize = 8;
+const AX_MAX_ELEMENTS: usize = 300;
+const AX_BUDGET: Duration = Duration::from_millis(750);
+
+/// Bundle identifiers of the browsers whose address we read (Chromium family,
+/// Safari, Firefox), including beta/dev/canary builds.
+const BROWSER_BUNDLES: [&str; 17] = [
+    "com.google.Chrome",
+    "com.google.Chrome.beta",
+    "com.google.Chrome.dev",
+    "com.google.Chrome.canary",
+    "com.microsoft.edgemac",
+    "com.microsoft.edgemac.Beta",
+    "com.microsoft.edgemac.Dev",
+    "com.microsoft.edgemac.Canary",
+    "com.apple.Safari",
+    "com.apple.SafariTechnologyPreview",
+    "org.mozilla.firefox",
+    "org.mozilla.firefoxdeveloperedition",
+    "org.mozilla.nightly",
+    "com.brave.Browser",
+    "com.brave.Browser.beta",
+    "com.brave.Browser.nightly",
+    "company.thebrowser.Browser",
+];
 
 /// Moves an Objective-C object across threads; it is only read on the other side.
 struct Sendable<T>(T);
@@ -169,17 +203,23 @@ impl Platform for MacPlatform {
         is_presenting(&windows, &display_bounds(), pid)
     }
 
-    /// App name only; titles and domains come with activity sampling (#25).
+    /// Frontmost app, its frontmost window's title (needs Screen Recording, else
+    /// `None`) and, for browsers, the page's domain (needs Accessibility, else
+    /// `None`). Never prompts for either.
     fn foreground(&self) -> Option<Foreground> {
-        let app = NSWorkspace::sharedWorkspace()
-            .frontmostApplication()?
-            .localizedName()?
-            .to_string();
-        Some(Foreground {
-            app,
-            title: None,
-            domain: None,
-        })
+        let front = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+        let app = front.localizedName()?.to_string();
+        let pid = front.processIdentifier();
+        let title = foreground_title(&window_list(), pid);
+        let is_browser = front
+            .bundleIdentifier()
+            .is_some_and(|id| is_browser_bundle(&id.to_string()));
+        let domain = if is_browser {
+            browser_domain(pid)
+        } else {
+            None
+        };
+        Some(Foreground { app, title, domain })
     }
 
     /// One frame per display. Blocks until done (up to 5 s): call from a worker
@@ -270,6 +310,48 @@ fn is_sharing(windows: &[WindowInfo]) -> bool {
         let title = w.title.to_lowercase();
         HINTS.iter().any(|h| title.contains(h))
     })
+}
+
+/// Title of the app's frontmost normal window: the first layer-0 window of `pid`
+/// with a non-empty title, in front-to-back order. Trimmed, capped at
+/// `MAX_TITLE_CHARS`. Titles are empty without Screen Recording, so this is `None`.
+fn foreground_title(windows: &[WindowInfo], pid: i32) -> Option<String> {
+    windows
+        .iter()
+        .filter(|w| w.owner_pid == pid && w.layer == 0)
+        .map(|w| w.title.trim())
+        .find(|t| !t.is_empty())
+        .map(|t| t.chars().take(MAX_TITLE_CHARS).collect())
+}
+
+/// True for the browsers we read a domain from, by bundle identifier.
+fn is_browser_bundle(bundle_id: &str) -> bool {
+    BROWSER_BUNDLES.contains(&bundle_id)
+}
+
+/// Host of an http(s) URL, lower-case, without a leading "www.", port, userinfo,
+/// path, query or fragment. Anything else (file:, about:, chrome://, ...) is `None`.
+/// This is the only part of a URL that ever leaves this function.
+fn domain_of(url: &str) -> Option<String> {
+    let url = url.trim();
+    let (scheme, rest) = url.split_once("://")?;
+    if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")) {
+        return None;
+    }
+    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
+    let host_port = authority.rsplit('@').next().unwrap_or("");
+    let host = if host_port.starts_with('[') {
+        // IPv6 literal: keep the bracketed address, drop any port.
+        &host_port[..host_port.find(']')? + 1]
+    } else {
+        host_port.split(':').next().unwrap_or("")
+    };
+    let host = host.trim_end_matches('.').to_lowercase();
+    let host = host.strip_prefix("www.").unwrap_or(&host);
+    if host.is_empty() || host.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return None;
+    }
+    Some(host.to_string())
 }
 
 /// Copies BGRA rows (ScreenCaptureKit / AVFoundation order) into tightly packed
@@ -853,6 +935,89 @@ fn display_bounds() -> Vec<Rect> {
         .collect()
 }
 
+/// One accessibility attribute of `element`, `None` on any AX error.
+fn ax_attribute(element: &AXUIElement, name: &str) -> Option<CFRetained<CFType>> {
+    let mut value: *const CFType = std::ptr::null();
+    let status = unsafe {
+        element.copy_attribute_value(&CFString::from_str(name), NonNull::from(&mut value))
+    };
+    if status != AXError::Success {
+        return None;
+    }
+    NonNull::new(value.cast_mut()).map(|v| unsafe { CFRetained::from_raw(v) })
+}
+
+/// A URL attribute value, which is a `CFURL` (`AXURL`) or a `CFString` (`AXDocument`).
+fn ax_url_string(value: &CFType) -> Option<String> {
+    if let Some(url) = value.downcast_ref::<CFURL>() {
+        return Some(url.string().to_string());
+    }
+    value.downcast_ref::<CFString>().map(|s| s.to_string())
+}
+
+/// Breadth-first search below `root` for the page's `AXWebArea`, bounded by depth,
+/// element count and time.
+fn find_web_area(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement>> {
+    let deadline = Instant::now() + AX_BUDGET;
+    let mut queue = VecDeque::from([(root, 0usize)]);
+    let mut visited = 0;
+    while let Some((element, depth)) = queue.pop_front() {
+        if visited >= AX_MAX_ELEMENTS || Instant::now() >= deadline {
+            tracing::debug!(visited, "web area search budget spent");
+            return None;
+        }
+        visited += 1;
+        let is_web_area = ax_attribute(&element, "AXRole")
+            .and_then(|r| r.downcast_ref::<CFString>().map(|s| s.to_string()))
+            .is_some_and(|r| r == "AXWebArea");
+        if is_web_area {
+            return Some(element);
+        }
+        if depth >= AX_MAX_DEPTH {
+            continue;
+        }
+        let Some(children) = ax_attribute(&element, "AXChildren") else {
+            continue;
+        };
+        let Ok(children) = children.downcast::<CFArray>() else {
+            continue;
+        };
+        // AXChildren is an array of AXUIElement; the downcast below checks each.
+        let children = unsafe { CFRetained::cast_unchecked::<CFArray<CFType>>(children) };
+        for child in children.iter() {
+            if let Ok(child) = child.downcast::<AXUIElement>() {
+                queue.push_back((child, depth + 1));
+            }
+        }
+    }
+    None
+}
+
+/// Domain of the page in the browser's focused window, via Accessibility. `None`
+/// without the permission (checked without prompting), when the browser exposes no
+/// URL, or when the search runs out of budget. Needs Accessibility only.
+fn browser_domain(pid: i32) -> Option<String> {
+    if !unsafe { AXIsProcessTrusted() } {
+        tracing::debug!("accessibility not granted, no browser domain");
+        return None;
+    }
+    let app = unsafe { AXUIElement::new_application(pid) };
+    unsafe { app.set_messaging_timeout(AX_MESSAGE_TIMEOUT_SECS) };
+    let window = ax_attribute(&app, "AXFocusedWindow")?
+        .downcast::<AXUIElement>()
+        .ok()?;
+    // Chromium and Safari: the web area's AXURL. Firefox may only expose the
+    // window's AXDocument.
+    let from_web_area = find_web_area(window.clone())
+        .and_then(|area| ax_attribute(&area, "AXURL"))
+        .and_then(|v| ax_url_string(&v));
+    let url = from_web_area
+        .or_else(|| ax_attribute(&window, "AXDocument").and_then(|v| ax_url_string(&v)));
+    let domain = url.as_deref().and_then(domain_of);
+    tracing::debug!(found = domain.is_some(), "browser domain read");
+    domain
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -948,6 +1113,95 @@ mod tests {
         ];
         assert!(!is_sharing(&windows));
         assert!(!is_sharing(&[]));
+    }
+
+    #[test]
+    fn title_is_the_frontmost_normal_window_of_the_app() {
+        let windows = [
+            window(11, "Other app", 0, MAIN),
+            window(10, "Toolbar", 25, MAIN),
+            window(10, "", 0, MAIN),
+            window(10, "  Report.docx  ", 0, MAIN),
+            window(10, "Older window", 0, MAIN),
+        ];
+        assert_eq!(
+            foreground_title(&windows, 10).as_deref(),
+            Some("Report.docx")
+        );
+    }
+
+    #[test]
+    fn title_is_none_without_titles_or_windows() {
+        assert_eq!(foreground_title(&[], 10), None);
+        let untitled = [window(10, "", 0, MAIN), window(10, "   ", 0, MAIN)];
+        assert_eq!(foreground_title(&untitled, 10), None);
+        assert_eq!(foreground_title(&[window(11, "Mail", 0, MAIN)], 10), None);
+    }
+
+    #[test]
+    fn long_titles_are_capped_by_characters() {
+        let long = "é".repeat(600);
+        let windows = [window(10, &long, 0, MAIN)];
+        let title = foreground_title(&windows, 10).unwrap_or_default();
+        assert_eq!(title.chars().count(), MAX_TITLE_CHARS);
+    }
+
+    #[test]
+    fn known_browsers_are_recognised_by_bundle_id() {
+        for id in [
+            "com.google.Chrome",
+            "com.microsoft.edgemac",
+            "com.apple.Safari",
+            "org.mozilla.firefox",
+            "com.brave.Browser",
+            "company.thebrowser.Browser",
+        ] {
+            assert!(is_browser_bundle(id), "{id}");
+        }
+        assert!(!is_browser_bundle("com.apple.finder"));
+        assert!(!is_browser_bundle("com.google.Chrome.helper"));
+        assert!(!is_browser_bundle(""));
+    }
+
+    #[test]
+    fn domain_drops_everything_but_the_host() {
+        let d = |u| domain_of(u).unwrap_or_default();
+        assert_eq!(d("https://www.Example.com/a/b?q=1#frag"), "example.com");
+        assert_eq!(d("http://docs.rs:8080/x"), "docs.rs");
+        assert_eq!(d("https://user:pw@mail.google.com/mail"), "mail.google.com");
+        assert_eq!(d("HTTPS://GitHub.com"), "github.com");
+        assert_eq!(d("https://example.com?x=1"), "example.com");
+        assert_eq!(d("https://example.com./"), "example.com");
+        assert_eq!(d("https://www.example.com:443"), "example.com");
+        assert_eq!(d("  https://a.b.co/  "), "a.b.co");
+    }
+
+    #[test]
+    fn domain_keeps_ip_literals() {
+        assert_eq!(
+            domain_of("http://127.0.0.1:3000/x").as_deref(),
+            Some("127.0.0.1")
+        );
+        assert_eq!(domain_of("http://[::1]:8080/").as_deref(), Some("[::1]"));
+    }
+
+    #[test]
+    fn domain_is_none_for_other_schemes_and_junk() {
+        for url in [
+            "file:///Users/a/b.html",
+            "about:blank",
+            "chrome://settings",
+            "chrome-extension://abc/page.html",
+            "ftp://example.com",
+            "example.com",
+            "",
+            "https://",
+            "https:///path",
+            "https://./",
+            "https://exa mple.com",
+        ] {
+            assert_eq!(domain_of(url), None, "{url}");
+        }
     }
 
     #[test]
