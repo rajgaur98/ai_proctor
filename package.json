@@ -17,7 +17,9 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "db:types": "supabase gen types typescript --local --schema public > packages/contracts/src/database.types.ts && biome format --write packages/contracts/src/database.types.ts",
-    "contracts:gen": "pnpm --filter @ai-proctor/contracts gen"
+    "contracts:gen": "pnpm --filter @ai-proctor/contracts gen",
+    "contracts:migration": "pnpm --filter @ai-proctor/contracts migration",
+    "contracts:check-db": "pnpm --filter @ai-proctor/contracts check-db"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

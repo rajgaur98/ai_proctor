@@ -10,7 +10,9 @@
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "vitest run --passWithNoTests",
-    "gen": "node scripts/gen-json-schema.ts && biome format --write generated"
+    "gen": "node scripts/gen-json-schema.ts && biome format --write generated",
+    "migration": "node scripts/contract-migration.ts",
+    "check-db": "node scripts/check-db.ts"
   },
   "dependencies": {
     "zod": "4.6.7"

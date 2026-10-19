@@ -1,8 +1,11 @@
-// Writes generated/ipc.schema.json: one JSON Schema document whose `definitions` hold
-// every IPC type, for typify::import_types! in the Rust core. CI fails if the
-// committed file differs from what this script produces.
+// Writes the generated JSON Schemas; CI fails if the committed files differ.
+// - generated/ipc.schema.json: every IPC type under `definitions`, for
+//   typify::import_types! in the Rust core.
+// - generated/agent-event.schema.json: one agent_events element, stored in the
+//   database (see contract-migration.ts) and checked with pg_jsonschema.
 import { writeFileSync } from "node:fs";
 import { z } from "zod";
+import { AgentEvent } from "../src/events.ts";
 import { AgentStatus, PermissionState, Permissions, ShiftState } from "../src/ipc.ts";
 
 const registry = z.registry<{ id: string }>();
@@ -30,6 +33,14 @@ const doc = {
   definitions,
 };
 
-const out = new URL("../generated/ipc.schema.json", import.meta.url);
-writeFileSync(out, `${JSON.stringify(doc, null, 2)}\n`);
-console.log(`wrote ${out.pathname}`);
+function write(file: string, value: unknown) {
+  const out = new URL(`../generated/${file}`, import.meta.url);
+  writeFileSync(out, `${JSON.stringify(value, null, 2)}\n`);
+  console.log(`wrote ${out.pathname}`);
+}
+
+write("ipc.schema.json", doc);
+write("agent-event.schema.json", {
+  ...z.toJSONSchema(AgentEvent, { target: "draft-7" }),
+  title: "AI Proctor agent event",
+});

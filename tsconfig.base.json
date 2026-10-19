@@ -17,6 +17,7 @@
     "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   }
 }

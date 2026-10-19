@@ -23,6 +23,7 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
 | #17 | Device registration, revocation, deactivation (backend) | PR open | #75 |
+| #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
@@ -62,6 +63,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - First migration (#9) lists `checkins` and `captures` tables; the LLD has `checkin_events` (with `object_keys[]`), a separate `last_seen` table, and no `captures` table. Use the LLD. #23 and #24 use the issue names too. `users` also gets `full_name` and `email` (not in the LLD column list; the dashboard needs them and `auth.users` isn't readable through the API).
 - macOS minimum: PRD says macOS 13+, so the spike guide's 12.3 fallback is dropped, but the macOS 13 `SCStream` path is still needed (`SCScreenshotManager` is 14+). Only compile-checked on Raj's macOS 26 Mac.
 - Device token (AGT-02): implemented as the Supabase JWT plus a `device_id` claim added by an Auth access-token hook, bound per Auth session (`device_sessions`, not in the LLD). The hook refuses tokens for deactivated users and revoked devices. Agent RPCs still take `device_id` (LLD) and check it matches the claim.
+- #23 / LLD: `agent_events` returns `acked_seq` (highest contiguous seq processed) next to the LLD's accepted / duplicates / rejected / server_time, so the agent can drop everything at or below it. Rejected events are stored in `agent_event_rejections` so they count toward it.
 - LLD pg_cron table lists 6 jobs; there are 7 (`send_emails` missing). Fix when touching the LLD.
 
 ## Environment notes
