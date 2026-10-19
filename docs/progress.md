@@ -28,7 +28,7 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #22 | Encrypted offline outbox | Merged | #78 |
 | #18 | Clock in/out and session state machine | Merged | #79 |
 | #19 | Check-in scheduler | Merged | #80 |
-| #31 | Row-level security, can_view_user() | PR open | #82 |
+| #31 | Row-level security, can_view_user() | Merged | #82 |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 

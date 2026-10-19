@@ -13,3 +13,4 @@ pub mod scheduler;
 pub mod session;
 pub mod shift;
 pub mod status;
+pub mod sync;

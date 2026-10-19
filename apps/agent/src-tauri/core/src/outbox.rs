@@ -411,6 +411,26 @@ impl Outbox {
         Ok(())
     }
 
+    /// The decrypted payload of a queued event (events with pending uploads are
+    /// never pruned, so the uploader can always read its check-in).
+    pub fn payload(&self, id: Uuid) -> Result<Option<serde_json::Value>, OutboxError> {
+        let row: Option<(Vec<u8>, Vec<u8>)> = self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "select nonce, payload from events where id = ?1",
+                params![id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((nonce, sealed)) = row else {
+            return Ok(None);
+        };
+        let plain = self.open_sealed(&nonce, &sealed, id.as_bytes())?;
+        Ok(Some(serde_json::from_slice(&plain)?))
+    }
+
     pub fn stats(&self) -> Result<OutboxStats, OutboxError> {
         let conn = self.conn.lock().unwrap();
         let count = |sql: &str| {
