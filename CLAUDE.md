@@ -59,5 +59,6 @@ Toolchain on Raj's Mac: Node 22 is asdf's (`.nvmrc`), Rust is Homebrew's rustup 
 - Agent (Tauri): `pnpm --filter @ai-proctor/agent tauri dev` (dev, with hot reload); bundled `.app` for permission tests: `pnpm --filter @ai-proctor/agent tauri build --debug`. Logs: `~/Library/Logs/com.aiproctor.agent/agent.<date>.log` (JSON lines, 7 days kept).
 - Rust: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all`. The workspace is the root `Cargo.toml`: `apps/agent/src-tauri` (Tauri shell), `.../core` (logic, `Platform` trait, `FakePlatform`), `.../platform` (macOS/Windows impls). Spikes stay out of it.
 - IPC contract: edit the Zod schemas in `packages/contracts/src/ipc.ts`, then `pnpm contracts:gen` (writes `packages/contracts/generated/ipc.schema.json`; the Rust core reads it at compile time via typify). CI fails if it's stale.
+- Agent events contract: edit `packages/contracts/src/events.ts`, run `pnpm contracts:gen`, then `pnpm contracts:migration` (writes a migration that stores the schema in `internal.contract_schemas`; `agent_events` validates every event against it with pg_jsonschema). CI runs `pnpm contracts:check-db` to catch a missing migration.
 - CI (`.github/workflows/ci.yml`): the single required check is **CI OK**.
 - Not yet: dashboard dev (#27).

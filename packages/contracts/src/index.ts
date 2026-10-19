@@ -7,4 +7,5 @@ export type {
   TablesInsert,
   TablesUpdate,
 } from "./database.types";
+export * from "./events";
 export * from "./ipc";

@@ -106,6 +106,8 @@ jobs:
         run: |
           pnpm db:types
           git diff --exit-code packages/contracts/src/database.types.ts
+      - name: Agent-event schema in the database matches packages/contracts
+        run: pnpm contracts:check-db
 
   secrets:
     name: Secret scan (gitleaks)

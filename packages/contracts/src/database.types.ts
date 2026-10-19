@@ -3,6 +3,42 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      agent_event_rejections: {
+        Row: {
+          device_id: string;
+          event_id: string | null;
+          reason: string;
+          received_at: string;
+          seq: number | null;
+          type: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          device_id: string;
+          event_id?: string | null;
+          reason: string;
+          received_at?: string;
+          seq?: number | null;
+          type?: string | null;
+        };
+        Update: {
+          device_id?: string;
+          event_id?: string | null;
+          reason?: string;
+          received_at?: string;
+          seq?: number | null;
+          type?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "agent_event_rejections_device_id_fkey";
+            columns: ["device_id"];
+            isOneToOne: false;
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       agent_events_raw: {
         Row: {
           at: string;
@@ -62,8 +98,62 @@ export type Database = {
           },
         ];
       };
+      breaks: {
+        Row: {
+          clock_session_id: string;
+          end_at: string | null;
+          id: string;
+          org_id: string;
+          planned_min: number | null;
+          start_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          clock_session_id: string;
+          end_at?: string | null;
+          id?: string;
+          org_id: string;
+          planned_min?: number | null;
+          start_at: string;
+          user_id: string;
+        };
+        Update: {
+          clock_session_id?: string;
+          end_at?: string | null;
+          id?: string;
+          org_id?: string;
+          planned_min?: number | null;
+          start_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "breaks_clock_session_id_fkey";
+            columns: ["clock_session_id"];
+            isOneToOne: false;
+            referencedRelation: "clock_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "breaks_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "breaks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       checkin_events: {
         Row: {
+          capture_errors: Json | null;
           created_at: string;
           device_id: string;
           device_state: string | null;
@@ -85,6 +175,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          capture_errors?: Json | null;
           created_at?: string;
           device_id: string;
           device_state?: string | null;
@@ -105,6 +196,7 @@ export type Database = {
           wrong_clicks?: number;
         };
         Update: {
+          capture_errors?: Json | null;
           created_at?: string;
           device_id?: string;
           device_state?: string | null;
@@ -141,6 +233,68 @@ export type Database = {
           },
           {
             foreignKeyName: "checkin_events_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      clock_sessions: {
+        Row: {
+          device_id: string;
+          end_at: string | null;
+          end_event_id: string | null;
+          end_reason: string | null;
+          id: string;
+          org_id: string;
+          project_id: string | null;
+          start_at: string;
+          start_event_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          device_id: string;
+          end_at?: string | null;
+          end_event_id?: string | null;
+          end_reason?: string | null;
+          id?: string;
+          org_id: string;
+          project_id?: string | null;
+          start_at: string;
+          start_event_id: string;
+          user_id: string;
+        };
+        Update: {
+          device_id?: string;
+          end_at?: string | null;
+          end_event_id?: string | null;
+          end_reason?: string | null;
+          id?: string;
+          org_id?: string;
+          project_id?: string | null;
+          start_at?: string;
+          start_event_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "clock_sessions_device_id_fkey";
+            columns: ["device_id"];
+            isOneToOne: false;
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "clock_sessions_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "clock_sessions_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
@@ -197,6 +351,7 @@ export type Database = {
       };
       devices: {
         Row: {
+          acked_seq: number;
           agent_version: string;
           created_at: string;
           hardware_hash: string;
@@ -209,6 +364,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          acked_seq?: number;
           agent_version: string;
           created_at?: string;
           hardware_hash: string;
@@ -220,6 +376,7 @@ export type Database = {
           user_id: string;
         };
         Update: {
+          acked_seq?: number;
           agent_version?: string;
           created_at?: string;
           hardware_hash?: string;
@@ -252,6 +409,7 @@ export type Database = {
           at: string;
           device_id: string;
           org_id: string;
+          state: NonNullable<Json>;
           user_id: string;
         };
         ComputedFields: never;
@@ -259,12 +417,14 @@ export type Database = {
           at: string;
           device_id: string;
           org_id: string;
+          state?: NonNullable<Json>;
           user_id: string;
         };
         Update: {
           at?: string;
           device_id?: string;
           org_id?: string;
+          state?: NonNullable<Json>;
           user_id?: string;
         };
         Relationships: [
@@ -321,6 +481,62 @@ export type Database = {
           region_preset?: Database["public"]["Enums"]["region_preset"];
         };
         Relationships: [];
+      };
+      pauses: {
+        Row: {
+          clock_session_id: string;
+          end_at: string | null;
+          id: string;
+          org_id: string;
+          over_cap_s: number;
+          planned_min: number;
+          start_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          clock_session_id: string;
+          end_at?: string | null;
+          id?: string;
+          org_id: string;
+          over_cap_s?: number;
+          planned_min: number;
+          start_at: string;
+          user_id: string;
+        };
+        Update: {
+          clock_session_id?: string;
+          end_at?: string | null;
+          id?: string;
+          org_id?: string;
+          over_cap_s?: number;
+          planned_min?: number;
+          start_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pauses_clock_session_id_fkey";
+            columns: ["clock_session_id"];
+            isOneToOne: false;
+            referencedRelation: "clock_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "pauses_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "pauses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       presence: {
         Row: {
@@ -483,6 +699,19 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      agent_events: { Args: { device_id: string; events: Json }; Returns: Json };
+      agent_heartbeat: {
+        Args: {
+          agent_version: string;
+          device_id: string;
+          idle_s: number;
+          in_call: boolean;
+          locked: boolean;
+          permissions: Json;
+          sent_at: string;
+        };
+        Returns: Json;
+      };
       register_device: {
         Args: {
           agent_version: string;
