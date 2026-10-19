@@ -184,6 +184,11 @@ pub fn click(app: &AppHandle, id: u64, value: u8) -> Option<[u8; 3]> {
         log(&format!(
             "#{id} CLICK {value} = PASS after {elapsed} ms | {context}"
         ));
+        // CAP-01: capture on pass only.
+        let clicked = Instant::now();
+        std::thread::spawn(move || {
+            crate::capture::capture_all(clicked, crate::capture::mode_from_env())
+        });
         *guard = None;
         hide_later(app, Duration::from_secs(2));
         return None;

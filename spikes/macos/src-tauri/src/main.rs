@@ -1,5 +1,6 @@
 //! Throwaway macOS spike app. #11: check-in card. #13 and #14 add modules later.
 
+mod capture;
 mod card;
 mod log;
 mod macos;
@@ -56,6 +57,27 @@ fn card_key(key: String) {
 }
 
 #[tauri::command]
+fn check_permissions() {
+    capture::log_permissions("button");
+}
+
+#[tauri::command]
+fn request_access() {
+    capture::request_access();
+}
+
+#[tauri::command]
+fn capture_now(native: bool) {
+    let mode = if native {
+        capture::ScreenMode::NativeCpuResize
+    } else {
+        capture::ScreenMode::SckScaled
+    };
+    let started = Instant::now();
+    std::thread::spawn(move || capture::capture_all(started, mode));
+}
+
+#[tauri::command]
 fn log_path() -> String {
     log::path().display().to_string()
 }
@@ -72,6 +94,9 @@ fn main() {
             card_painted,
             card_click,
             card_key,
+            check_permissions,
+            request_access,
+            capture_now,
             log_path
         ])
         .setup(|app| {
@@ -85,6 +110,12 @@ fn main() {
                     .map(|p| p.to_string_lossy().contains(".app/Contents/MacOS"))
                     .unwrap_or(false)
             ));
+            capture::log_permissions("startup");
+            // SPIKE_CAPTURE=1 runs one capture at launch (headless runs).
+            if std::env::var("SPIKE_CAPTURE").is_ok() {
+                let started = Instant::now();
+                std::thread::spawn(move || capture::capture_all(started, capture::mode_from_env()));
+            }
             let level = std::env::var("SPIKE_LEVEL").unwrap_or_else(|_| "mainmenu+1".into());
             card::create(app.handle(), &level)?;
             // SPIKE_AUTO=<interval_s>,<count> starts auto mode at launch (headless runs).

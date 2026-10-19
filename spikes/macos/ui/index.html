@@ -26,6 +26,12 @@
   <button onclick="invoke('start_auto', { intervalS: +every.value, count: +count.value })">Start</button>
   <button onclick="invoke('stop_auto')">Stop</button>
 </fieldset>
+<fieldset><legend>#13 capture</legend>
+  <button onclick="invoke('check_permissions')">Check permissions (no prompt)</button>
+  <button onclick="invoke('request_access')">Request access (may prompt)</button><br>
+  <button onclick="invoke('capture_now', { native: false })">Capture now (SCK scales)</button>
+  <button onclick="invoke('capture_now', { native: true })">Capture now (native + CPU resize)</button>
+</fieldset>
 <div>Log: <span id="path"></span></div>
 <div id="log"></div>
 <script>
