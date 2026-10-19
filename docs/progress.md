@@ -40,6 +40,7 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #28 | Org setup: invites, roles, reporting lines, work location, audit log | PR open | #93 |
 | #29 | Shift schedules per employee | Dashboard + server PR open; agent side next | #94 |
 | #33 | Day timeline per employee with check-in markers | PR open | #95 |
+| #34 | Capture viewer with signed URLs and audit logging | PR open | #96 |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 

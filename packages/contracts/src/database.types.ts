@@ -1112,6 +1112,7 @@ export type Database = {
       };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
+      capture_view: { Args: { p_checkin_id: string }; Returns: Json };
       create_org: {
         Args: {
           full_name?: string;

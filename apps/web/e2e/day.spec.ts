@@ -52,6 +52,7 @@ test("a manager opens an employee's day and reads a missed check-in", async ({ p
 
   await list
     .getByRole("button", { name: /Passed check-in/ })
+    .filter({ hasText: "in 4 s" })
     .last()
     .click();
   await expect(page.getByRole("region", { name: "Passed check-in" })).toContainText("4.2 s");
