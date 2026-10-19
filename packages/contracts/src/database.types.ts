@@ -148,6 +148,53 @@ export type Database = {
           },
         ];
       };
+      device_sessions: {
+        Row: {
+          created_at: string;
+          device_id: string;
+          org_id: string;
+          session_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          device_id: string;
+          org_id: string;
+          session_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          device_id?: string;
+          org_id?: string;
+          session_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "device_sessions_device_id_fkey";
+            columns: ["device_id"];
+            isOneToOne: false;
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "device_sessions_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "device_sessions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       devices: {
         Row: {
           agent_version: string;
@@ -436,7 +483,17 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      register_device: {
+        Args: {
+          agent_version: string;
+          hardware_hash: string;
+          os_version: string;
+          platform: Database["public"]["Enums"]["device_platform"];
+        };
+        Returns: Record<string, unknown>;
+      };
+      revoke_device: { Args: { p_device_id: string }; Returns: undefined };
+      set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
     };
     Enums: {
       checkin_outcome: "pass" | "miss" | "failed";
