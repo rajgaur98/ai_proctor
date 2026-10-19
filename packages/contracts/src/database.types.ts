@@ -93,6 +93,13 @@ export type Database = {
             foreignKeyName: "agent_events_raw_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "agent_events_raw_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -141,6 +148,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "orgs";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "breaks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
           },
           {
             foreignKeyName: "breaks_user_id_fkey";
@@ -235,6 +249,13 @@ export type Database = {
             foreignKeyName: "checkin_events_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "checkin_events_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -297,6 +318,13 @@ export type Database = {
             foreignKeyName: "clock_sessions_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "clock_sessions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -336,8 +364,22 @@ export type Database = {
             foreignKeyName: "delegations_delegate_id_fkey";
             columns: ["delegate_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "delegations_delegate_id_fkey";
+            columns: ["delegate_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "delegations_manager_id_fkey";
+            columns: ["manager_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
           },
           {
             foreignKeyName: "delegations_manager_id_fkey";
@@ -392,6 +434,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "orgs";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "device_sessions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
           },
           {
             foreignKeyName: "device_sessions_user_id_fkey";
@@ -452,6 +501,13 @@ export type Database = {
             foreignKeyName: "devices_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "devices_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -494,6 +550,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "orgs";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "last_seen_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
           },
           {
             foreignKeyName: "last_seen_user_id_fkey";
@@ -586,6 +649,13 @@ export type Database = {
             foreignKeyName: "pauses_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "pauses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -647,6 +717,13 @@ export type Database = {
             foreignKeyName: "presence_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: true;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "presence_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -696,6 +773,13 @@ export type Database = {
             foreignKeyName: "shifts_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "shifts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -734,6 +818,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "orgs";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "status_periods_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
           },
           {
             foreignKeyName: "status_periods_user_id_fkey";
@@ -793,6 +884,13 @@ export type Database = {
             foreignKeyName: "users_manager_id_fkey";
             columns: ["manager_id"];
             isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "users_manager_id_fkey";
+            columns: ["manager_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -807,7 +905,48 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      team_live: {
+        Row: {
+          checkins_passed_today: number | null;
+          checkins_shown_today: number | null;
+          full_name: string | null;
+          last_checkin_at: string | null;
+          last_checkin_outcome: Database["public"]["Enums"]["checkin_outcome"] | null;
+          manager_id: string | null;
+          org_id: string | null;
+          project_id: string | null;
+          role: Database["public"]["Enums"]["user_role"] | null;
+          scheduled_today: boolean | null;
+          since: string | null;
+          status: Database["public"]["Enums"]["presence_status"] | null;
+          timezone: string | null;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Relationships: [
+          {
+            foreignKeyName: "users_manager_id_fkey";
+            columns: ["manager_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "users_manager_id_fkey";
+            columns: ["manager_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "users_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Functions: {
       agent_events: { Args: { device_id: string; events: Json }; Returns: Json };

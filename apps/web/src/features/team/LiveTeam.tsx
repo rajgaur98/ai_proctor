@@ -1,0 +1,292 @@
+// DSH-01/02 live grid, from the Claude Design TeamGrid screen.
+import { useQuery } from "@tanstack/react-query";
+import { Link, useRouteContext } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { type PresenceStatus, StatusChip, statusStyle } from "../../components/StatusChip";
+import { initials } from "../../lib/nav";
+import { supabase } from "../../lib/supabase";
+import { formatTime, viewerZone } from "../../lib/time";
+import {
+  filterRows,
+  onShift,
+  type SortKey,
+  since,
+  sortRows,
+  summarize,
+  type TeamRow,
+} from "./grid";
+import { useLivePresence } from "./useLivePresence";
+
+const queryKey = ["team_live"];
+
+function useNow(everyMs: number) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(new Date()), everyMs);
+    return () => window.clearInterval(t);
+  }, [everyMs]);
+  return now;
+}
+
+export function LiveTeam() {
+  const { profile } = useRouteContext({ from: "/_app" });
+  const live = useLivePresence(queryKey);
+  const now = useNow(30_000);
+  const [status, setStatus] = useState<PresenceStatus | "all">("all");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("status");
+
+  const { data, error, isPending, dataUpdatedAt } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("team_live").select("*");
+      if (error) throw error;
+      // The viewer's own row isn't part of their team view.
+      return data.filter((r) => r.user_id !== profile.id);
+    },
+  });
+
+  const rows = data ?? [];
+  const summary = useMemo(() => summarize(rows), [rows]);
+  const visible = useMemo(
+    () => sortRows(filterRows(onShift(rows), status, search), sort),
+    [rows, status, search, sort],
+  );
+  const zone = viewerZone();
+
+  return (
+    <section className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-[-0.025em]">Live team</h1>
+          <p className="mt-1 text-[13.5px] text-ink2">{profile.orgName}</p>
+        </div>
+        <span className="ml-auto font-mono text-[12.5px] text-ink3" aria-live="polite">
+          {live === "live" ? "Live" : live === "reconnecting" ? "Reconnecting…" : "Connecting…"}
+          {dataUpdatedAt
+            ? ` · updated ${formatTime(new Date(dataUpdatedAt).toISOString(), zone, zone)}`
+            : ""}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-panel p-4 md:grid-cols-5 md:p-5">
+        <Tile label="On shift" n={summary.onShift} note={`of ${summary.scheduled} scheduled`} />
+        <Tile label="Active" status="active" n={summary.active} />
+        <Tile
+          label="Away"
+          status="away"
+          n={summary.away}
+          note={summary.missed ? `${summary.missed} missed check-in` : ""}
+        />
+        <Tile label="On break" status="on_break" n={summary.onBreak} />
+        <Tile label="Offline" status="offline" n={summary.offline} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex h-10 items-center gap-2 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]">
+          <span className="text-ink3">Status</span>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as PresenceStatus | "all")}
+            className="bg-transparent font-medium"
+          >
+            <option value="all">All</option>
+            {(Object.keys(statusStyle) as PresenceStatus[])
+              .filter((s) => s !== "off_shift")
+              .map((s) => (
+                <option key={s} value={s}>
+                  {statusStyle[s].label}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className="flex h-10 items-center gap-2 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]">
+          <span className="text-ink3">Sort</span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="bg-transparent font-medium"
+          >
+            <option value="status">Status</option>
+            <option value="name">Name</option>
+            <option value="last_checkin">Last check-in</option>
+          </select>
+        </label>
+        <input
+          type="search"
+          aria-label="Search people"
+          placeholder="Search people"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-10 w-full rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px] md:ml-auto md:w-[280px]"
+        />
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-line bg-panel">
+        {error ? (
+          <p role="alert" className="p-6 text-sm text-warnink">
+            Couldn't load the team: {error.message}
+          </p>
+        ) : isPending ? (
+          <p className="p-6 text-sm text-ink2">Loading…</p>
+        ) : visible.length === 0 ? (
+          <Empty filtered={onShift(rows).length > 0} />
+        ) : (
+          <table className="w-full border-collapse text-[13.5px]">
+            <thead className="hidden bg-sunk text-left text-xs font-medium text-ink3 md:table-header-group">
+              <tr className="h-10 border-b border-line">
+                <th className="px-5 font-medium">Person</th>
+                <th className="font-medium">Status</th>
+                <th className="font-medium">Last check-in</th>
+                <th className="font-medium">Today</th>
+                <th className="font-medium">Project</th>
+                <th className="pr-5">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((r) => (
+                <Row key={r.user_id} row={r} now={now} />
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="px-5 py-3 text-xs text-ink3">
+          "Today" is check-ins passed out of check-ins shown. Captures you open are logged and
+          visible to the employee.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function Tile({
+  label,
+  n,
+  note,
+  status,
+}: {
+  label: string;
+  n: number;
+  note?: string;
+  status?: PresenceStatus;
+}) {
+  return (
+    <div className="flex flex-col gap-1 border-l border-line pl-3.5">
+      <span className="flex items-center gap-[7px] text-[13px] text-ink2">
+        {status ? (
+          <StatusChipMark status={status} />
+        ) : (
+          <span className="h-2 w-2 rounded-full bg-ink" aria-hidden />
+        )}
+        {label}
+      </span>
+      <span className="font-mono text-[30px] leading-[1.1] font-medium tracking-[-0.04em]">
+        {n}
+      </span>
+      <span className="min-h-4 text-xs text-ink3">{note}</span>
+    </div>
+  );
+}
+
+function StatusChipMark({ status }: { status: PresenceStatus }) {
+  const { color, shape } = statusStyle[status];
+  const round = shape === "square" ? "2px" : "50%";
+  return shape === "ring" ? (
+    <span aria-hidden className="h-2 w-2 rounded-full" style={{ border: `2px solid ${color}` }} />
+  ) : (
+    <span aria-hidden className="h-2 w-2" style={{ background: color, borderRadius: round }} />
+  );
+}
+
+function Row({ row, now }: { row: TeamRow; now: Date }) {
+  const zone = viewerZone();
+  const missed = row.last_checkin_outcome === "miss" || row.last_checkin_outcome === "failed";
+  return (
+    <tr className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 border-b border-line px-4 py-3 hover:bg-sunk md:table-row md:p-0">
+      <td className="row-span-3 md:py-3 md:pl-5">
+        <div className="flex items-center gap-[11px]">
+          <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full border border-line bg-sunk text-xs font-semibold text-ink2">
+            {initials(row.full_name ?? "")}
+          </span>
+          <div className="hidden md:block">
+            <div className="font-medium">{row.full_name}</div>
+            <div className="mt-px text-xs text-ink3 capitalize">{row.role}</div>
+          </div>
+        </div>
+      </td>
+      <td className="font-medium md:hidden">{row.full_name}</td>
+      <td>
+        <span className="inline-flex items-center gap-1.5">
+          <StatusChip status={(row.status ?? "off_shift") as PresenceStatus} />
+          <span className="text-[12.5px] text-ink3">· {since(row.since, now)}</span>
+        </span>
+      </td>
+      <td>
+        {row.last_checkin_at ? (
+          <span className="flex items-center gap-2">
+            <time
+              className="font-mono text-[12.5px]"
+              dateTime={row.last_checkin_at}
+              title={
+                row.timezone
+                  ? `${formatTime(row.last_checkin_at, row.timezone, zone)} employee's time`
+                  : undefined
+              }
+            >
+              {formatTime(row.last_checkin_at, zone, zone)}
+            </time>
+            <span
+              className={
+                missed
+                  ? "rounded-full border border-dashed border-ink3 px-[7px] py-px text-xs font-semibold"
+                  : "text-[12.5px] text-ink3"
+              }
+            >
+              {row.last_checkin_outcome === "pass"
+                ? "passed"
+                : row.last_checkin_outcome === "miss"
+                  ? "missed"
+                  : "failed"}
+            </span>
+          </span>
+        ) : (
+          <span className="text-[12.5px] text-ink3">No check-in yet</span>
+        )}
+      </td>
+      <td className="text-ink2 tabular-nums">
+        {row.checkins_passed_today} of {row.checkins_shown_today}
+      </td>
+      <td className="truncate text-ink2">{row.project_id ? "Project" : "—"}</td>
+      <td className="md:pr-5 md:text-right">
+        <Link
+          to="/team/$userId"
+          params={{ userId: row.user_id ?? "" }}
+          className="inline-block py-3 text-[13px] font-medium whitespace-nowrap text-acctext"
+        >
+          View day<span className="sr-only"> for {row.full_name}</span>
+        </Link>
+      </td>
+    </tr>
+  );
+}
+
+function Empty({ filtered }: { filtered: boolean }) {
+  return (
+    <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+      <span
+        aria-hidden
+        className="mb-1.5 h-10 w-10 rounded-full border-[1.5px] border-dashed border-line2"
+      />
+      <p className="text-base font-semibold">
+        {filtered ? "No one matches these filters." : "No one is on shift right now."}
+      </p>
+      {!filtered && (
+        <p className="max-w-[380px] text-[13.5px] text-ink2">
+          People appear here as soon as they clock in.
+        </p>
+      )}
+    </div>
+  );
+}
