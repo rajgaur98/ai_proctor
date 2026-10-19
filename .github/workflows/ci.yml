@@ -71,6 +71,10 @@ jobs:
         run: |
           pnpm contracts:gen
           git diff --exit-code packages/contracts/generated
+      - name: SQL status vectors are generated from packages/core/vectors
+        run: |
+          pnpm core:gen
+          git diff --exit-code supabase/tests/database/status_vectors.test.sql
 
   rust:
     name: Rust fmt, clippy, test (Linux)

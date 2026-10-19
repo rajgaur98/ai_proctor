@@ -9,6 +9,10 @@
   },
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run",
+    "gen": "node scripts/gen-sql-vectors.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22"
   }
 }

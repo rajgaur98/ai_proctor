@@ -1,0 +1,260 @@
+{
+  "$comment": "Shared by packages/core (Vitest) and SQL internal.compute_status (pgTAP via scripts/gen-sql-vectors.ts). Edit here, then run `pnpm core:gen`.",
+  "vectors": [
+    {
+      "name": "not clocked in is off shift, whatever else is set",
+      "input": {
+        "clocked_in": false,
+        "tamper": true,
+        "offline": true,
+        "on_break": false,
+        "paused": false,
+        "locked": true,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "off_shift"
+    },
+    {
+      "name": "clocked in with nothing else is active",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "active"
+    },
+    {
+      "name": "tamper beats offline",
+      "input": {
+        "clocked_in": true,
+        "tamper": true,
+        "offline": true,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "tamper"
+    },
+    {
+      "name": "offline beats break",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": true,
+        "on_break": true,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "offline"
+    },
+    {
+      "name": "break beats pause",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": true,
+        "paused": true,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "on_break"
+    },
+    {
+      "name": "pause",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": true,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "paused"
+    },
+    {
+      "name": "pause beats locked",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": true,
+        "locked": true,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "paused"
+    },
+    {
+      "name": "locked beats a missed check-in",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": true,
+        "last_checkin": "miss",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "away_locked"
+    },
+    {
+      "name": "a missed check-in is away",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "miss",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "away"
+    },
+    {
+      "name": "a failed challenge is away",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "failed",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "away"
+    },
+    {
+      "name": "away beats in a call",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "miss",
+        "in_call": true,
+        "idle": false
+      },
+      "expected": "away"
+    },
+    {
+      "name": "a passed check-in clears away",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "pass",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "active"
+    },
+    {
+      "name": "in a call",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "pass",
+        "in_call": true,
+        "idle": false
+      },
+      "expected": "in_meeting"
+    },
+    {
+      "name": "a call beats idle",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": true,
+        "idle": true
+      },
+      "expected": "in_meeting"
+    },
+    {
+      "name": "idle",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": true
+      },
+      "expected": "idle"
+    },
+    {
+      "name": "locked beats idle and call",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": true,
+        "last_checkin": null,
+        "in_call": true,
+        "idle": true
+      },
+      "expected": "away_locked"
+    },
+    {
+      "name": "tamper while on break",
+      "input": {
+        "clocked_in": true,
+        "tamper": true,
+        "offline": false,
+        "on_break": true,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "tamper"
+    }
+  ]
+}

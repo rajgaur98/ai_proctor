@@ -61,5 +61,6 @@ Toolchain on Raj's Mac: Node 22 is asdf's (`.nvmrc`), Rust is Homebrew's rustup 
 - IPC contract: edit the Zod schemas in `packages/contracts/src/ipc.ts`, then `pnpm contracts:gen` (writes `packages/contracts/generated/ipc.schema.json`; the Rust core reads it at compile time via typify). CI fails if it's stale.
 - Agent events contract: edit `packages/contracts/src/events.ts`, run `pnpm contracts:gen`, then `pnpm contracts:migration` (writes a migration that stores the schema in `internal.contract_schemas`; `agent_events` validates every event against it with pg_jsonschema). CI runs `pnpm contracts:check-db` to catch a missing migration.
 - Sync integration test (agent ↔ local Supabase): with the stack up, `eval "$(pnpm --silent supabase status -o env | grep -E '^(API_URL|ANON_KEY)=')"; AI_PROCTOR_SUPABASE_URL=$API_URL AI_PROCTOR_SUPABASE_ANON_KEY=$ANON_KEY cargo test -p agent-core --test sync_supabase`. Skips itself without those variables.
+- Status rules: `packages/core/src/status.ts` and SQL `internal.compute_status` must agree. Add cases to `packages/core/vectors/status.json`, then `pnpm core:gen` (regenerates `supabase/tests/database/status_vectors.test.sql`; CI checks it).
 - CI (`.github/workflows/ci.yml`): the single required check is **CI OK**.
 - Not yet: dashboard dev (#27).
