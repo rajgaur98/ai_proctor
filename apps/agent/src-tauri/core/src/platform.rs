@@ -35,14 +35,27 @@ pub struct Foreground {
     pub domain: Option<String>,
 }
 
-/// One encoded image (WebP).
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One captured image as raw pixels; blur and WebP encoding happen in
+/// `capture`, the same on every OS.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Frame {
     /// Display index (1-based) for screenshots; `None` for the webcam.
     pub display: Option<u32>,
     pub width: u32,
     pub height: u32,
-    pub webp: Vec<u8>,
+    /// RGBA, 8 bits per channel, row by row (`width * height * 4` bytes).
+    pub rgba: Vec<u8>,
+}
+
+impl std::fmt::Debug for Frame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Frame")
+            .field("display", &self.display)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("bytes", &self.rgba.len())
+            .finish()
+    }
 }
 
 /// Why a capture failed. Stored with the check-in, which still passes (CAP-08).
