@@ -412,6 +412,7 @@ impl AgentState {
         match account.complete_sign_in(redirect) {
             Ok(()) => {
                 self.session.lock().unwrap().sign_in();
+                self.apply_new_config();
                 tracing::info!("signed in");
                 let email = account.email().unwrap_or_default();
                 self.platform.notify("Signed in to AI Proctor", &email);
@@ -487,10 +488,30 @@ impl AgentState {
             account.restore()?;
         }
         account.sync()?;
-        match self.heartbeat().filter(|_| heartbeat_due) {
-            Some(heartbeat) => account.heartbeat(&heartbeat).map(|()| true),
-            None => Ok(false),
-        }
+        let sent = match self.heartbeat().filter(|_| heartbeat_due) {
+            Some(heartbeat) => account.heartbeat(&heartbeat).map(|()| true)?,
+            None => false,
+        };
+        self.apply_new_config();
+        Ok(sent)
+    }
+
+    /// Shifts and session policy from the server (#29), once they've changed.
+    fn apply_new_config(&self) {
+        let Some(config) = self.account.as_ref().and_then(|a| a.take_config()) else {
+            return;
+        };
+        self.apply_config(&config);
+    }
+
+    fn apply_config(&self, config: &agent_core::config::AgentConfig) {
+        let policy = config.session_policy();
+        tracing::info!(
+            shifts = policy.shifts.len(),
+            auto_clock_in = policy.auto_clock_in,
+            "session policy updated"
+        );
+        self.session.lock().unwrap().set_policy(policy);
     }
 
     /// Runs a transition; failures are logged and shown as a notification.
@@ -1246,6 +1267,33 @@ mod tests {
         assert_eq!(w.state.card_tick(), CardAction::Hide);
         assert!(w.checkins().is_empty());
         assert_eq!(w.state.scheduler.wake_in(), None);
+    }
+
+    #[test]
+    fn config_from_the_server_sets_shifts_and_auto_clock_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let outbox = Arc::new(Outbox::open(&dir.path().join("outbox"), &[1u8; 32]).unwrap());
+        let clock = Arc::new(FakeClock::at("2026-10-19T09:00:00Z"));
+        let state = state(dir.path(), Arc::new(OutboxSink { outbox, clock }));
+        state.session.lock().unwrap().sign_in();
+        state.act("update the shift", |s| s.tick());
+        assert_eq!(state.status().shift, ShiftState::OffShift, "no shift yet");
+
+        // Monday 2026-10-19 09:00 UTC is inside an 08:00–17:00 UTC shift.
+        let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
+            "policy": { "auto_clock_in": true },
+            "policy_version": 2,
+            "timezone": "UTC",
+            "shifts": [{ "days": [1], "start": "08:00", "end": "17:00", "timezone": "UTC" }]
+        }))
+        .unwrap();
+        state.apply_config(&config);
+        state.act("update the shift", |s| s.tick());
+        assert_eq!(
+            state.status().shift,
+            ShiftState::Working,
+            "auto clock-in (SHF-03)"
+        );
     }
 
     #[test]

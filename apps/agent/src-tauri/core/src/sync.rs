@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::clock::Clock;
+use crate::config::AgentConfig;
 use crate::outbox::{Outbox, OutboxError, OutboxEvent, PendingUpload, SyncReply};
 
 pub const MAX_EVENTS_PER_BATCH: usize = 100;
@@ -166,6 +167,12 @@ impl Api {
             "agent_events",
             &json!({ "device_id": device_id, "events": events }),
         )?;
+        serde_json::from_value(reply).map_err(|e| SyncError::Refused(e.to_string()))
+    }
+
+    /// Org policy and this person's shifts (#29).
+    pub fn agent_config(&self, device_id: Uuid) -> Result<AgentConfig, SyncError> {
+        let reply = self.rpc("agent_config", &json!({ "p_device_id": device_id }))?;
         serde_json::from_value(reply).map_err(|e| SyncError::Refused(e.to_string()))
     }
 
@@ -376,6 +383,10 @@ impl Syncer {
             }
         }
         Ok(stats)
+    }
+
+    pub fn config(&self) -> Result<AgentConfig, SyncError> {
+        self.api.agent_config(self.identity.device_id)
     }
 
     pub fn heartbeat(&self, heartbeat: &Heartbeat) -> Result<HeartbeatReply, SyncError> {
