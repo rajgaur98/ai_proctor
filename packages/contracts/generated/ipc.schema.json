@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AI Proctor agent IPC",
+  "definitions": {
+    "PermissionState": {
+      "type": "string",
+      "enum": ["granted", "denied", "not_determined", "restricted", "unsupported"]
+    },
+    "Permissions": {
+      "type": "object",
+      "properties": {
+        "screen": {
+          "$ref": "#/definitions/PermissionState"
+        },
+        "camera": {
+          "$ref": "#/definitions/PermissionState"
+        }
+      },
+      "required": ["screen", "camera"],
+      "additionalProperties": false
+    },
+    "ShiftState": {
+      "type": "string",
+      "enum": ["off_shift", "working", "on_break", "paused"]
+    },
+    "AgentStatus": {
+      "type": "object",
+      "properties": {
+        "shift": {
+          "$ref": "#/definitions/ShiftState"
+        },
+        "signed_in": {
+          "type": "boolean"
+        },
+        "agent_version": {
+          "type": "string"
+        },
+        "permissions": {
+          "$ref": "#/definitions/Permissions"
+        }
+      },
+      "required": ["shift", "signed_in", "agent_version", "permissions"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,87 @@
+/* Tokens from the Claude Design StyleSheet (light, then dark). */
+:root {
+  --bg: #f5f5f2;
+  --panel: #ffffff;
+  --line: #e4e4df;
+  --ink: #16171a;
+  --ink2: #4b4e54;
+  --ink3: #6c7077;
+  --acc: #2f5d9e;
+  --soff: oklch(0.8 0.005 255);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1012;
+    --panel: #18191c;
+    --line: #2a2c31;
+    --ink: #ededeb;
+    --ink2: #b6b8bd;
+    --ink3: #8f939a;
+    --acc: #7fa6e3;
+    --soff: oklch(0.45 0.005 255);
+  }
+}
+html,
+body {
+  margin: 0;
+  background: var(--panel);
+  color: var(--ink);
+  font:
+    13px / 1.4 -apple-system,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  user-select: none;
+}
+.popover {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.status {
+  color: var(--ink2);
+}
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--soff);
+}
+h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  margin: 0;
+}
+dd {
+  margin: 0;
+  color: var(--ink2);
+}
+footer {
+  color: var(--ink3);
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}

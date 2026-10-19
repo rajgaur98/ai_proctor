@@ -1,0 +1,21 @@
+# Rust workspace for the desktop agent. Spikes (spikes/) are deliberately not members.
+[workspace]
+resolver = "2"
+members = [
+  "apps/agent/src-tauri",
+  "apps/agent/src-tauri/core",
+  "apps/agent/src-tauri/platform",
+]
+
+[workspace.package]
+edition = "2021"
+publish = false
+license = "UNLICENSED"
+
+[workspace.dependencies]
+agent-core = { path = "apps/agent/src-tauri/core" }
+agent-platform = { path = "apps/agent/src-tauri/platform" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"

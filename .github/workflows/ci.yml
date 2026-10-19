@@ -60,32 +60,33 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: IPC JSON Schema is up to date with the Zod contracts
+        run: |
+          pnpm contracts:gen
+          git diff --exit-code packages/contracts/generated
 
-  # Rust jobs run only once the Cargo workspace exists (root Cargo.toml, #15);
-  # until then they skip instead of failing on an empty repo.
   rust:
     name: Rust fmt, clippy, test (Linux)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - id: cargo
-        run: echo "present=$([ -f Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Tauri system libraries
-        if: steps.cargo.outputs.present == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Tauri embeds the popover's built assets at compile time.
+      - run: pnpm --filter @ai-proctor/agent build
       - uses: Swatinem/rust-cache@v2
-        if: steps.cargo.outputs.present == 'true'
       # rustup reads rust-toolchain.toml and installs the pinned toolchain.
-      - if: steps.cargo.outputs.present == 'true'
-        run: cargo fmt --all --check
-      - if: steps.cargo.outputs.present == 'true'
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - if: steps.cargo.outputs.present == 'true'
-        run: cargo test --workspace --locked
-      - if: steps.cargo.outputs.present != 'true'
-        run: echo "No Cargo workspace yet; Rust checks skipped."
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
 
   db:
     name: Database tests (pgTAP)
@@ -134,15 +135,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - id: cargo
-        shell: bash
-        run: echo "present=$([ -f Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ai-proctor/agent build
       - uses: Swatinem/rust-cache@v2
-        if: steps.cargo.outputs.present == 'true'
-      - if: steps.cargo.outputs.present == 'true'
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - if: steps.cargo.outputs.present == 'true'
-        run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
 
   macos:
     name: Rust test (macOS)
@@ -153,14 +155,16 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
-      - id: cargo
-        run: echo "present=$([ -f Cargo.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ai-proctor/agent build
       - uses: Swatinem/rust-cache@v2
-        if: steps.cargo.outputs.present == 'true'
-      - if: steps.cargo.outputs.present == 'true'
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - if: steps.cargo.outputs.present == 'true'
-        run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
 
   # Single required check for branch protection: fails if any job failed or was
   # cancelled; skipped optional jobs (Windows, macOS) are fine.

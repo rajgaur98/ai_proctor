@@ -1,0 +1,11 @@
+[package]
+name = "agent-platform"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Platform implementations: macOS (objc2) and Windows (windows-rs)"
+
+[dependencies]
+agent-core.workspace = true
+tracing.workspace = true
