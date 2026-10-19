@@ -16,8 +16,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 
 | Issue | Title | Status | PR |
 |---|---|---|---|
-| #8 | Monorepo setup | PR open | |
-| #9 | Local Supabase + first migration | Not started | |
+| #8 | Monorepo setup | PR open | #68 |
+| #9 | Local Supabase + first migration | PR open | |
 | #10 | CI | Not started | |
 | #11, #13, #14 | Week-1 spikes (macOS) | Not started | |
 | #12 | Windows card spike | Waiting for a Windows machine | |
@@ -58,7 +58,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - macOS release builds: tech-stack says build on the local Mac (macOS CI minutes cost 10×); issue #55 says a CI macOS runner. Build releases locally; CI only compiles and runs tests on macOS, on a label or nightly.
 - XLSX export is P0 in the PRD (TS-20) but deferred to #65 to keep the pilot small.
 - ALR-01 (P0) includes a late clock-in alert, but recording late clock-ins (SHF-06) is P1 (#67). Needs a decision before #50.
-- First migration (#9) lists `checkins` and `captures` tables; the LLD has `checkin_events` (with `object_keys[]`), a separate `last_seen` table, and no `captures` table. Use the LLD. #23 and #24 use the issue names too.
+- First migration (#9) lists `checkins` and `captures` tables; the LLD has `checkin_events` (with `object_keys[]`), a separate `last_seen` table, and no `captures` table. Use the LLD. #23 and #24 use the issue names too. `users` also gets `full_name` and `email` (not in the LLD column list; the dashboard needs them and `auth.users` isn't readable through the API).
 - macOS minimum: PRD says macOS 13+, so the spike guide's 12.3 fallback is dropped, but the macOS 13 `SCStream` path is still needed (`SCScreenshotManager` is 14+). Only compile-checked on Raj's macOS 26 Mac.
 - LLD pg_cron table lists 6 jobs; there are 7 (`send_emails` missing). Fix when touching the LLD.
 
@@ -67,4 +67,5 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - Development machine: Raj's Mac, local Claude desktop session. Keep it awake during long runs (`caffeinate -dims`).
 - CI budget: private repo, 2,000 free Actions minutes/month; macOS counts 10×, Windows 2×. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
 - Homebrew refuses formula builds because the Command Line Tools are outdated (it wants the Xcode 27 version; fixing needs `sudo`). Full Xcode 26.6 works for Rust builds. The Supabase CLI comes from the `supabase` npm devDependency instead of Homebrew (#9).
+- Local Supabase runs with analytics (Logflare + Vector) off: they failed health checks on Docker Desktop and aren't needed.
 - Rust comes from Homebrew's `rustup` (proxies in `/opt/homebrew/opt/rustup/bin`, not on the default PATH); Node 22 from asdf. See the Commands section of `CLAUDE.md`.
