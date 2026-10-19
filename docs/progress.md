@@ -26,7 +26,8 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #23 | Sync RPCs | In progress: server side PR open; agent client waits for the outbox (#22) | #76 |
 | #24 | Capture upload policy | In progress: bucket + policy PR open; agent uploader waits for the outbox (#22) | #77 |
 | #22 | Encrypted offline outbox | PR open | #78 |
-| #18 | Clock in/out and session state machine | PR open | |
+| #18 | Clock in/out and session state machine | PR open | #79 |
+| #19 | Check-in scheduler | PR open | |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
