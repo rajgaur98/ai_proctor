@@ -41,6 +41,7 @@ struct Snapshot {
     locked: bool,
     frontmost: String,
     frontmost_fullscreen: bool,
+    presenting: bool,
     sharing_windows: Vec<String>,
     idle_bucket: u64,
 }
@@ -106,6 +107,9 @@ fn log_changes(a: &Snapshot, b: &Snapshot) {
             a.frontmost, a.frontmost_fullscreen, b.frontmost, b.frontmost_fullscreen
         ));
     }
+    if a.presenting != b.presenting {
+        changes.push(format!("presenting {} -> {}", a.presenting, b.presenting));
+    }
     if a.sharing_windows != b.sharing_windows {
         changes.push(format!(
             "sharing windows {:?} -> {:?}",
@@ -130,6 +134,7 @@ fn snapshot() -> Snapshot {
         mic: mic_running(),
         locked: screen_locked(),
         frontmost_fullscreen: pid.is_some_and(|pid| is_fullscreen(&windows, pid)),
+        presenting: pid.is_some_and(|pid| is_presenting(&windows, pid)),
         frontmost,
         sharing_windows: sharing_windows(&windows),
         // Coarse buckets so the log shows threshold crossings, not every second.
@@ -362,13 +367,29 @@ fn display_bounds() -> Vec<(f64, f64, f64, f64)> {
         .collect()
 }
 
-/// Frontmost app has a normal-layer window covering a whole display (full-screen
-/// app, Keynote/PowerPoint slideshow, full-screen video).
+/// Full-screen app (own Space): measured on macOS 26, the app owns a thin window
+/// above normal level spanning the display's top edge (its menu-bar strip) and
+/// the system menu bar stays listed. Not a presentation; the card still shows.
 fn is_fullscreen(windows: &[WindowInfo], pid: i32) -> bool {
     let displays = display_bounds();
     windows
         .iter()
-        .filter(|w| w.owner_pid == pid && w.layer == 0)
+        .filter(|w| w.owner_pid == pid && w.layer > 0)
+        .any(|w| {
+            displays.iter().any(|d| {
+                w.bounds.0 == d.0 && w.bounds.1 == d.1 && w.bounds.2 == d.2 && w.bounds.3 < 60.0
+            })
+        })
+}
+
+/// Presentation (Keynote/PowerPoint slideshow): measured on macOS 26, the
+/// frontmost app owns a window above normal level covering a whole display
+/// (Keynote: layer 9, then 26) and the system menu bar disappears. CHK-03 defers.
+fn is_presenting(windows: &[WindowInfo], pid: i32) -> bool {
+    let displays = display_bounds();
+    windows
+        .iter()
+        .filter(|w| w.owner_pid == pid && w.layer > 0)
         .any(|w| displays.iter().any(|d| *d == w.bounds))
 }
 

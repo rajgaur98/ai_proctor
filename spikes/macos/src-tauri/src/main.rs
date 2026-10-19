@@ -118,6 +118,10 @@ fn main() {
                     .unwrap_or(false)
             ));
             capture::log_permissions("startup");
+            // SPIKE_REQUEST=1 asks for Screen Recording and Camera at launch (may prompt).
+            if std::env::var("SPIKE_REQUEST").is_ok() {
+                capture::request_access();
+            }
             signals::start();
             // SPIKE_CAPTURE=1 runs one capture at launch (headless runs).
             if std::env::var("SPIKE_CAPTURE").is_ok() {
