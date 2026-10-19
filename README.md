@@ -16,6 +16,11 @@ pnpm install
 pnpm lint        # Biome lint + format check (fix with pnpm format)
 pnpm typecheck   # tsc in every package
 pnpm test        # Vitest in every package
+
+pnpm db:start    # local Supabase (Postgres, Auth, Storage, Realtime, Edge Functions)
+pnpm db:reset    # rebuild from migrations + seed
+pnpm db:test     # pgTAP tests in supabase/tests
+pnpm db:types    # regenerate packages/contracts/src/database.types.ts
 ```
 
-Layout: `apps/agent` (Tauri v2 desktop agent), `apps/web` (dashboard), `packages/core` (status rules, segment engine), `packages/contracts` (shared Zod schemas), `packages/ui` (shared components), `supabase/` (migrations, functions, seed). The apps and the Supabase stack arrive in later issues (#9, #15, #27).
+Layout: `apps/agent` (Tauri v2 desktop agent), `apps/web` (dashboard), `packages/core` (status rules, segment engine), `packages/contracts` (shared Zod schemas), `packages/ui` (shared components), `supabase/` (migrations, functions, seed). The apps arrive in later issues (#15, #27).

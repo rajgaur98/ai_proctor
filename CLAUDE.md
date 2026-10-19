@@ -54,4 +54,6 @@ Toolchain on Raj's Mac: Node 22 is asdf's (`.nvmrc`), Rust is Homebrew's rustup 
 - Lint + format check: `pnpm lint` (fix: `pnpm format`)
 - Typecheck: `pnpm typecheck` (Turborepo runs `tsc` in every package)
 - Test: `pnpm test` (Turborepo runs Vitest in every package)
-- Not yet: `supabase start` (#9), agent dev build (#15), dashboard dev (#27).
+- Local backend (Docker must be running): `pnpm db:start` / `pnpm db:stop`; rebuild from migrations + seed: `pnpm db:reset`; pgTAP tests: `pnpm db:test`; regenerate `packages/contracts/src/database.types.ts`: `pnpm db:types` (commit it with the migration). Any other CLI command: `pnpm supabase <args>`. Seed users (`supabase/seed.sql`) sign in with `password123`.
+- New migration: `pnpm supabase migration new <name>`.
+- Not yet: agent dev build (#15), dashboard dev (#27).
