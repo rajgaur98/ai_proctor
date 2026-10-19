@@ -593,9 +593,14 @@ export type Database = {
       };
       presence: {
         Row: {
+          call_sources: string[];
+          idle: boolean;
           last_checkin_at: string | null;
           last_checkin_outcome: Database["public"]["Enums"]["checkin_outcome"] | null;
+          last_contact_at: string | null;
+          locked: boolean;
           org_id: string;
+          permission_missing: boolean;
           project_id: string | null;
           since: string;
           status: Database["public"]["Enums"]["presence_status"];
@@ -603,18 +608,28 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          call_sources?: string[];
+          idle?: boolean;
           last_checkin_at?: string | null;
           last_checkin_outcome?: Database["public"]["Enums"]["checkin_outcome"] | null;
+          last_contact_at?: string | null;
+          locked?: boolean;
           org_id: string;
+          permission_missing?: boolean;
           project_id?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
           user_id: string;
         };
         Update: {
+          call_sources?: string[];
+          idle?: boolean;
           last_checkin_at?: string | null;
           last_checkin_outcome?: Database["public"]["Enums"]["checkin_outcome"] | null;
+          last_contact_at?: string | null;
+          locked?: boolean;
           org_id?: string;
+          permission_missing?: boolean;
           project_id?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
@@ -679,6 +694,49 @@ export type Database = {
           },
           {
             foreignKeyName: "shifts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      status_periods: {
+        Row: {
+          end_at: string | null;
+          id: string;
+          org_id: string;
+          start_at: string;
+          status: Database["public"]["Enums"]["presence_status"];
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          end_at?: string | null;
+          id?: string;
+          org_id: string;
+          start_at: string;
+          status: Database["public"]["Enums"]["presence_status"];
+          user_id: string;
+        };
+        Update: {
+          end_at?: string | null;
+          id?: string;
+          org_id?: string;
+          start_at?: string;
+          status?: Database["public"]["Enums"]["presence_status"];
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "status_periods_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "status_periods_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";

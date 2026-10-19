@@ -23,12 +23,13 @@ Milestone order, with the week-1 spikes early because they decide how the agent 
 | #12 | Windows card spike | Waiting for a Windows machine | |
 | #15 | Agent skeleton | Merged | #74 |
 | #17 | Device registration, revocation, deactivation (backend) | Merged | #75 |
-| #23 | Sync RPCs | Server side merged (#76); agent client PR open | #81 |
-| #24 | Capture upload policy | Bucket + policy merged (#77); agent uploader PR open | #81 |
+| #23 | Sync RPCs | Merged | #76, #81 |
+| #24 | Capture upload policy and uploader | Merged | #77, #81 |
 | #22 | Encrypted offline outbox | Merged | #78 |
 | #18 | Clock in/out and session state machine | Merged | #79 |
 | #19 | Check-in scheduler | Merged | #80 |
 | #31 | Row-level security, can_view_user() | Merged | #82 |
+| #30 | Status engine and offline sweep | PR open | #83 |
 
 Add rows as issues start. Status values: Not started · In progress · PR open · Needs device test · Merged.
 
@@ -71,6 +72,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - macOS minimum: PRD says macOS 13+, so the spike guide's 12.3 fallback is dropped, but the macOS 13 `SCStream` path is still needed (`SCScreenshotManager` is 14+). Only compile-checked on Raj's macOS 26 Mac.
 - Device token (AGT-02): implemented as the Supabase JWT plus a `device_id` claim added by an Auth access-token hook, bound per Auth session (`device_sessions`, not in the LLD). The hook refuses tokens for deactivated users and revoked devices. Agent RPCs still take `device_id` (LLD) and check it matches the claim.
 - #23 / LLD: `agent_events` returns `acked_seq` (highest contiguous seq processed) next to the LLD's accepted / duplicates / rejected / server_time, so the agent can drop everything at or below it. Rejected events are stored in `agent_event_rejections` so they count toward it.
+- #30 Tamper from a heartbeat gap: recorded only when the agent went silent during clock-in with no queued events from the gap and no lock/sleep before it (agent killed or blocked). A gap with queued events is offline work (NFR-REL-01), not Tamper. The PRD's "device online elsewhere" isn't observable server-side.
 - LLD pg_cron table lists 6 jobs; there are 7 (`send_emails` missing). Fix when touching the LLD.
 
 ## Notes for later issues
