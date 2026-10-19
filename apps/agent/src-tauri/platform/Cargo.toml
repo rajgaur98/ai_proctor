@@ -13,10 +13,16 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
+dispatch2 = "0.3"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSRunningApplication", "NSWorkspace"] }
+objc2-application-services = { version = "0.3", default-features = false, features = ["std", "libc", "HIServices", "AXError", "AXUIElement"] }
+objc2-av-foundation = "0.3"
 objc2-core-audio = "0.3"
 objc2-core-foundation = "0.3"
 objc2-core-graphics = "0.3"
+objc2-core-media = "0.3"
 objc2-core-media-io = "0.3"
+objc2-core-video = "0.3"
 objc2-foundation = "0.3"
+objc2-screen-capture-kit = "0.3"

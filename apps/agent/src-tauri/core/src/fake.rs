@@ -68,12 +68,27 @@ impl FakePlatform {
         self.state.lock().unwrap().clone()
     }
 
+    /// A screen-like test image: a soft background with small high-contrast
+    /// "text" blocks, so blur and compression behave as they would on a screen.
     fn frame(display: Option<u32>, width: u32, height: u32) -> Frame {
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                // Lines of 7 × 10 px glyph blocks with gaps, on a light gradient.
+                let glyph = (y % 18) < 10 && (x % 8) < 6 && (x / 8 + y / 18) % 6 != 0;
+                let v = if glyph {
+                    30
+                } else {
+                    230 - (y * 20 / height.max(1)) as u8
+                };
+                rgba.extend_from_slice(&[v, v, v.saturating_add(10), 255]);
+            }
+        }
         Frame {
             display,
             width,
             height,
-            webp: vec![0; 16],
+            rgba,
         }
     }
 }
