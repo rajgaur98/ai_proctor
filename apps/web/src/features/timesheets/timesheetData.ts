@@ -195,6 +195,20 @@ export const canDecideQuery = (userId: string) =>
     },
   });
 
+/**
+ * Whether the viewer can reopen this person's approved week: their direct manager or
+ * active delegate, or the owner at the top of the org on their own auto-approved week.
+ */
+export const canReopenQuery = (userId: string) =>
+  queryOptions({
+    queryKey: ["can-reopen", userId],
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase.rpc("can_reopen_timesheet", { target: userId });
+      if (error) throw error;
+      return data === true;
+    },
+  });
+
 export interface ListRow extends Timesheet {
   fullName: string;
   timezone: string;
