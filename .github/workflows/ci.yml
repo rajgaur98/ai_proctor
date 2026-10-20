@@ -207,7 +207,8 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: 2.3.1
-      - run: deno check supabase/functions/*/index.ts
+      # Not the pnpm workspace: no node_modules, and no deno.lock to write.
+      - run: deno check --node-modules-dir=none --no-lock supabase/functions/*/index.ts
 
   secrets:
     name: Secret scan (gitleaks)
