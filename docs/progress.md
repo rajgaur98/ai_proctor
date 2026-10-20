@@ -9,9 +9,10 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (20 Oct):** implementers on #43 weekly timesheets (`ai_proctor-w43`, on #42), #50 manager alerts + email (`ai_proctor-a50`, on #36), #53 audit log (`ai_proctor-l53`, on main).
-- **In review (CI runs again since the repo went public, 20 Oct):** #115 (#38) → #121 (#35/#36) → #127 (#37, has #117 merged) and #131 (#102); #116 (#105), #117 (#39), #119 (#99), #120 (#118), #122 (#40) → #125 (#41) → #128 (#42, has #121 merged); #123 (#104/#106); #129 (#51). Merge in that order. Later migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture` or `capture_view` must start from the latest version.
-- **Next (in order):** #44 → #45 → #46 → #47 (after #43) → M5 (#48, #49, #52, #54) → #124 day view design → #126, #130, #132 follow-ups → M6 not blocked (#58, #59, #107) → #26.
+- **Now (20 Oct, afternoon):** implementers on #47 reports (`ai_proctor-r47`, on #45) and #58 watchdog + tamper (`ai_proctor-w58`, on #48). Merging the green PRs into main one at a time (see CLAUDE.md on merging).
+- **Merged today:** #120 (#118), #116 (#105), #117 (#39), #122 (#40), #123 (#104/#106), #119 (#99), #151 (main fix).
+- **In review:** #115 (#38) → #121 (#35/#36) → #127 (#37) → #141 (#48, has #131 merged) and #131 (#102); #134 (#50, on #121); #125 (#41) → #128 (#42) → #137 (#43) → #142 (#44), #143 (#45); #129 (#51); #133 (#53). Later migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture`, `capture_view` or `agent_config` must start from the latest version.
+- **Next (in order):** #46 reminders (needs #43 + #50) → #52 policy settings (after the policy-key PRs merge) → #59 onboarding → #49 My data → #54 data requests → #124 → follow-ups (#126, #130, #132, #135, #136, #138–#150) → #107 → #26.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj:** batched here as they come up.
   1. Chromium (Brave, Chrome) and Safari domains with Accessibility granted (#114).
