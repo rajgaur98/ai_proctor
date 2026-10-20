@@ -78,6 +78,7 @@ Answered by Raj on 20 Oct 2026.
 15. **Branch protection:** not enabled (needs GitHub Pro). The session merges only on green CI.
 16. **Second display / second Space:** multi-monitor and Spaces testing move to the M6 device-test checklist below.
 17. **Spike checks:** done step by step with Raj on 19–20 Oct; results in `docs/spikes/`.
+18. **`response_ms` on a miss (CHK-24, #103):** empty. A miss has no click; storing the countdown would skew response-time averages. Default taken from the issue; Raj can reopen it.
 
 ## Blocked on Raj
 
