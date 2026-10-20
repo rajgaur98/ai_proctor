@@ -3,6 +3,7 @@
 
 pub mod activity;
 pub mod auth;
+pub mod camera_privacy;
 pub mod capture;
 pub mod checkin;
 pub mod clock;
@@ -14,6 +15,7 @@ pub mod keystore;
 pub mod liveness;
 pub mod logging;
 pub mod notice;
+pub mod onboarding;
 pub mod outbox;
 pub mod permissions;
 pub mod platform;

@@ -8,7 +8,7 @@ reference survives standalone Claude Design closing on 14 Dec 2026.
 |---|---|
 | `WebNav.dc.html` | #27 dashboard shell (`apps/web/src/components/AppShell.tsx`) |
 | `Tray.dc.html` | #37 tray popover (`apps/agent/src/Tray.tsx`, `tray.css`) |
-| `Onboarding.dc.html` | #48 monitoring notice window, step 1 (`apps/agent/src/notice/`); steps 2 to 4 arrive with #59 |
+| `Onboarding.dc.html` | #48 monitoring notice, step 1; #59 permissions, test capture and done, steps 2 to 4 (`apps/agent/src/notice/`) |
 | `StyleSheet.dc.html` | #27 tokens, type, buttons, status chips (`apps/web/src/styles.css`, `StatusChip.tsx`) |
 | `Timesheet.dc.html` | #43 manager timesheet review (`apps/web/src/features/timesheets/TimesheetPage.tsx`) |
 | `Policy.dc.html` | #52 monitoring policy (`apps/web/src/features/policy/`); the other PRD section 6 settings follow in the same row style, the EU preset has the webcam Off (PRD 5.1) where the mock has it On, and the interval is a shortest/longest pair (CHK-01) rather than one slider |

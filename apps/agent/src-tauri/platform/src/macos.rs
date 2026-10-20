@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use agent_core::contracts::{PermissionState, Permissions};
+use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
@@ -128,19 +128,28 @@ struct Observer(#[allow(dead_code)] Retained<ProtocolObject<dyn NSObjectProtocol
 // The tokens are only held, never messaged, after registration.
 unsafe impl Send for Observer {}
 
-/// Asks macOS for Screen Recording, Camera and Accessibility, showing the system
-/// prompts. Only for trying the agent before guided onboarding (#59) exists: the
-/// app calls it in debug builds with AI_PROCTOR_DEV_REQUEST_PERMISSIONS=1.
-pub fn request_permissions() {
+/// Shows the Screen Recording prompt (first time only; afterwards macOS just returns
+/// the current answer and the person has to use System Settings).
+fn request_screen() {
     let screen = CGRequestScreenCaptureAccess();
     tracing::info!(screen, "asked for Screen Recording");
+}
+
+/// Shows the Camera prompt while the answer is still undecided. The reply arrives
+/// later; `camera_permission()` reads it.
+fn request_camera() {
     if let Some(video) = unsafe { AVMediaTypeVideo } {
         let block = RcBlock::new(|granted: objc2::runtime::Bool| {
             tracing::info!(granted = granted.as_bool(), "asked for Camera");
         });
         unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(video, &block) };
     }
-    // Opens the Accessibility pane with the app listed (browser domains, #25).
+}
+
+/// Asks macOS for Accessibility, opening its pane with the app listed (browser
+/// domains, #25). Not part of the onboarding flow; debug builds call it with
+/// AI_PROCTOR_DEV_REQUEST_PERMISSIONS=1.
+pub fn request_accessibility() {
     let key: &NSString =
         unsafe { &*(kAXTrustedCheckOptionPrompt as *const CFString as *const NSString) };
     let yes = NSNumber::new_bool(true);
@@ -295,6 +304,13 @@ impl Platform for MacPlatform {
                 PermissionState::Denied
             },
             camera: camera_permission(),
+        }
+    }
+
+    fn request_permission(&self, kind: PermissionKind) {
+        match kind {
+            PermissionKind::Screen => request_screen(),
+            PermissionKind::Camera => request_camera(),
         }
     }
 

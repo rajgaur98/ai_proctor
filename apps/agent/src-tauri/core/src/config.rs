@@ -79,6 +79,12 @@ impl AgentConfig {
             * 60
     }
 
+    /// CAP-05: the org's webcam setting; on unless the org turned it off. The same
+    /// default the server uses when deciding whether a missing camera permission counts.
+    pub fn webcam_enabled(&self) -> bool {
+        self.policy["webcam"].as_bool().unwrap_or(true)
+    }
+
     /// Session rules from the config. Unknown or bad values fall back to the
     /// defaults; a shift that doesn't parse is skipped (and logged).
     pub fn session_policy(&self) -> SessionPolicy {
@@ -165,6 +171,17 @@ mod tests {
         assert_eq!(notice.acknowledged_version, Some(1));
         assert_eq!(notice.body.intro.as_deref(), Some("Acme uses AI Proctor."));
         assert!(notice.body.grievance.is_none());
+    }
+
+    #[test]
+    fn the_webcam_is_on_unless_the_org_turns_it_off() {
+        assert!(config(json!({}), json!([])).webcam_enabled());
+        assert!(config(json!({ "webcam": true }), json!([])).webcam_enabled());
+        assert!(!config(json!({ "webcam": false }), json!([])).webcam_enabled());
+        assert!(
+            config(json!({ "webcam": "no" }), json!([])).webcam_enabled(),
+            "a bad value falls back to the default"
+        );
     }
 
     #[test]
