@@ -2,7 +2,17 @@
 
 Living status file. Update it in the same PR as the work.
 
-_Last updated: 19 Oct 2026. Development started on Raj's Mac; M0 in progress._
+_Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
+
+## Now / Next
+
+Read this first after a restart or a context compaction. Update it with every PR.
+
+- **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
+- **Now:** —
+- **Next (in order):** #98 runtime fixes from the device test → #99 agent e2e harness → #101 state-change events → M1 follow-ups (#100, #102, #104, #105, #106, #103 default) → M3 (#35, #36, #38, #39, #37) → M4 (#40 → #41 → #42, #43, #44, #45, #46, #47) → M5 (#48, #49, #50, #51, #52, #53, #54) → M6 not blocked (#58, #59, #107) → #26.
+- **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
+- **Device checks for Raj:** batched at the bottom of this block as they come up.
 
 ## Build order
 
@@ -73,6 +83,9 @@ Answered by Raj on 20 Oct 2026.
 
 Format: `- #<issue>: <exact question or action needed>`
 
+- #108: create a stable code-signing identity for debug builds (free Apple Development certificate via Xcode → Settings → Accounts, or a self-signed code-signing certificate in Keychain Access), so rebuilt agents keep their Screen Recording, Camera and keychain grants.
+- #12, #13, #14 (Windows halves), #56: a Windows machine or VM, or a decision that the pilot is Mac-only.
+- #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
 - #21 / tech-stack week-1 spike: the target "webcam frame < 1 s" isn't reachable on Raj's Mac: the camera takes ~1.3 s to deliver a usable frame, so the light is on 1.6–1.7 s (spike #13). Accept **≤ 2 s camera-on time** as the target? Default if no answer: yes.
 
 ## M6 device-test checklist
