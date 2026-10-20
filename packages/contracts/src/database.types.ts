@@ -305,6 +305,7 @@ export type Database = {
         Row: {
           capture_errors: Json | null;
           created_at: string;
+          deferral_reason: string | null;
           device_id: string;
           device_state: string | null;
           face_present: boolean | null;
@@ -328,6 +329,7 @@ export type Database = {
         Insert: {
           capture_errors?: Json | null;
           created_at?: string;
+          deferral_reason?: string | null;
           device_id: string;
           device_state?: string | null;
           face_present?: boolean | null;
@@ -350,6 +352,7 @@ export type Database = {
         Update: {
           capture_errors?: Json | null;
           created_at?: string;
+          deferral_reason?: string | null;
           device_id?: string;
           device_state?: string | null;
           face_present?: boolean | null;
@@ -1500,7 +1503,7 @@ export type Database = {
       };
     };
     Enums: {
-      checkin_outcome: "pass" | "miss" | "failed";
+      checkin_outcome: "pass" | "miss" | "failed" | "deferred";
       data_region: "us" | "eu";
       device_platform: "macos" | "windows";
       presence_status:
@@ -1631,7 +1634,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      checkin_outcome: ["pass", "miss", "failed"],
+      checkin_outcome: ["pass", "miss", "failed", "deferred"],
       data_region: ["us", "eu"],
       device_platform: ["macos", "windows"],
       presence_status: [

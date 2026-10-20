@@ -706,8 +706,8 @@ begin
     begin
       insert into public.checkin_events (
         id, org_id, user_id, device_id, project_id, scheduled_at, shown_at, responded_at,
-        outcome, response_ms, wrong_clicks, idle_s_at_show, device_state, object_keys,
-        flags, capture_errors
+        outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state,
+        object_keys, flags, capture_errors
       )
       values (
         p_event_id, p_device.org_id, p_device.user_id, p_device.id,
@@ -716,6 +716,7 @@ begin
         (p_payload ->> 'shown_at')::timestamptz,
         (p_payload ->> 'responded_at')::timestamptz,
         (p_payload ->> 'outcome')::public.checkin_outcome,
+        p_payload ->> 'deferral_reason',
         (p_payload ->> 'response_ms')::int,
         (p_payload ->> 'wrong_clicks')::int,
         (p_payload ->> 'idle_s_at_show')::int,
@@ -727,9 +728,13 @@ begin
     exception when check_violation then
       return 'invalid_checkin';
     end;
-    update public.presence
-    set last_checkin_at = p_at, last_checkin_outcome = (p_payload ->> 'outcome')::public.checkin_outcome
-    where user_id = p_device.user_id;
+    -- A deferral is neither a pass nor a miss: "most recent check-in" (STS rule 7)
+    -- stays what it was.
+    if p_payload ->> 'outcome' <> 'deferred' then
+      update public.presence
+      set last_checkin_at = p_at, last_checkin_outcome = (p_payload ->> 'outcome')::public.checkin_outcome
+      where user_id = p_device.user_id;
+    end if;
 
   when 'app_session' then
     -- Judged by its own time, not the current state: the agent sends the last
