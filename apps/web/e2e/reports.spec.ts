@@ -138,13 +138,19 @@ test("a manager reads the week's report and it matches the timesheet totals, sor
   ];
   const desc = [...byWorked].sort((a, b) => b.s - a.s).map((p) => p.name);
   const asc = [...byWorked].sort((a, b) => a.s - b.s).map((p) => p.name);
+  // Other specs may add people to the team (e.g. an invite with no time), so compare
+  // the order of the two seeded people rather than the first row.
+  const rows = await body(page);
+  const seededOrder = async () =>
+    (await rows.getByRole("rowheader").allTextContents())
+      .map((t) => t.trim())
+      .filter((t) => t === "Erin Employee" || t === "Lucas Martin");
   await worked.getByRole("button").click();
   await expect(worked).toHaveAttribute("aria-sort", "descending");
-  const rows = await body(page);
-  await expect(rows.first().getByRole("rowheader")).toHaveText(desc[0] ?? "");
+  await expect.poll(seededOrder).toEqual(desc);
   await worked.getByRole("button").click();
   await expect(worked).toHaveAttribute("aria-sort", "ascending");
-  await expect(rows.first().getByRole("rowheader")).toHaveText(asc[0] ?? "");
+  await expect.poll(seededOrder).toEqual(asc);
   await expectNoA11yViolations(page);
 
   // Every metric has a sortable column.
