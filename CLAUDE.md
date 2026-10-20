@@ -35,6 +35,7 @@ If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > 
 - A new session, or a session given a handoff, first replies with its understanding and plan and waits for Raj's go-ahead. No installs, branches or code before that.
 - One issue → one branch → one PR. Branch: `<issue>-<short-name>` (e.g. `21-capture-pipeline`). PR body has `Closes #<n>` and the PRD IDs covered.
 - PRs are **stacked**: each targets the previous branch in its milestone stack. Rebase the rest of the stack after a lower PR merges.
+- Two PRs that are green alone can break main together (one adds a struct field, the other a test that builds the struct). Before merging, merge current `main` into the branch, run the checks it touches, and push so CI runs on that result. Merge one PR at a time. Every DB PR regenerates `database.types.ts`, so on a conflict regenerate it from the merged migrations rather than hand-merging.
 - Before pushing: lint, typecheck, unit tests, and a self-review of the diff. CI must be green.
 - Windows code (no Windows machine yet) gets the `needs-device-test` label and a manual test checklist in the PR body; it must still compile and pass tests on the Windows CI runner. Keep going.
 - Never put model names in commits, PRs or code.
