@@ -40,6 +40,13 @@ If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > 
 - Never put model names in commits, PRs or code.
 - When blocked on a decision only Raj can make, add it to "Blocked on Raj" in `docs/progress.md` with the exact question, then move to the next unblocked issue.
 
+## Autonomous runs
+- When `.claude/autonomy/mode` says `on`, keep working through the open milestone issues in the order of `docs/progress.md` → "Now / Next" until none is left unblocked. A list you wrote yourself is an order, not a stopping point.
+- After a restart or compaction, re-read "Now / Next" (on `origin/main`) and the open issues, then continue. Keep that block current in every PR.
+- Something only Raj can do: add it to "Blocked on Raj" with the exact question, label the issue `blocked`, move on. Device steps go into one batched list for Raj.
+- Deferred work always becomes an issue (sub-issue of its milestone epic, on the board). Move board cards as work moves: In progress → In review → Done.
+- Run up to ~3 implementers in parallel, each in its own worktree on files that don't overlap; the main session reviews, merges and owns `docs/progress.md`.
+
 ## Where development runs
 All development runs in a **local Claude desktop session on Raj's Mac** (`docs/handoff/mac-session.md`). The earlier cloud session only did planning and docs.
 - Docker (OrbStack or Docker Desktop) for `supabase start`; Rust, Node 22, pnpm, Tauri CLI, Xcode command line tools.
