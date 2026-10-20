@@ -104,12 +104,7 @@ pub fn failure(error: &CaptureError) -> &'static str {
 /// Screenshots and the webcam frame, taken in parallel (camera warm-up is the slow
 /// part, ~1.5 s on a MacBook, spike #13).
 pub fn capture(platform: &dyn Platform, policy: &CapturePolicy) -> Captured {
-    let excluded = platform.foreground().is_some_and(|fg| {
-        policy
-            .excluded_apps
-            .iter()
-            .any(|app| app.eq_ignore_ascii_case(&fg.app))
-    });
+    let excluded = excluded_screens(platform, policy);
     let (screens, webcam) = std::thread::scope(|scope| {
         let webcam = scope.spawn(|| {
             policy
@@ -128,13 +123,14 @@ pub fn capture(platform: &dyn Platform, policy: &CapturePolicy) -> Captured {
         None => {}
         Some(Err(e)) => captured.screen_error = Some(e),
         Some(Ok(frames)) => {
-            if excluded {
+            if !matches!(excluded, Excluded::No) {
                 captured.flags.push("excluded_app".into());
             }
             for (i, frame) in frames.into_iter().enumerate() {
                 let display = frame.display.unwrap_or(i as u32 + 1);
+                let blank = excluded.covers(display);
                 let image = match to_image(frame, SCREEN_MAX_WIDTH) {
-                    Some(image) if excluded => placeholder(image.width(), image.height()),
+                    Some(image) if blank => placeholder(image.width(), image.height()),
                     Some(image) if policy.screenshots == ScreenshotMode::Blurred => blur(&image),
                     Some(image) => image,
                     None => {
@@ -157,6 +153,42 @@ pub fn capture(platform: &dyn Platform, policy: &CapturePolicy) -> Captured {
         },
     }
     captured
+}
+
+/// Which screens an excluded app is on (CAP-04).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Excluded {
+    /// No excluded app in front.
+    No,
+    /// An excluded app is in front and its display is unknown: every screen is
+    /// replaced (privacy first).
+    AllScreens,
+    /// An excluded app is in front on this display (1-based): only it is replaced.
+    Display(u32),
+}
+
+impl Excluded {
+    fn covers(self, display: u32) -> bool {
+        match self {
+            Excluded::No => false,
+            Excluded::AllScreens => true,
+            Excluded::Display(n) => n == display,
+        }
+    }
+}
+
+fn excluded_screens(platform: &dyn Platform, policy: &CapturePolicy) -> Excluded {
+    let Some(fg) = platform.foreground() else {
+        return Excluded::No;
+    };
+    if !policy
+        .excluded_apps
+        .iter()
+        .any(|app| app.eq_ignore_ascii_case(&fg.app))
+    {
+        return Excluded::No;
+    }
+    fg.display.map_or(Excluded::AllScreens, Excluded::Display)
 }
 
 /// RGBA pixels as an image, downscaled to `max_width` if the platform sent more.
@@ -274,6 +306,7 @@ mod tests {
                 app: "1password".into(),
                 title: None,
                 domain: None,
+                display: None,
             })
         });
         let c = capture(&fake, &CapturePolicy::default());
@@ -284,6 +317,63 @@ mod tests {
             names(&c).contains(&"webcam.webp"),
             "the webcam is unaffected"
         );
+    }
+
+    fn two_displays_with_1password_on(display: Option<u32>) -> Captured {
+        let fake = FakePlatform::default();
+        fake.update(|s| {
+            s.displays = 2;
+            s.foreground = Some(Foreground {
+                app: "1Password".into(),
+                title: None,
+                domain: None,
+                display,
+            })
+        });
+        capture(&fake, &CapturePolicy::default())
+    }
+
+    #[test]
+    fn an_excluded_app_replaces_only_the_screen_it_is_on() {
+        let grey = encode(&placeholder(1280, 800));
+        for (on, other) in [(1, 2), (2, 1)] {
+            let c = two_displays_with_1password_on(Some(on));
+            assert_eq!(c.flags, ["excluded_app"]);
+            assert_eq!(file(&c, &format!("screen-{on}.webp")), grey.as_slice());
+            assert_ne!(
+                file(&c, &format!("screen-{other}.webp")),
+                grey.as_slice(),
+                "display {other} is captured normally"
+            );
+        }
+    }
+
+    #[test]
+    fn an_excluded_app_on_an_unknown_display_replaces_every_screen() {
+        let c = two_displays_with_1password_on(None);
+        let grey = encode(&placeholder(1280, 800));
+        assert_eq!(c.flags, ["excluded_app"]);
+        assert_eq!(file(&c, "screen-1.webp"), grey.as_slice());
+        assert_eq!(file(&c, "screen-2.webp"), grey.as_slice());
+    }
+
+    #[test]
+    fn an_ordinary_app_leaves_every_screen_alone() {
+        let fake = FakePlatform::default();
+        fake.update(|s| {
+            s.displays = 2;
+            s.foreground = Some(Foreground {
+                app: "Safari".into(),
+                title: None,
+                domain: None,
+                display: Some(1),
+            })
+        });
+        let c = capture(&fake, &CapturePolicy::default());
+        let grey = encode(&placeholder(1280, 800));
+        assert!(c.flags.is_empty());
+        assert_ne!(file(&c, "screen-1.webp"), grey.as_slice());
+        assert_ne!(file(&c, "screen-2.webp"), grey.as_slice());
     }
 
     #[test]
