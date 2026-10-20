@@ -61,6 +61,15 @@ describe("AgentEvent", () => {
     ).toThrow();
   });
 
+  it("accepts an optional private pause reason of up to 200 characters (BRK-03)", () => {
+    const pause = (payload: object) =>
+      AgentEvent.safeParse({ ...base, type: "pause_start", payload }).success;
+    expect(pause({ planned_min: 5 })).toBe(true);
+    expect(pause({ planned_min: 5, reason: "Doctor call" })).toBe(true);
+    expect(pause({ planned_min: 5, reason: "x".repeat(200) })).toBe(true);
+    expect(pause({ planned_min: 5, reason: "x".repeat(201) })).toBe(false);
+  });
+
   it("rejects unknown payload fields", () => {
     expect(() => AgentEvent.parse({ ...base, type: "lock", payload: { extra: 1 } })).toThrow();
   });
