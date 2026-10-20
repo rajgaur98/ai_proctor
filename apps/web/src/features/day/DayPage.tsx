@@ -29,6 +29,7 @@ interface CheckinRow extends Checkin {
   idleSAtShow: number | null;
   deviceState: string | null;
   missedReason: string | null;
+  missedReasonKind: string | null;
   captures: number;
 }
 
@@ -90,7 +91,7 @@ export function DayPage() {
         supabase
           .from("checkin_events")
           .select(
-            "id, scheduled_at, shown_at, responded_at, outcome, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, object_keys",
+            "id, scheduled_at, shown_at, responded_at, outcome, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys",
           )
           .eq("user_id", userId)
           .gte("scheduled_at", from)
@@ -116,6 +117,7 @@ export function DayPage() {
             idleSAtShow: c.idle_s_at_show,
             deviceState: c.device_state,
             missedReason: c.missed_reason,
+            missedReasonKind: c.missed_reason_kind,
             captures: c.object_keys.length,
           }),
         ),
@@ -354,6 +356,21 @@ function Marker({ outcome }: { outcome: Outcome }) {
   );
 }
 
+// CHK-23 quick picks; the employee adds them from the tray (#37).
+const reasonLabel: Record<string, string> = {
+  meeting: "Meeting",
+  phone_call: "Phone call",
+  break: "Break",
+  away: "Away from desk",
+  other: "Other",
+};
+
+function reasonText(c: CheckinRow): string {
+  const kind = c.missedReasonKind ? (reasonLabel[c.missedReasonKind] ?? c.missedReasonKind) : null;
+  if (kind && c.missedReason) return `${kind}: ${c.missedReason}`;
+  return kind ?? c.missedReason ?? "No reason given yet";
+}
+
 function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
   const [showCaptures, setShowCaptures] = useState(false);
   const rows: [string, React.ReactNode][] = [
@@ -367,7 +384,7 @@ function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
         c.idleSAtShow === null ? "—" : minutesText(Math.round(c.idleSAtShow / 60)),
       ],
       ["Device", c.deviceState ?? "—"],
-      ["Reason", c.missedReason ?? "No reason given yet"],
+      ["Reason", reasonText(c)],
     );
   } else {
     if (c.respondedAt)
