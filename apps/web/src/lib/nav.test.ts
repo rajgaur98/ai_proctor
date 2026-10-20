@@ -18,7 +18,12 @@ describe("navFor", () => {
   });
 
   it("gives employees only their own pages", () => {
-    expect(navFor("employee").map((l) => l.to)).toEqual(["/me", "/my-timesheet", "/notice"]);
+    expect(navFor("employee").map((l) => l.to)).toEqual([
+      "/me",
+      "/my-timesheet",
+      "/my-day",
+      "/notice",
+    ]);
   });
 
   it("lands each role on its first page", () => {
