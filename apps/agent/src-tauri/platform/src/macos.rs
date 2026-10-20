@@ -4,7 +4,7 @@
 //! from spike #13 (`docs/spikes/capture.md`); they return raw RGBA pixels, encoding
 //! happens in `agent_core::capture`. The rest stays a stub until its feature lands.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -35,7 +35,9 @@ use objc2_core_audio::{
     kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject,
     AudioObjectGetPropertyData, AudioObjectPropertyAddress,
 };
-use objc2_core_foundation::{CFArray, CFDictionary, CFRetained, CFString, CFType, CFURL};
+use objc2_core_foundation::{
+    CFArray, CFBoolean, CFDictionary, CFRetained, CFString, CFType, CFURL,
+};
 use objc2_core_graphics::{
     CGDataProvider, CGDisplayBounds, CGEventSource, CGEventSourceStateID, CGEventType,
     CGGetActiveDisplayList, CGImage, CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess,
@@ -83,10 +85,12 @@ const AX_MESSAGE_TIMEOUT_SECS: f32 = 0.25;
 const AX_MAX_DEPTH: usize = 8;
 const AX_MAX_ELEMENTS: usize = 300;
 const AX_BUDGET: Duration = Duration::from_millis(750);
+/// Most browser pids remembered as already switched to accessibility mode.
+const AX_ENABLED_MAX_PIDS: usize = 64;
 
 /// Bundle identifiers of the browsers whose address we read (Chromium family,
 /// Safari, Firefox), including beta/dev/canary builds.
-const BROWSER_BUNDLES: [&str; 17] = [
+const BROWSER_BUNDLES: [&str; 19] = [
     "com.google.Chrome",
     "com.google.Chrome.beta",
     "com.google.Chrome.dev",
@@ -104,6 +108,8 @@ const BROWSER_BUNDLES: [&str; 17] = [
     "com.brave.Browser.beta",
     "com.brave.Browser.nightly",
     "company.thebrowser.Browser",
+    "com.vivaldi.Vivaldi",
+    "com.operasoftware.Opera",
 ];
 
 /// Moves an Objective-C object across threads; it is only read on the other side.
@@ -144,6 +150,8 @@ pub struct MacPlatform {
     asleep: Arc<AtomicBool>,
     observing: AtomicBool,
     observers: Mutex<Vec<Observer>>,
+    /// Chromium pids already asked to build their accessibility tree.
+    ax_enabled: Mutex<HashSet<i32>>,
 }
 
 impl MacPlatform {
@@ -236,16 +244,24 @@ impl Platform for MacPlatform {
         let front = NSWorkspace::sharedWorkspace().frontmostApplication()?;
         let app = front.localizedName()?.to_string();
         let pid = front.processIdentifier();
-        let title = foreground_title(&window_list(), pid);
-        let is_browser = front
+        let windows = window_list();
+        let title = foreground_title(&windows, pid);
+        let display = foreground_display(&windows, &display_bounds(), pid);
+        let bundle = front
             .bundleIdentifier()
-            .is_some_and(|id| is_browser_bundle(&id.to_string()));
-        let domain = if is_browser {
-            browser_domain(pid)
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+        let domain = if is_browser_bundle(&bundle) {
+            browser_domain(pid, is_chromium_bundle(&bundle), &self.ax_enabled)
         } else {
             None
         };
-        Some(Foreground { app, title, domain })
+        Some(Foreground {
+            app,
+            title,
+            domain,
+            display,
+        })
     }
 
     /// One frame per display. Blocks until done (up to 5 s): call from a worker
@@ -282,8 +298,8 @@ impl Platform for MacPlatform {
         false
     }
 
-    fn notify(&self, title: &str, _body: &str) {
-        tracing::debug!(title, "notification (stub)");
+    fn notify(&self, title: &str, body: &str) {
+        crate::macos_notify::notify(title, body);
     }
 }
 
@@ -350,9 +366,49 @@ fn foreground_title(windows: &[WindowInfo], pid: i32) -> Option<String> {
         .map(|t| t.chars().take(MAX_TITLE_CHARS).collect())
 }
 
+/// The display (1-based, in `display_bounds` order) holding the centre of the app's
+/// front window: the first layer-0 window of `pid` with a size, front to back. Its
+/// title is not needed, so this works without Screen Recording. `None` when the app
+/// has no such window or the centre is on no display.
+fn foreground_display(windows: &[WindowInfo], displays: &[Rect], pid: i32) -> Option<u32> {
+    let window = windows.iter().find(|w| {
+        w.owner_pid == pid && w.layer == 0 && w.bounds.width > 0.0 && w.bounds.height > 0.0
+    })?;
+    let cx = window.bounds.x + window.bounds.width / 2.0;
+    let cy = window.bounds.y + window.bounds.height / 2.0;
+    displays
+        .iter()
+        .position(|d| cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height)
+        .map(|i| i as u32 + 1)
+}
+
 /// True for the browsers we read a domain from, by bundle identifier.
 fn is_browser_bundle(bundle_id: &str) -> bool {
     BROWSER_BUNDLES.contains(&bundle_id)
+}
+
+/// True for the Chromium-based browsers, which only build their web accessibility
+/// tree once an assistive client asks (`AXManualAccessibility`). Safari and Firefox
+/// are not.
+fn is_chromium_bundle(bundle_id: &str) -> bool {
+    is_browser_bundle(bundle_id)
+        && !bundle_id.starts_with("com.apple.Safari")
+        && !bundle_id.starts_with("org.mozilla.")
+}
+
+/// Domain from an address-bar value. Chromium hides the `https://` scheme, so a
+/// value without one is tried as a host: it must look like one (contain a dot, or
+/// be `localhost`), which drops typed search text and `about:blank`.
+fn domain_of_address(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.contains("://") {
+        return domain_of(value);
+    }
+    let host = value.split(['/', '?', '#', ':']).next().unwrap_or("");
+    if !(host.contains('.') || host.eq_ignore_ascii_case("localhost")) {
+        return None;
+    }
+    domain_of(&format!("https://{value}"))
 }
 
 /// Host of an http(s) URL, lower-case, without a leading "www.", port, userinfo,
@@ -523,10 +579,13 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
         Err(_) => return Err(CaptureError::Failed("shareable content timed out".into())),
     };
 
-    let displays = unsafe { content.displays() };
+    // Ordered by display ID, like `display_bounds`, so `screen-N` and the display
+    // `foreground()` reports for an excluded app (CAP-04) are the same screen.
+    let mut displays: Vec<_> = unsafe { content.displays() }.iter().collect();
     if displays.is_empty() {
         return Err(CaptureError::Failed("no displays".into()));
     }
+    displays.sort_by_key(|d| unsafe { d.displayID() });
     // Start every display, keep filter and configuration alive until it completes.
     let mut pending = Vec::new();
     for (index, display) in displays.iter().enumerate() {
@@ -534,7 +593,7 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
         let filter = unsafe {
             SCContentFilter::initWithDisplay_excludingWindows(
                 SCContentFilter::alloc(),
-                &display,
+                display,
                 &NSArray::new(),
             )
         };
@@ -943,12 +1002,16 @@ fn window_list() -> Vec<WindowInfo> {
         .collect()
 }
 
+/// Bounds of the active displays, ordered by display ID (the order `capture_screens`
+/// numbers them in).
 fn display_bounds() -> Vec<Rect> {
     let mut ids = [0u32; 16];
     let mut count = 0u32;
     unsafe { CGGetActiveDisplayList(16, ids.as_mut_ptr(), &mut count) };
-    ids[..(count as usize).min(ids.len())]
-        .iter()
+    let count = (count as usize).min(ids.len());
+    let ids = &mut ids[..count];
+    ids.sort_unstable();
+    ids.iter()
         .map(|id| {
             let r = CGDisplayBounds(*id);
             Rect {
@@ -981,22 +1044,23 @@ fn ax_url_string(value: &CFType) -> Option<String> {
     value.downcast_ref::<CFString>().map(|s| s.to_string())
 }
 
-/// Breadth-first search below `root` for the page's `AXWebArea`, bounded by depth,
-/// element count and time.
-fn find_web_area(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement>> {
+/// Breadth-first search below `root` for the first element `matches` accepts,
+/// bounded by depth, element count and time.
+fn find_element(
+    root: CFRetained<AXUIElement>,
+    what: &str,
+    matches: impl Fn(&AXUIElement) -> bool,
+) -> Option<CFRetained<AXUIElement>> {
     let deadline = Instant::now() + AX_BUDGET;
     let mut queue = VecDeque::from([(root, 0usize)]);
     let mut visited = 0;
     while let Some((element, depth)) = queue.pop_front() {
         if visited >= AX_MAX_ELEMENTS || Instant::now() >= deadline {
-            tracing::debug!(visited, "web area search budget spent");
+            tracing::debug!(visited, what, "accessibility search budget spent");
             return None;
         }
         visited += 1;
-        let is_web_area = ax_attribute(&element, "AXRole")
-            .and_then(|r| r.downcast_ref::<CFString>().map(|s| s.to_string()))
-            .is_some_and(|r| r == "AXWebArea");
-        if is_web_area {
+        if matches(&element) {
             return Some(element);
         }
         if depth >= AX_MAX_DEPTH {
@@ -1019,16 +1083,74 @@ fn find_web_area(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement
     None
 }
 
+/// A string attribute of `element`, `None` if missing or not a string.
+fn ax_string(element: &AXUIElement, name: &str) -> Option<String> {
+    ax_attribute(element, name)?
+        .downcast_ref::<CFString>()
+        .map(|s| s.to_string())
+}
+
+/// The page's `AXWebArea` below `root`.
+fn find_web_area(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement>> {
+    find_element(root, "web area", |e| {
+        ax_string(e, "AXRole").is_some_and(|r| r == "AXWebArea")
+    })
+}
+
+/// The Chromium address bar below `root`: an `AXTextField` whose description or
+/// title mentions "address" ("Address and search bar").
+fn find_address_bar(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement>> {
+    let mentions_address = |e: &AXUIElement, name| {
+        ax_string(e, name).is_some_and(|s| s.to_lowercase().contains("address"))
+    };
+    find_element(root, "address bar", |e| {
+        ax_string(e, "AXRole").is_some_and(|r| r == "AXTextField")
+            && (mentions_address(e, "AXDescription") || mentions_address(e, "AXTitle"))
+    })
+}
+
+/// Asks a Chromium browser to build its accessibility tree, once per pid. Without
+/// this it exposes no `AXWebArea`. The tree is built asynchronously, so the first
+/// lookup after this may still find nothing.
+fn enable_chromium_accessibility(app: &AXUIElement, pid: i32, enabled: &Mutex<HashSet<i32>>) {
+    let Ok(mut enabled) = enabled.lock() else {
+        return;
+    };
+    if enabled.contains(&pid) {
+        return;
+    }
+    let status = unsafe {
+        app.set_attribute_value(
+            &CFString::from_str("AXManualAccessibility"),
+            CFBoolean::new(true).as_ref(),
+        )
+    };
+    if status != AXError::Success {
+        tracing::debug!(?status, "could not enable browser accessibility");
+        return;
+    }
+    if enabled.len() >= AX_ENABLED_MAX_PIDS {
+        enabled.clear();
+    }
+    enabled.insert(pid);
+    tracing::debug!("enabled browser accessibility");
+}
+
 /// Domain of the page in the browser's focused window, via Accessibility. `None`
 /// without the permission (checked without prompting), when the browser exposes no
-/// URL, or when the search runs out of budget. Needs Accessibility only.
-fn browser_domain(pid: i32) -> Option<String> {
+/// URL, or when the search runs out of budget. Needs Accessibility only. Chromium
+/// browsers are first asked to build their tree, and fall back to the address bar
+/// when the web area has no URL.
+fn browser_domain(pid: i32, chromium: bool, enabled: &Mutex<HashSet<i32>>) -> Option<String> {
     if !unsafe { AXIsProcessTrusted() } {
         tracing::debug!("accessibility not granted, no browser domain");
         return None;
     }
     let app = unsafe { AXUIElement::new_application(pid) };
     unsafe { app.set_messaging_timeout(AX_MESSAGE_TIMEOUT_SECS) };
+    if chromium {
+        enable_chromium_accessibility(&app, pid, enabled);
+    }
     let window = ax_attribute(&app, "AXFocusedWindow")?
         .downcast::<AXUIElement>()
         .ok()?;
@@ -1039,7 +1161,13 @@ fn browser_domain(pid: i32) -> Option<String> {
         .and_then(|v| ax_url_string(&v));
     let url = from_web_area
         .or_else(|| ax_attribute(&window, "AXDocument").and_then(|v| ax_url_string(&v)));
-    let domain = url.as_deref().and_then(domain_of);
+    let mut domain = url.as_deref().and_then(domain_of);
+    if domain.is_none() && chromium {
+        domain = find_address_bar(window)
+            .and_then(|field| ax_string(&field, "AXValue"))
+            .as_deref()
+            .and_then(domain_of_address);
+    }
     tracing::debug!(found = domain.is_some(), "browser domain read");
     domain
 }
@@ -1157,6 +1285,111 @@ mod tests {
     }
 
     #[test]
+    fn foreground_display_is_the_one_holding_the_front_window_centre() {
+        let displays = [MAIN, SECOND];
+        let on_main = Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let on_second = Rect {
+            x: 2000.0,
+            y: 50.0,
+            width: 600.0,
+            height: 400.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, on_main)], &displays, 10),
+            Some(1)
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, on_second)], &displays, 10),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn foreground_display_uses_the_centre_of_a_window_spanning_displays() {
+        let displays = [MAIN, SECOND];
+        // Mostly on the second display: centre x = 1800 + 500 = 2300.
+        let mostly_second = Rect {
+            x: 1800.0,
+            y: 0.0,
+            width: 1000.0,
+            height: 500.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, mostly_second)], &displays, 10),
+            Some(2)
+        );
+        // Mostly on the main display: centre x = 1000 + 300 = 1300.
+        let mostly_main = Rect {
+            x: 1000.0,
+            y: 0.0,
+            width: 600.0,
+            height: 500.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, mostly_main)], &displays, 10),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn foreground_display_takes_the_apps_frontmost_normal_window() {
+        let displays = [MAIN, SECOND];
+        let on_main = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let on_second = Rect {
+            x: 2000.0,
+            y: 0.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let windows = [
+            window(11, "Other app", 0, on_main),
+            window(10, "Menu", 25, on_main),
+            window(10, "", 0, Rect::default()),
+            window(10, "", 0, on_second),
+            window(10, "Older", 0, on_main),
+        ];
+        assert_eq!(foreground_display(&windows, &displays, 10), Some(2));
+    }
+
+    #[test]
+    fn foreground_display_is_none_when_unknown() {
+        let displays = [MAIN, SECOND];
+        let nowhere = Rect {
+            x: 9000.0,
+            y: 9000.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        assert_eq!(foreground_display(&[], &displays, 10), None);
+        assert_eq!(
+            foreground_display(&[window(11, "A", 0, MAIN)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 25, MAIN)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, nowhere)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, MAIN)], &[], 10),
+            None
+        );
+    }
+
+    #[test]
     fn title_is_none_without_titles_or_windows() {
         assert_eq!(foreground_title(&[], 10), None);
         let untitled = [window(10, "", 0, MAIN), window(10, "   ", 0, MAIN)];
@@ -1187,6 +1420,73 @@ mod tests {
         assert!(!is_browser_bundle("com.apple.finder"));
         assert!(!is_browser_bundle("com.google.Chrome.helper"));
         assert!(!is_browser_bundle(""));
+    }
+
+    #[test]
+    fn chromium_family_is_told_apart_from_safari_and_firefox() {
+        for id in [
+            "com.google.Chrome",
+            "com.google.Chrome.beta",
+            "com.google.Chrome.dev",
+            "com.google.Chrome.canary",
+            "com.microsoft.edgemac",
+            "com.microsoft.edgemac.Beta",
+            "com.microsoft.edgemac.Dev",
+            "com.microsoft.edgemac.Canary",
+            "com.brave.Browser",
+            "com.brave.Browser.beta",
+            "com.brave.Browser.nightly",
+            "company.thebrowser.Browser",
+            "com.vivaldi.Vivaldi",
+            "com.operasoftware.Opera",
+        ] {
+            assert!(is_chromium_bundle(id), "{id}");
+        }
+        for id in [
+            "com.apple.Safari",
+            "com.apple.SafariTechnologyPreview",
+            "org.mozilla.firefox",
+            "org.mozilla.nightly",
+            "com.apple.finder",
+            "",
+        ] {
+            assert!(!is_chromium_bundle(id), "{id}");
+        }
+    }
+
+    #[test]
+    fn address_bar_value_without_scheme_is_read_as_https_host() {
+        let d = |v| domain_of_address(v).unwrap_or_default();
+        assert_eq!(d("github.com/rajgaur98/ai_proctor"), "github.com");
+        assert_eq!(d("www.Example.com"), "example.com");
+        assert_eq!(d("docs.rs:8080/x?q=1"), "docs.rs");
+        assert_eq!(d("localhost:3000/app"), "localhost");
+        assert_eq!(d("127.0.0.1:3000"), "127.0.0.1");
+        assert_eq!(d("  mail.google.com  "), "mail.google.com");
+    }
+
+    #[test]
+    fn address_bar_value_with_a_scheme_follows_domain_of() {
+        assert_eq!(
+            domain_of_address("http://example.com/a").as_deref(),
+            Some("example.com")
+        );
+        assert_eq!(domain_of_address("chrome://settings"), None);
+        assert_eq!(domain_of_address("file:///Users/a/b.html"), None);
+    }
+
+    #[test]
+    fn address_bar_text_that_is_not_a_host_gives_no_domain() {
+        for v in [
+            "",
+            "about:blank",
+            "hello",
+            "best pizza near me",
+            "how to fix a.b error",
+            "/path/only",
+        ] {
+            assert_eq!(domain_of_address(v), None, "{v}");
+        }
     }
 
     #[test]
