@@ -32,7 +32,7 @@ use agent_core::onboarding::{
 };
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
 use agent_core::permissions::{PermissionMonitor, Required};
-use agent_core::platform::{Platform, SessionState};
+use agent_core::platform::{Platform, ScreenRect, SessionState};
 use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{
     Decision, FileScheduleStore, Outcome, Random, SchedulePolicy, Scheduler, ThreadRandom,
@@ -324,13 +324,16 @@ impl AgentState {
     fn card_tick(&self) -> CardAction {
         let now = self.clock.now();
         let mut card = self.card.lock().unwrap();
-        if let Some(current) = card.as_ref() {
+        if let Some(current) = card.as_mut() {
             if self.session.lock().unwrap().shift() != ShiftState::Working {
                 tracing::info!("check-in cancelled by a shift change");
+                // Nothing is reported for a card that was cancelled.
+                self.platform.stop_input_guard();
                 *card = None;
                 return CardAction::Hide;
             }
             if current.expired(now) {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Miss, now);
                 *card = None;
                 self.record(finished);
@@ -367,6 +370,24 @@ impl AgentState {
         let challenge = self.challenge(&shown);
         *card = Some(shown);
         CardAction::Show(challenge)
+    }
+
+    /// ANT-02: while the card is up, injected clicks inside it are swallowed and
+    /// counted by the platform. Only starts if the card is still current (it may
+    /// have ended while its window was being placed); `area` is the card window.
+    fn start_input_guard(&self, area: ScreenRect) {
+        if self.card.lock().unwrap().is_some() {
+            self.platform.start_input_guard(area);
+        }
+    }
+
+    /// Stops the guard and notes what it swallowed on the card, for its flags.
+    fn end_input_guard(&self, card: &mut Card) {
+        let injected = self.platform.stop_input_guard();
+        if injected.count > 0 {
+            tracing::warn!(count = injected.count, "injected clicks on the card");
+        }
+        card.record_injected(injected);
     }
 
     /// The card on screen, as the card window shows it.
@@ -407,6 +428,7 @@ impl AgentState {
                 ..ClickReply::just(CardClickResult::Wrong)
             },
             ClickResult::Pass => {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Pass, now);
                 *card = None;
                 self.scheduler.finished(Outcome::Pass);
@@ -416,6 +438,7 @@ impl AgentState {
                 }
             }
             ClickResult::Failed => {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Failed, now);
                 *card = None;
                 self.record(finished);
@@ -2525,6 +2548,106 @@ mod tests {
         assert_eq!(w.state.card_tick(), CardAction::Hide);
         assert!(w.checkins().is_empty());
         assert_eq!(w.state.scheduler.wake_in(), None);
+    }
+
+    // ANT-02: the input guard watches the card's area while it is up.
+
+    const CARD_AREA: ScreenRect = ScreenRect {
+        x: 100,
+        y: 50,
+        width: 360,
+        height: 220,
+    };
+
+    #[test]
+    fn the_input_guard_only_starts_for_a_card_that_is_up() {
+        let w = working();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(w.platform.snapshot().input_guard, None, "no card, no guard");
+
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(w.platform.snapshot().input_guard, Some(CARD_AREA));
+    }
+
+    #[test]
+    fn a_pass_with_injected_clicks_is_flagged_and_still_a_pass() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 3);
+
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        assert_eq!(reply.result, CardClickResult::Pass);
+        assert_eq!(w.platform.snapshot().input_guard, None, "guard stopped");
+        w.state.finish_pass(reply.pass.unwrap());
+
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "pass");
+        assert_eq!(checkin["wrong_clicks"], 0);
+        assert_eq!(checkin["flags"], serde_json::json!(["injected_click:3"]));
+    }
+
+    #[test]
+    fn a_pass_without_injected_clicks_has_no_flag() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+        assert_eq!(w.checkins()[0]["flags"], serde_json::json!([]));
+        assert_eq!(w.platform.snapshot().input_guard, None);
+    }
+
+    #[test]
+    fn a_wrong_click_keeps_the_guard_running() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        assert_eq!(reply.result, CardClickResult::Wrong);
+        assert_eq!(w.platform.snapshot().input_guard, Some(CARD_AREA));
+    }
+
+    #[test]
+    fn a_failed_check_in_and_a_miss_carry_the_flag_too() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 2);
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        let reply = w
+            .state
+            .card_click(&card.card_id, wrong(&reply.next.unwrap()), true);
+        assert_eq!(reply.result, CardClickResult::Failed);
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!(["injected_click:2"])
+        );
+
+        let w = working();
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 5);
+        w.clock.advance(chrono::Duration::seconds(95));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "miss");
+        assert_eq!(checkin["flags"], serde_json::json!(["injected_click:5"]));
+        assert_eq!(w.platform.snapshot().input_guard, None);
+    }
+
+    #[test]
+    fn a_cancelled_card_stops_the_guard_and_reports_nothing() {
+        let w = working();
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 2);
+        w.state.act("start a break", |s| s.start_break(None));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        assert_eq!(w.platform.snapshot().input_guard, None);
+        assert!(w.checkins().is_empty());
     }
 
     #[test]
