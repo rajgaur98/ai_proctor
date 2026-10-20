@@ -165,6 +165,13 @@ pub fn ready(permissions: &Permissions, webcam: bool) -> bool {
     !blocks(&permissions.screen) && !(webcam && blocks(&permissions.camera))
 }
 
+/// Whether the permission step shows the optional Accessibility card: browser domains
+/// are collected (activity sampling is on) and the OS has such a permission (not
+/// Windows). It never gates `ready`.
+pub fn domains_card(sampling: bool, accessibility: PermissionState) -> bool {
+    sampling && accessibility != PermissionState::Unsupported
+}
+
 /// macOS can say Screen Recording is on while ScreenCaptureKit still refuses, until
 /// the app is reopened (spike #13). A permission failure with the OS saying "granted"
 /// is that case.
@@ -177,6 +184,8 @@ pub fn state(
     platform: OnboardingPlatform,
     permissions: Permissions,
     webcam: bool,
+    accessibility: PermissionState,
+    sampling: bool,
     onboarding: &Onboarding,
 ) -> OnboardingState {
     OnboardingState {
@@ -184,6 +193,8 @@ pub fn state(
         ready: ready(&permissions, webcam),
         permissions,
         webcam,
+        accessibility,
+        domains: domains_card(sampling, accessibility),
         restart_needed: onboarding.restart_needed(),
         completed: onboarding.completed(),
         start_step: onboarding.start_step().into(),
@@ -275,6 +286,8 @@ mod tests {
             OnboardingPlatform::Macos,
             perms(PermissionState::Granted, PermissionState::NotDetermined),
             true,
+            PermissionState::Granted,
+            true,
             &o,
         );
         assert!(!s.ready && !s.completed && !s.restart_needed);
@@ -284,9 +297,57 @@ mod tests {
             OnboardingPlatform::Macos,
             perms(PermissionState::Granted, PermissionState::NotDetermined),
             false,
+            PermissionState::Granted,
+            true,
             &o,
         );
         assert!(s.ready && !s.webcam);
+    }
+
+    #[test]
+    fn the_accessibility_card_needs_collected_domains_and_an_os_that_has_it() {
+        use PermissionState::*;
+        assert!(domains_card(true, Denied));
+        assert!(domains_card(true, Granted), "shown, already on");
+        assert!(
+            !domains_card(false, Denied),
+            "domains off by policy: hidden"
+        );
+        assert!(
+            !domains_card(true, Unsupported),
+            "Windows has no such permission: hidden"
+        );
+    }
+
+    #[test]
+    fn accessibility_is_optional_so_it_never_gates_the_step() {
+        let o = memory();
+        let granted = perms(PermissionState::Granted, PermissionState::Granted);
+        for accessibility in [
+            PermissionState::Denied,
+            PermissionState::NotDetermined,
+            PermissionState::Restricted,
+        ] {
+            let s = state(
+                OnboardingPlatform::Macos,
+                granted.clone(),
+                true,
+                accessibility,
+                true,
+                &o,
+            );
+            assert!(s.domains && s.ready, "{accessibility:?}");
+            assert_eq!(s.accessibility, accessibility);
+        }
+        let s = state(
+            OnboardingPlatform::Windows,
+            granted,
+            true,
+            PermissionState::Unsupported,
+            true,
+            &o,
+        );
+        assert!(!s.domains && s.ready);
     }
 
     #[test]

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use agent_core::checkin::deferred_payload;
 use agent_core::clock::{Clock, SystemClock};
-use agent_core::liveness::{PreviousRun, RestartReport};
+use agent_core::liveness::{Ended, PreviousRun, RestartReport};
 use agent_core::outbox::Outbox;
 use agent_core::scheduler::{Deferral, DeferralReason};
 use agent_core::sync::{
@@ -110,29 +110,33 @@ fn queued_events_and_captures_reach_supabase() {
             now,
         )
         .unwrap();
-    // The watchdog's restart report and a permission report (ANT-01, AGT-07): the
-    // real payloads must pass the server's schema and projection.
-    let restart = RestartReport::new(
-        &PreviousRun {
-            last_alive_at: now - chrono::Duration::seconds(90),
-            clean_exit: false,
-        },
-        None,
-    );
-    outbox
-        .append("agent_restart", now, 4, restart.payload(), now)
-        .unwrap();
+    // The watchdog's restart reports and a permission report (ANT-01, AGT-07): the
+    // real payloads must pass the server's schema and projection. One for a kill and
+    // one for a run the OS ended with the session (#159).
+    for (seq, ended) in [(4, Ended::Abruptly), (5, Ended::SessionEnd)] {
+        let restart = RestartReport::new(
+            &PreviousRun {
+                last_alive_at: now - chrono::Duration::seconds(90),
+                ended,
+            },
+            None,
+        );
+        outbox
+            .append("agent_restart", now, seq, restart.payload(), now)
+            .unwrap();
+    }
     outbox
         .append(
             "permission_change",
             now,
-            5,
+            6,
             json!({ "screen": "granted", "camera": "granted" }),
             now,
         )
         .unwrap();
+    // The shift ends with the session (#159): the reason the agent sends at a logout.
     outbox
-        .append("clock_out", now, 6, json!({ "reason": "manual" }), now)
+        .append("clock_out", now, 7, json!({ "reason": "session_end" }), now)
         .unwrap();
 
     let syncer = Syncer::new(
@@ -149,7 +153,7 @@ fn queued_events_and_captures_reach_supabase() {
     let stats = syncer.sync_once().unwrap();
     assert_eq!(
         (stats.accepted, stats.rejected, stats.uploaded),
-        (10, 0, 1),
+        (11, 0, 1),
         "{stats:?}"
     );
     assert_eq!(outbox.stats().unwrap().pending_events, 0);
@@ -170,8 +174,11 @@ fn queued_events_and_captures_reach_supabase() {
             permissions: json!({}),
         })
         .unwrap();
-    // Starts at 1; schedule changes (#29) move it.
+    // Starts at 1; policy changes move it.
     assert!(reply.policy_version >= 1);
+    // The combined (org + this person) version the agent compares with its config's.
+    assert!(reply.config_version.is_some(), "{reply:?}");
+    assert_eq!(reply.config_version(), syncer.config().unwrap().version());
     assert!(
         syncer.clock_offset().num_seconds().abs() < 5,
         "local stack shares this clock"

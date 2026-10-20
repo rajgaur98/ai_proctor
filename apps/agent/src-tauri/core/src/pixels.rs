@@ -1,6 +1,9 @@
 //! Pixel helpers for platforms that hand over BGRA surfaces (Windows: Desktop
-//! Duplication, Media Foundation; #167). Pure, so the maths runs in CI on every OS;
-//! the surface reads live in `agent-platform`.
+//! Duplication, Media Foundation; #167), or half-float scRGB ones (Windows HDR
+//! displays, #174). Pure, so the maths runs in CI on every OS; the surface reads
+//! live in `agent-platform`.
+
+use std::sync::OnceLock;
 
 /// A webcam frame is accepted once its mean luma reaches this (warm-up frames are
 /// black) and is within `SETTLE_DELTA` of the previous frame.
@@ -23,7 +26,18 @@ pub fn fit_width(width: u32, height: u32, max_width: u32) -> Option<(u32, u32)> 
 /// True if `bytes` holds `height` rows of `width` BGRA pixels `stride` bytes apart
 /// (the last row needs no padding).
 fn fits(bytes: &[u8], width: usize, height: usize, stride: usize) -> bool {
-    let Some(row) = width.checked_mul(4) else {
+    fits_pixels(bytes, width, height, stride, 4)
+}
+
+/// `fits` for pixels of `bytes_per_pixel` bytes.
+fn fits_pixels(
+    bytes: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    bytes_per_pixel: usize,
+) -> bool {
+    let Some(row) = width.checked_mul(bytes_per_pixel) else {
         return false;
     };
     if width == 0 || height == 0 || stride < row {
@@ -136,6 +150,93 @@ pub fn surface_to_upright_rgba(
     let rgba = bgra_to_rgba_scaled(bytes, width, height, stride, surface_w, surface_h)?;
     let (w, h, rgba) = rotate_rgba(rgba, surface_w, surface_h, quarter_turns);
     Some((w as u32, h as u32, rgba))
+}
+
+/// An IEEE 754 half-precision float (the channels of `DXGI_FORMAT_R16G16B16A16_FLOAT`)
+/// as `f32`. Done by hand: `f16` is not stable.
+fn half_to_f32(bits: u16) -> f32 {
+    let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exponent = i32::from((bits >> 10) & 0x1f);
+    let fraction = f32::from(bits & 0x3ff);
+    match exponent {
+        0 => sign * fraction * 2f32.powi(-24),
+        31 if fraction == 0.0 => sign * f32::INFINITY,
+        31 => f32::NAN,
+        _ => sign * (1.0 + fraction / 1024.0) * 2f32.powi(exponent - 15),
+    }
+}
+
+/// Linear light (0..1) as an 8-bit sRGB value: the sRGB transfer function.
+fn linear_to_srgb8(linear: f32) -> u8 {
+    let v = linear.clamp(0.0, 1.0);
+    let encoded = if v <= 0.003_130_8 {
+        12.92 * v
+    } else {
+        1.055 * v.powf(1.0 / 2.4) - 0.055
+    };
+    (encoded * 255.0 + 0.5) as u8
+}
+
+/// One 8-bit sRGB value per half-float bit pattern, so a 4K surface costs table
+/// lookups and not 24 million `powf` calls. NaN (and so a garbage channel) is black.
+fn half_to_srgb8_table() -> &'static [u8] {
+    static TABLE: OnceLock<Vec<u8>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        (0..=u16::MAX)
+            .map(|bits| {
+                let v = half_to_f32(bits);
+                if v.is_nan() {
+                    0
+                } else {
+                    linear_to_srgb8(v)
+                }
+            })
+            .collect()
+    })
+}
+
+/// A scRGB surface (`DXGI_FORMAT_R16G16B16A16_FLOAT`, what an HDR display hands
+/// Desktop Duplication: linear light, 1.0 = SDR white at 80 nits, little-endian
+/// half floats in R, G, B, A order, `stride` bytes per row) as tightly packed BGRA8,
+/// the layout the rest of this module reads. The tone map is the simplest one that
+/// keeps the screen legible: each channel is clamped to 0..1 (anything brighter than
+/// SDR white clips; negative, wide-gamut values go to 0) and sRGB-encoded. Alpha
+/// becomes opaque. A check-in screenshot has to show what is on screen, not grade
+/// it, so there is no luminance scaling. `None` if the buffer is too short for the
+/// stated size or a dimension is 0.
+pub fn rgba16f_to_bgra8(
+    bytes: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+) -> Option<Vec<u8>> {
+    if !fits_pixels(bytes, width, height, stride, 8) {
+        return None;
+    }
+    let table = half_to_srgb8_table();
+    let mut bgra = Vec::with_capacity(width * height * 4);
+    for y in 0..height {
+        let row = &bytes[y * stride..y * stride + width * 8];
+        for px in row.as_chunks::<8>().0 {
+            let channel = |at: usize| table[usize::from(u16::from_le_bytes([px[at], px[at + 1]]))];
+            bgra.extend_from_slice(&[channel(4), channel(2), channel(0), 255]);
+        }
+    }
+    Some(bgra)
+}
+
+/// `surface_to_upright_rgba` for a half-float scRGB surface (`rgba16f_to_bgra8`
+/// first, at full size: one 8-bit copy of the surface, freed on return).
+pub fn hdr_surface_to_upright_rgba(
+    bytes: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    quarter_turns: u32,
+    max_width: u32,
+) -> Option<(u32, u32, Vec<u8>)> {
+    let bgra = rgba16f_to_bgra8(bytes, width, height, stride)?;
+    surface_to_upright_rgba(&bgra, width, height, width * 4, quarter_turns, max_width)
 }
 
 /// The rows of a bottom-up surface (Media Foundation RGB32 has a negative stride) in
@@ -302,6 +403,82 @@ mod tests {
         assert!(surface_to_upright_rgba(&surface[..10], 4, 2, 16, 0, 1280).is_none());
     }
 
+    /// Half-float bit patterns for 0.0, 0.5, 1.0, 2.0, -1.0, +inf, NaN.
+    const H0: u16 = 0x0000;
+    const H_HALF: u16 = 0x3800;
+    const H1: u16 = 0x3c00;
+    const H2: u16 = 0x4000;
+    const H_NEG1: u16 = 0xbc00;
+    const H_INF: u16 = 0x7c00;
+    const H_NAN: u16 = 0x7e00;
+
+    fn half_pixel(r: u16, g: u16, b: u16, a: u16) -> Vec<u8> {
+        [r, g, b, a].iter().flat_map(|h| h.to_le_bytes()).collect()
+    }
+
+    #[test]
+    fn half_floats_decode() {
+        assert_eq!(half_to_f32(H0), 0.0);
+        assert_eq!(half_to_f32(H_HALF), 0.5);
+        assert_eq!(half_to_f32(H1), 1.0);
+        assert_eq!(half_to_f32(H2), 2.0);
+        assert_eq!(half_to_f32(H_NEG1), -1.0);
+        assert_eq!(half_to_f32(H_INF), f32::INFINITY);
+        assert!(half_to_f32(H_NAN).is_nan());
+        // Smallest subnormal and largest finite value.
+        assert_eq!(half_to_f32(0x0001), 2f32.powi(-24));
+        assert_eq!(half_to_f32(0x7bff), 65504.0);
+    }
+
+    #[test]
+    fn linear_light_is_srgb_encoded() {
+        assert_eq!(linear_to_srgb8(0.0), 0);
+        assert_eq!(linear_to_srgb8(1.0), 255);
+        // Mid linear 0.5 is 188 in sRGB; the linear segment starts at 0.0031308.
+        assert_eq!(linear_to_srgb8(0.5), 188);
+        assert_eq!(linear_to_srgb8(0.002), 7);
+        assert_eq!(linear_to_srgb8(-0.5), 0);
+        assert_eq!(linear_to_srgb8(7.0), 255);
+    }
+
+    #[test]
+    fn scrgb_is_clamped_and_tone_mapped_to_bgra8() {
+        // R=1 (white level), G=0.5, B=0, then an over-bright, a negative, an
+        // infinite and a NaN channel, all with a stray alpha.
+        let mut bytes = half_pixel(H1, H_HALF, H0, 0);
+        bytes.extend(half_pixel(H2, H_NEG1, H_INF, H_HALF));
+        bytes.extend(half_pixel(H_NAN, H1, H1, H1));
+        assert_eq!(
+            rgba16f_to_bgra8(&bytes, 3, 1, 24),
+            Some(vec![0, 188, 255, 255, 255, 0, 255, 255, 255, 255, 0, 255])
+        );
+    }
+
+    #[test]
+    fn scrgb_row_padding_is_dropped_and_short_buffers_rejected() {
+        let mut bytes = half_pixel(H1, H1, H1, H1);
+        bytes.extend([0xEE; 8]); // padding
+        bytes.extend(half_pixel(H0, H0, H0, H1));
+        assert_eq!(
+            rgba16f_to_bgra8(&bytes, 1, 2, 16),
+            Some(vec![255, 255, 255, 255, 0, 0, 0, 255])
+        );
+        assert_eq!(rgba16f_to_bgra8(&bytes[..23], 1, 2, 16), None);
+        assert_eq!(rgba16f_to_bgra8(&bytes, 2, 2, 8), None, "stride");
+        assert_eq!(rgba16f_to_bgra8(&[], 0, 0, 0), None);
+    }
+
+    #[test]
+    fn an_hdr_surface_goes_through_the_same_scale_and_turn() {
+        // 2x1: red then blue, turned a quarter clockwise: 1 wide, 2 high.
+        let mut bytes = half_pixel(H1, H0, H0, H1);
+        bytes.extend(half_pixel(H0, H0, H1, H1));
+        let (w, h, rgba) = hdr_surface_to_upright_rgba(&bytes, 2, 1, 16, 1, 1280).unwrap();
+        assert_eq!((w, h), (1, 2));
+        assert_eq!(rgba, [255, 0, 0, 255, 0, 0, 255, 255]);
+        assert!(hdr_surface_to_upright_rgba(&bytes[..15], 2, 1, 16, 0, 1280).is_none());
+    }
+
     #[test]
     fn flips_a_bottom_up_surface() {
         let bytes = [1, 1, 2, 2, 3, 3];
@@ -336,5 +513,13 @@ mod tests {
             webcam_frame_ready(MAX_WEBCAM_FRAMES, 0.0, None),
             "frame budget spent"
         );
+        assert!(!webcam_frame_ready(3, 12.0, Some(12.0)), "stable but dark");
+        assert!(
+            !webcam_frame_ready(5, 150.0, Some(152.5)),
+            "delta at the limit"
+        );
+        assert!(webcam_frame_ready(3, 15.0, Some(14.5)), "exactly MIN_LUMA");
+        assert!(!webcam_frame_ready(MAX_WEBCAM_FRAMES - 1, 5.0, Some(50.0)));
+        assert!(webcam_frame_ready(MAX_WEBCAM_FRAMES, 5.0, Some(50.0)));
     }
 }

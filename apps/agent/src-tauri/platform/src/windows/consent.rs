@@ -4,13 +4,14 @@
 
 use std::sync::OnceLock;
 
-use agent_core::consent_store::{device_in_use, Usage, CONSENT_STORE, NON_PACKAGED};
+use agent_core::consent_store::{boot_filetime, device_in_use, Usage, CONSENT_STORE, NON_PACKAGED};
 use agent_core::platform::CallState;
 use windows::core::{HSTRING, PWSTR};
 use windows::Win32::System::Registry::{
     RegCloseKey, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
     RRF_RT_REG_QWORD,
 };
+use windows::Win32::System::SystemInformation::{GetSystemTimeAsFileTime, GetTickCount64};
 
 /// An open registry key, closed on drop.
 struct Key(HKEY);
@@ -116,10 +117,23 @@ fn own_exe() -> &'static str {
     })
 }
 
+/// When the system booted, as a FILETIME. Entries left open by a crash from before
+/// that are not calls (`agent_core::consent_store`).
+fn boot() -> u64 {
+    let now = unsafe { GetSystemTimeAsFileTime() };
+    let now = u64::from(now.dwHighDateTime) << 32 | u64::from(now.dwLowDateTime);
+    boot_filetime(now, unsafe { GetTickCount64() })
+}
+
 pub fn call_state() -> CallState {
+    let boot = boot();
     let in_use = |device: &str| {
         let entries = entries(device);
-        device_in_use(entries.iter().map(|(k, u)| (k.as_str(), *u)), own_exe())
+        device_in_use(
+            entries.iter().map(|(k, u)| (k.as_str(), *u)),
+            own_exe(),
+            boot,
+        )
     };
     CallState {
         camera: in_use("webcam"),

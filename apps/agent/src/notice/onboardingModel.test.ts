@@ -11,6 +11,7 @@ import {
   isOn,
   needsRestart,
   permissionCards,
+  permissionsHeading,
   screenCaption,
   settingsApp,
   statusLabel,
@@ -24,6 +25,8 @@ const mac: OnboardingState = {
   platform: "macos",
   permissions: { screen: "granted", camera: "not_determined" },
   webcam: true,
+  accessibility: "denied",
+  domains: false,
   ready: false,
   restart_needed: false,
   completed: false,
@@ -122,6 +125,61 @@ describe("permission cards", () => {
     });
     expect(camera?.on).toBe(true);
     expect(camera?.cta).toBeNull();
+  });
+
+  describe("Accessibility (browser domains)", () => {
+    const withDomains: OnboardingState = { ...mac, domains: true };
+
+    it("is left out unless the org collects domains", () => {
+      expect(permissionCards(mac).map((c) => c.kind)).toEqual(["screen", "camera"]);
+      expect(permissionCards({ ...mac, webcam: false }).map((c) => c.kind)).toEqual(["screen"]);
+    });
+
+    it("is an optional third card with its own steps and a button that asks the OS", () => {
+      const cards = permissionCards(withDomains);
+      expect(cards.map((c) => c.kind)).toEqual(["screen", "camera", "accessibility"]);
+      const accessibility = cards[2];
+      expect(accessibility?.optional).toBe(true);
+      expect(accessibility?.note).toContain("Optional");
+      expect(accessibility?.status).toBe("Not yet");
+      expect(accessibility?.pane).toBe("Accessibility");
+      expect(accessibility?.steps).toEqual([
+        "1 · Open System Settings → Privacy & Security",
+        "2 · Choose Accessibility",
+        "3 · Turn on AI Proctor, then come back here",
+      ]);
+      expect(accessibility?.cta).toBe("Open System Settings");
+    });
+
+    it("sits after Screen Recording when the webcam is off", () => {
+      expect(permissionCards({ ...withDomains, webcam: false }).map((c) => c.kind)).toEqual([
+        "screen",
+        "accessibility",
+      ]);
+    });
+
+    it("is done once granted", () => {
+      const card = permissionCards({ ...withDomains, accessibility: "granted" })[2];
+      expect(card?.on).toBe(true);
+      expect(card?.cta).toBeNull();
+    });
+
+    it("never shows on Windows, even if the state said domains are collected", () => {
+      expect(
+        permissionCards({ ...win, domains: true, accessibility: "unsupported" }).map((c) => c.kind),
+      ).toEqual(["screen", "camera"]);
+    });
+
+    it("does not hold up Continue and is not counted in the heading", () => {
+      expect(canContinue({ ...withDomains, ready: true })).toBe(true);
+      expect(permissionsHeading(permissionCards(withDomains))).toBe("Allow two permissions");
+      expect(permissionsHeading(permissionCards({ ...withDomains, webcam: false }))).toBe(
+        "Allow a permission",
+      );
+      expect(permissionsHeading(permissionCards({ ...mac, webcam: false }))).toBe(
+        "Allow a permission",
+      );
+    });
   });
 
   it("treats an OS with nothing to ask as on", () => {

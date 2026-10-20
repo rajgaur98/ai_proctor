@@ -30,6 +30,15 @@ pub fn blocks(state: &PermissionState) -> bool {
     )
 }
 
+/// Browser domains need macOS Accessibility, which is optional: without it the
+/// activity just has no domain. The tray only nags when the org collects domains
+/// (activity sampling on, ACT-01/03) and the OS has the permission to give
+/// (`Unsupported` on Windows never blocks). Not a capture permission: never part of
+/// the `permission_change` report, so never Tamper.
+pub fn accessibility_missing(sampling: bool, accessibility: PermissionState) -> bool {
+    sampling && blocks(&accessibility)
+}
+
 /// What this agent needs: Screen Recording always (screenshots, window titles),
 /// the camera only while the org's webcam setting is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,6 +210,41 @@ mod tests {
 
     fn t(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn accessibility_nags_only_where_domains_are_collected_and_the_os_has_it() {
+        use PermissionState::*;
+        assert!(accessibility_missing(true, Denied));
+        assert!(accessibility_missing(true, NotDetermined));
+        assert!(accessibility_missing(true, Restricted));
+        assert!(!accessibility_missing(true, Granted));
+        assert!(
+            !accessibility_missing(true, Unsupported),
+            "Windows has no such permission: never a banner"
+        );
+        assert!(
+            !accessibility_missing(false, Denied),
+            "domains off by policy: nothing is missing"
+        );
+    }
+
+    #[test]
+    fn a_missing_accessibility_is_never_reported_or_prompted_like_a_capture_permission() {
+        let fake = FakePlatform::default();
+        fake.update(|s| s.accessibility = PermissionState::Denied);
+        let mut monitor = PermissionMonitor::default();
+        let poll = monitor.poll(
+            &fake,
+            NEEDS_BOTH,
+            true,
+            ShiftState::Working,
+            t("2026-10-20T09:00:00Z"),
+        );
+        // The report is the capture permissions only, which are all on: the server
+        // has nothing to turn into Tamper, and the person gets no notification.
+        assert_eq!(poll.report, Some(fake.permissions()));
+        assert_eq!(poll.prompt, None);
     }
 
     fn deny_screen(fake: &FakePlatform) {

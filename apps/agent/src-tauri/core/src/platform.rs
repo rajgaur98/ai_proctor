@@ -2,9 +2,11 @@
 //! (LLD section 01). macOS and Windows implement it in `agent-platform`; tests use
 //! `FakePlatform`.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 
-use crate::contracts::{PermissionKind, Permissions};
+use crate::contracts::{PermissionKind, PermissionState, Permissions};
 use crate::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 
 /// Whether the user's session is usable right now.
@@ -33,7 +35,7 @@ impl CallState {
 /// check-in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScreenShare {
-    /// A screen share is running (Meet, Zoom, Teams).
+    /// A screen share is running (Meet, Zoom, Teams, Webex).
     Sharing,
     /// A full-screen presentation (slideshow) is running.
     Presenting,
@@ -118,6 +120,9 @@ pub struct InjectedInput {
     pub count: u32,
 }
 
+/// Called when the OS announces that the person's session is ending (#159).
+pub type SessionEndHandler = Arc<dyn Fn() + Send + Sync>;
+
 pub trait Platform: Send + Sync {
     fn idle_seconds(&self) -> u64;
     fn session_state(&self) -> SessionState;
@@ -129,9 +134,15 @@ pub trait Platform: Send + Sync {
     fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError>;
     /// Current Screen Recording / Camera permission. Must never show a prompt.
     fn permissions(&self) -> Permissions;
+    /// Accessibility (macOS; reading the browser's domain, #114), kept apart from
+    /// `permissions()`: it is optional, so it is never reported as a permission change
+    /// (the server would read that as Tamper). `Unsupported` where the OS has no such
+    /// permission (Windows). Must never show a prompt.
+    fn accessibility_permission(&self) -> PermissionState;
     /// Asks the OS for a permission, showing its own prompt where it has one (macOS
-    /// Screen Recording and Camera, onboarding #59). Returns without waiting for the
-    /// answer; `permissions()` reports it. A no-op where there is nothing to ask.
+    /// Screen Recording, Camera and Accessibility, onboarding #59, #169). Returns
+    /// without waiting for the answer; `permissions()` and `accessibility_permission()`
+    /// report it. A no-op where there is nothing to ask.
     fn request_permission(&self, kind: PermissionKind);
     /// Starts watching for injected mouse clicks inside `area` (the card window)
     /// and swallowing them, so they never reach the card (ANT-02). Called when the
@@ -152,4 +163,11 @@ pub trait Platform: Send + Sync {
     /// When the device last started up, to tell a reboot from a kill (ANT-01).
     /// `None` when the OS can't say.
     fn boot_time(&self) -> Option<DateTime<Utc>>;
+    /// ANT-01: registers the one handler to call when the OS announces a logout,
+    /// restart or shutdown (macOS `NSWorkspaceWillPowerOff`; Windows `WM_ENDSESSION`
+    /// and the logoff session notification). The handler runs on the OS's own thread,
+    /// right then: on Windows the process can be ended as soon as it returns, so it
+    /// must clock out and mark the exit before it does, and quickly. A second call
+    /// replaces the first; an announcement the OS then takes back is not reported.
+    fn on_session_end(&self, handler: SessionEndHandler);
 }
