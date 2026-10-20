@@ -1,6 +1,6 @@
 //! What the server tells the agent to run with (`agent_config`, #29): org policy
 //! and the person's shift schedule. Fetched when the device attaches and again
-//! whenever the heartbeat reports a new `policy_version`.
+//! whenever the heartbeat reports a new `config_version`.
 //!
 //! `policy` is the org's policy with the collection keys (`screenshots`, `webcam`,
 //! `window_titles`, `excluded_apps`, `activity_sampling`) replaced by what this
@@ -33,6 +33,10 @@ const FORGOTTEN_CLOCK_OUT_MIN: (i64, i64) = (10, 120);
 pub struct AgentConfig {
     pub policy: Value,
     pub policy_version: i64,
+    /// Moves when the org's policy changes or something specific to this person does
+    /// (their acknowledgement, shifts, projects). Older servers don't send it.
+    #[serde(default)]
+    pub config_version: Option<i64>,
     pub timezone: String,
     pub shifts: Vec<ShiftConfig>,
     /// Projects the person can log to (PRJ-02), for the tray and the card.
@@ -89,6 +93,12 @@ impl ShiftConfig {
 }
 
 impl AgentConfig {
+    /// What the heartbeat's `config_version` is compared with; the org's
+    /// `policy_version` when the server doesn't send one.
+    pub fn version(&self) -> i64 {
+        self.config_version.unwrap_or(self.policy_version)
+    }
+
     /// BRK-06 daily pause allowance in seconds (org default 60 min).
     pub fn pause_daily_cap_s(&self) -> i64 {
         self.policy["pause_daily_max_min"]
@@ -262,6 +272,16 @@ mod tests {
             NaiveTime::from_hms_opt(22, 0, 0).unwrap()
         );
         assert_eq!(p.shifts[1].tz, chrono_tz::America::Los_Angeles);
+    }
+
+    #[test]
+    fn the_config_version_falls_back_to_the_policy_version() {
+        assert_eq!(config(json!({}), json!([])).version(), 3);
+        let with: AgentConfig = serde_json::from_value(json!({
+            "policy": {}, "policy_version": 3, "config_version": 7, "timezone": "UTC", "shifts": []
+        }))
+        .unwrap();
+        assert_eq!(with.version(), 7);
     }
 
     #[test]

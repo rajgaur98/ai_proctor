@@ -2022,6 +2022,7 @@ export type Database = {
         Row: {
           active: boolean;
           approval_required: boolean;
+          config_version: number;
           created_at: string;
           email: string;
           full_name: string;
@@ -2037,6 +2038,7 @@ export type Database = {
         Insert: {
           active?: boolean;
           approval_required?: boolean;
+          config_version?: number;
           created_at?: string;
           email: string;
           full_name: string;
@@ -2051,6 +2053,7 @@ export type Database = {
         Update: {
           active?: boolean;
           approval_required?: boolean;
+          config_version?: number;
           created_at?: string;
           email?: string;
           full_name?: string;
@@ -2398,6 +2401,15 @@ export type Database = {
         }[];
       };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
+      mark_alerts_read_matching: {
+        Args: {
+          p_from?: string;
+          p_kind?: Database["public"]["Enums"]["alert_kind"];
+          p_to?: string;
+          p_user_id?: string;
+        };
+        Returns: number;
+      };
       mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
       my_capture_views: {
         Args: { p_days?: number };

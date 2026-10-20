@@ -15,11 +15,15 @@ export interface Report {
 const messages: Record<string, string> = {
   invalid_range: "Choose a start date and an end date that is the same or later, up to a year.",
   forbidden: "You can't see that team's numbers.",
+  too_many_people: "That is more people than one report can hold. Choose a team to narrow it down.",
 };
 
 export const reportQuery = (from: string, to: string, managerId: string) =>
   queryOptions({
     queryKey: ["report", from, to, managerId],
+    // Its errors (a bad range, a team you can't see, too many people) don't go away on a
+    // retry, so show them at once.
+    retry: false,
     queryFn: async (): Promise<Report> => {
       const { data, error } = await supabase.rpc("report_rows", {
         p_from: from,

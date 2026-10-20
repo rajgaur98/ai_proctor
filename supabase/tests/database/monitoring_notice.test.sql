@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(60);
+select plan(61);
 
 \set ada '''00000000-0000-4000-8000-0000000000a1'''
 \set max '''00000000-0000-4000-8000-0000000000b1'''
@@ -153,7 +153,9 @@ select throws_ok($$ select public.acknowledge_notice(gen_random_uuid()) $$, '425
   'neither does an unknown one');
 
 select pg_temp.act_as_postgres();
-create temp table pv as select policy_version from public.orgs where id = :org;
+create temp table pv as select policy_version,
+  (select config_version from public.users where id = :erin) as config_version
+from public.orgs where id = :org;
 grant select on pv to authenticated;
 select pg_temp.act_as(:erin);
 select lives_ok($$ select public.acknowledge_notice(pg_temp.latest()) $$, 'Erin acknowledges version 2');
@@ -165,8 +167,10 @@ select results_eq(
 select ok((select acknowledged_at from public.notice_acks where user_id = :erin and notice_id = pg_temp.latest())
   > now() - interval '1 minute', 'with a timestamp');
 select pg_temp.act_as_postgres();
-select is((select policy_version - (select policy_version from pv) from public.orgs where id = :org), 1,
-  'the policy version moved once, so agents refetch');
+select is((select policy_version - (select policy_version from pv) from public.orgs where id = :org), 0,
+  'the org''s policy version did not move');
+select is((select config_version - (select config_version from pv) from public.users where id = :erin), 1,
+  'her config version moved once, so her agents refetch');
 select results_eq(
   $$ select action, actor_id, target_user_id, metadata ->> 'version' from public.audit_log
      where org_id = '00000000-0000-4000-8000-000000000001' and action = 'notice.acknowledged' $$,

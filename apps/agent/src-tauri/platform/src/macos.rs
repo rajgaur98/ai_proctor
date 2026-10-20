@@ -140,7 +140,8 @@ fn request_camera() {
 }
 
 /// Asks macOS for Accessibility, opening its pane with the app listed (browser
-/// domains, #25). Not part of the onboarding flow; debug builds call it with
+/// domains, #25). The optional card of the onboarding flow asks through
+/// `request_permission` (#169); debug builds also call it at launch with
 /// AI_PROCTOR_DEV_REQUEST_PERMISSIONS=1.
 pub fn request_accessibility() {
     let key: &NSString =
@@ -328,10 +329,21 @@ impl Platform for MacPlatform {
         }
     }
 
+    /// Whether the app is trusted for Accessibility (browser domains, #114). macOS only
+    /// answers yes or no, so "not yet" and "turned off" both read as `Denied`.
+    fn accessibility_permission(&self) -> PermissionState {
+        if unsafe { AXIsProcessTrusted() } {
+            PermissionState::Granted
+        } else {
+            PermissionState::Denied
+        }
+    }
+
     fn request_permission(&self, kind: PermissionKind) {
         match kind {
             PermissionKind::Screen => request_screen(),
             PermissionKind::Camera => request_camera(),
+            PermissionKind::Accessibility => request_accessibility(),
         }
     }
 
