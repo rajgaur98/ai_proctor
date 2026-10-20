@@ -36,8 +36,8 @@ cleanup() {
        delete from public.manual_entries where id in ('$OLD_ENTRY', '$NEW_ENTRY');
        delete from public.dirty_days where user_id = '$USER' and day < current_date - interval '1 year';
        delete from public.devices where id = '$DEVICE';
-       delete from public.retention_runs where at > now() - interval '1 hour';
-       delete from public.audit_log where action = 'retention.purged' and at > now() - interval '1 hour';" > /dev/null || true
+       delete from public.retention_runs where at > now() - interval '1 hour';" > /dev/null || true
+  # audit_log is append-only (#53): its retention.purged rows stay.
 }
 trap cleanup EXIT
 

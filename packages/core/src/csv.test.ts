@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { type CsvCell, csvCell, toCsv } from "./csv.ts";
+import { type CsvCell, columnsOf, csvCell, recordsToCsv, toCsv } from "./csv.ts";
 
 /** A strict RFC 4180 reader (CRLF rows, quoted cells), to check what toCsv writes. */
 function parse(text: string): string[][] {
@@ -98,5 +98,21 @@ describe("toCsv", () => {
         expect(out === text || out === `'${text}`).toBe(true);
       }),
     );
+  });
+});
+
+describe("recordsToCsv", () => {
+  it("writes a header, then each object's values in column order, with JSON for objects", () => {
+    const rows = [
+      { a: 1, b: "=SUM(A1)", c: { x: 1 } },
+      { a: null, b: "plain", c: [1, 2] },
+    ];
+    expect(recordsToCsv(columnsOf(rows), rows)).toBe(
+      'a,b,c\r\n1,\'=SUM(A1),"{""x"":1}"\r\n,plain,"[1,2]"\r\n',
+    );
+  });
+
+  it("collects columns a later row adds", () => {
+    expect(columnsOf([{ a: 1 }, { b: 2, a: 3 }])).toEqual(["a", "b"]);
   });
 });

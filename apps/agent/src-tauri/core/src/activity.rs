@@ -8,7 +8,7 @@
 use chrono::{DateTime, Duration, DurationRound, Utc};
 use serde_json::{json, Value};
 
-use crate::capture::DEFAULT_EXCLUDED_APPS;
+use crate::capture::default_excluded_apps;
 use crate::platform::Foreground;
 
 /// How often the app samples (LLD: 5 s).
@@ -18,6 +18,8 @@ const MAX_GAP: Duration = Duration::seconds(15);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ActivityPolicy {
+    /// Org setting: with it off nothing is sampled, no app, title or domain.
+    pub sampling: bool,
     /// ACT-03: org setting; the EU preset turns titles off.
     pub window_titles: bool,
     /// ACT-02: the capture exclusion list (CAP-04); app name only for these.
@@ -27,11 +29,21 @@ pub struct ActivityPolicy {
 impl Default for ActivityPolicy {
     fn default() -> Self {
         Self {
+            sampling: true,
             window_titles: true,
-            excluded_apps: DEFAULT_EXCLUDED_APPS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            excluded_apps: default_excluded_apps(),
+        }
+    }
+}
+
+impl ActivityPolicy {
+    /// Nothing is sampled: what someone who has acknowledged no notice may collect
+    /// (AGT-04), and what a signed-out device runs with.
+    pub fn off() -> Self {
+        Self {
+            sampling: false,
+            window_titles: false,
+            ..Self::default()
         }
     }
 }
@@ -85,6 +97,22 @@ impl Sampler {
         }
     }
 
+    /// Whether the org lets activity be sampled at all; the caller doesn't even read
+    /// the frontmost app when it doesn't.
+    pub fn sampling(&self) -> bool {
+        self.policy.sampling
+    }
+
+    /// A new policy from the server's config. What was collected under the old one
+    /// is returned to send now, so no bucket mixes two policies.
+    pub fn set_policy(&mut self, policy: ActivityPolicy) -> Vec<AppSession> {
+        if self.policy == policy {
+            return Vec::new();
+        }
+        self.policy = policy;
+        self.flush()
+    }
+
     /// `foreground` was in front since the previous sample. Returns the buckets of
     /// minutes that are now over.
     pub fn sample(
@@ -92,6 +120,11 @@ impl Sampler {
         now: DateTime<Utc>,
         foreground: Option<Foreground>,
     ) -> Vec<AppSession> {
+        if !self.policy.sampling {
+            // Nothing is read; turning it back on starts the clock afresh.
+            self.last = None;
+            return Vec::new();
+        }
         let Some(previous) = self.last.replace(now) else {
             return Vec::new();
         };
@@ -283,6 +316,70 @@ mod tests {
             out[0].domain.as_deref(),
             Some("mail.example.com"),
             "domains are always kept"
+        );
+    }
+
+    #[test]
+    fn with_sampling_off_nothing_is_collected() {
+        let mut s = Sampler::new(ActivityPolicy {
+            sampling: false,
+            ..ActivityPolicy::default()
+        });
+        assert!(!s.sampling());
+        let mut out = run(
+            &mut s,
+            "2026-10-20T10:00:00Z",
+            30,
+            fg("Mail", Some("t"), None),
+        );
+        out.extend(s.stop());
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn a_new_policy_sends_what_the_old_one_collected_and_applies_from_then_on() {
+        let mut s = Sampler::new(ActivityPolicy::default());
+        run(
+            &mut s,
+            "2026-10-20T10:00:00Z",
+            4,
+            fg("Mail", Some("Re: pay"), None),
+        );
+        let old = s.set_policy(ActivityPolicy {
+            window_titles: false,
+            ..ActivityPolicy::default()
+        });
+        assert_eq!(old.len(), 1);
+        assert_eq!(old[0].title.as_deref(), Some("Re: pay"));
+
+        // Same policy again: nothing to flush.
+        assert!(s.set_policy(s.policy.clone()).is_empty());
+
+        run(
+            &mut s,
+            "2026-10-20T10:00:20Z",
+            4,
+            fg("Mail", Some("Re: pay"), None),
+        );
+        let out = s.stop();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].title, None, "titles are off from the change");
+
+        // Sampling off and on again starts the clock afresh.
+        s.set_policy(ActivityPolicy {
+            sampling: false,
+            ..ActivityPolicy::default()
+        });
+        assert!(s
+            .sample(t("2026-10-20T10:01:00Z"), fg("Mail", None, None))
+            .is_empty());
+        s.set_policy(ActivityPolicy::default());
+        assert!(s
+            .sample(t("2026-10-20T10:01:05Z"), fg("Mail", None, None))
+            .is_empty());
+        assert!(
+            s.stop().is_empty(),
+            "the first sample only starts the clock"
         );
     }
 

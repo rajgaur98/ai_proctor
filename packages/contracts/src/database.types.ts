@@ -2210,6 +2210,15 @@ export type Database = {
     };
     Functions: {
       acknowledge_notice: { Args: { p_notice_id: string }; Returns: undefined };
+      activity_summary: {
+        Args: { p_from: string; p_to: string; p_user_id: string };
+        Returns: {
+          app_name: string;
+          domain: string;
+          seconds: number;
+          titles: string[];
+        }[];
+      };
       add_invited_member: {
         Args: {
           p_email: string;
@@ -2333,8 +2342,26 @@ export type Database = {
         };
         Returns: Json;
       };
+      export_capture_objects: {
+        Args: { p_paths: string[]; p_user_id: string };
+        Returns: {
+          bytes: number;
+          name: string;
+        }[];
+      };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
       mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
+      my_capture_views: {
+        Args: { p_days?: number };
+        Returns: {
+          checkin_at: string;
+          checkin_id: string;
+          viewed_at: string;
+          viewer_id: string;
+          viewer_name: string;
+          viewer_role: string;
+        }[];
+      };
       my_delegations: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -2347,9 +2374,32 @@ export type Database = {
           starts_on: string;
         }[];
       };
+      my_edit_history: {
+        Args: { p_limit?: number };
+        Returns: {
+          created_at: string;
+          editor_id: string;
+          editor_name: string;
+          end_at: string;
+          id: string;
+          kind: string;
+          period_start: string;
+          project_id: string;
+          reason: string;
+          start_at: string;
+        }[];
+      };
+      my_manager: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          full_name: string;
+          id: string;
+        }[];
+      };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
+      record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
       record_segment_failure: {
         Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
         Returns: undefined;
@@ -2367,6 +2417,10 @@ export type Database = {
       replace_day_segments: {
         Args: { p_day: string; p_loaded_at?: string; p_segments: Json; p_user_id: string };
         Returns: number;
+      };
+      report_rows: {
+        Args: { p_from: string; p_manager_id?: string; p_to: string; p_user_ids?: string[] };
+        Returns: Json;
       };
       request_manual_entry: {
         Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };

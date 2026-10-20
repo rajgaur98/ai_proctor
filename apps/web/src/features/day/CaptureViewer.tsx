@@ -3,9 +3,10 @@
 // Every open is audit-logged on the server (capture_view), so nothing loads until the
 // viewer asks for it ("View captures"); links last 5 minutes.
 import { useQuery } from "@tanstack/react-query";
-import type { CSSProperties, ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
+import { Time } from "../../lib/time";
 
 export interface CaptureView {
   checkin_id: string;
@@ -162,27 +163,25 @@ export function CaptureImages({
   const hasScreen = screenFiles(keys.map((name) => ({ name }))).length > 0;
   const hasWebcam = keys.includes(webcamName);
 
-  if (!opened || view.isPending || view.error) {
+  if (opened && view.isPending) return <p className="text-sm text-ink2">Loading captures…</p>;
+  if (opened && view.error) {
+    return (
+      <p role="alert" className="text-sm text-warnink">
+        Couldn't open the captures: {view.error.message}
+      </p>
+    );
+  }
+
+  if (!opened || !view.data) {
     return (
       <div className="grid items-start gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-3">
           {hasScreen ? (
             <Slot aspect="aspect-[16/10]">
-              {view.error ? (
-                <p role="alert" className="text-sm text-warnink">
-                  Couldn't open the captures: {view.error.message}
-                </p>
-              ) : opened ? (
-                <p className="text-sm">Loading captures…</p>
-              ) : null}
-              {!opened && (
-                <span>Screenshot and webcam frame are not loaded until you open them.</span>
-              )}
-              {(!opened || view.error) && (
-                <Button variant="secondary" className="self-start" onClick={onOpen}>
-                  View captures
-                </Button>
-              )}
+              <span>Screenshot and webcam frame are not loaded until you open them.</span>
+              <Button variant="secondary" className="self-start" onClick={onOpen}>
+                View captures
+              </Button>
             </Slot>
           ) : (
             <Slot aspect="aspect-[16/10]" dashed>
@@ -231,6 +230,50 @@ export function CaptureImages({
           </span>
         </Slot>
       )}
+    </div>
+  );
+}
+
+/**
+ * A whole capture view in one piece, for pages that open it from their own button (My
+ * data): it loads on mount, so it is only rendered once the person asked, and says
+ * what was recorded about the view.
+ */
+export function CaptureViewer({ checkinId, zone }: { checkinId: string; zone: string }) {
+  const view = useCaptureView(checkinId, true);
+  const [display, setDisplay] = useState(0);
+  const data = view.data;
+  const screens = data ? screenFiles(data.files) : [];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {data && (
+        <p className="flex flex-wrap items-center gap-x-1 text-[13px] text-ink2">
+          <Time iso={data.responded_at ?? data.scheduled_at} employeeZone={zone} />
+          {" · "}
+          {data.app ? `${data.app}${data.domain ? ` (${data.domain})` : ""}` : "App not recorded"}
+          {" · "}
+          {data.project_id ? "Project set" : "No project"}
+          {screens.length > 1 && (
+            <DisplaySwitch
+              names={screens.map((s) => s.name)}
+              value={display}
+              onChange={setDisplay}
+            />
+          )}
+        </p>
+      )}
+      <CaptureImages
+        keys={data?.files.map((f) => f.name) ?? []}
+        opened
+        onOpen={() => {}}
+        view={view}
+        display={display}
+      />
+      <p className="text-xs text-ink3">
+        This view is recorded in the audit log and visible to the employee. Links expire in 5
+        minutes.
+      </p>
     </div>
   );
 }
