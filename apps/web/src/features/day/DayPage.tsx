@@ -41,14 +41,14 @@ interface CheckinRow extends Checkin {
 // Pages made by router.tsx's page() aren't in the typed route tree (same as the nav).
 const teamPath: string = "/team";
 
-const outcomeLabel: Record<Outcome, string> = {
+export const outcomeLabel: Record<Outcome, string> = {
   pass: "Passed check-in",
   miss: "Missed check-in",
   failed: "Failed check-in",
   deferred: "Deferred check-in",
 };
 
-function deferralText(reason: string | null): string {
+export function deferralText(reason: string | null): string {
   return (reason && deferralLabel[reason]) || "Held back";
 }
 
@@ -396,7 +396,7 @@ export function DayPage() {
   );
 }
 
-function Marker({ outcome }: { outcome: Outcome }) {
+export function Marker({ outcome }: { outcome: Outcome }) {
   if (outcome === "pass") {
     return (
       <span aria-hidden className="h-3 w-3 rounded-full" style={{ background: "var(--sactive)" }} />
