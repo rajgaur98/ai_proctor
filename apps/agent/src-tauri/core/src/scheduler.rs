@@ -515,8 +515,8 @@ mod tests {
             &FakePlatform::default(),
             crate::contracts::ShiftState::Working,
             true,
-            Some("lucas@acme.test".into()),
             "0.1.0",
+            crate::status::Tray::default(),
         );
         let json = serde_json::to_string(&status).unwrap();
         assert!(

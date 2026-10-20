@@ -170,6 +170,20 @@ impl Api {
         serde_json::from_value(reply).map_err(|e| SyncError::Refused(e.to_string()))
     }
 
+    /// CHK-23: the employee's reason for one of their own misses.
+    pub fn set_miss_reason(
+        &self,
+        checkin_id: Uuid,
+        kind: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<(), SyncError> {
+        self.rpc(
+            "set_miss_reason",
+            &json!({ "p_checkin_id": checkin_id, "p_kind": kind, "p_note": note }),
+        )
+        .map(|_| ())
+    }
+
     /// Org policy and this person's shifts (#29).
     pub fn agent_config(&self, device_id: Uuid) -> Result<AgentConfig, SyncError> {
         let reply = self.rpc("agent_config", &json!({ "p_device_id": device_id }))?;
@@ -383,6 +397,10 @@ impl Syncer {
             }
         }
         Ok(stats)
+    }
+
+    pub fn api(&self) -> &Api {
+        &self.api
     }
 
     pub fn config(&self) -> Result<AgentConfig, SyncError> {
