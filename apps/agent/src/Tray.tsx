@@ -183,18 +183,27 @@ function PermissionBanner({ issue }: { issue: PermissionIssue }) {
         <span className="mark" aria-hidden="true">
           !
         </span>
-        <p>
-          <strong>{issue.label} permission is off.</strong> Your manager sees “Capture blocked”.
-        </p>
+        {issue.restricted ? (
+          <p>
+            <strong>{issue.label} is turned off by your device management.</strong> Your manager
+            sees “Capture blocked”. Ask your IT admin to allow it.
+          </p>
+        ) : (
+          <p>
+            <strong>{issue.label} permission is off.</strong> Your manager sees “Capture blocked”.
+          </p>
+        )}
       </div>
-      <button
-        type="button"
-        className="btn btn-warn"
-        disabled={open.busy}
-        onClick={() => open.run(() => invoke("show_onboarding", { step: 2 }))}
-      >
-        Fix
-      </button>
+      {!issue.restricted && (
+        <button
+          type="button"
+          className="btn btn-warn"
+          disabled={open.busy}
+          onClick={() => open.run(() => invoke("show_onboarding", { step: 2 }))}
+        >
+          Fix
+        </button>
+      )}
       <InlineError message={open.error} />
     </div>
   );
