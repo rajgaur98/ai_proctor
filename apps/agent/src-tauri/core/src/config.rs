@@ -15,6 +15,16 @@ pub struct AgentConfig {
     pub policy_version: i64,
     pub timezone: String,
     pub shifts: Vec<ShiftConfig>,
+    /// Projects the person can log to (PRJ-02), for the tray and the card.
+    #[serde(default)]
+    pub projects: Vec<ProjectConfig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct ProjectConfig {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub client: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -43,6 +53,15 @@ impl ShiftConfig {
 }
 
 impl AgentConfig {
+    /// BRK-06 daily pause allowance in seconds (org default 60 min).
+    pub fn pause_daily_cap_s(&self) -> i64 {
+        self.policy["pause_daily_max_min"]
+            .as_i64()
+            .filter(|m| (0..=24 * 60).contains(m))
+            .unwrap_or(60)
+            * 60
+    }
+
     /// Session rules from the config. Unknown or bad values fall back to the
     /// defaults; a shift that doesn't parse is skipped (and logged).
     pub fn session_policy(&self) -> SessionPolicy {
@@ -70,6 +89,7 @@ impl AgentConfig {
                 .map(Duration::minutes)
                 .unwrap_or(defaults.forgotten_clock_out_after),
             shifts,
+            timezone: self.timezone.parse().unwrap_or(defaults.timezone),
         }
     }
 }

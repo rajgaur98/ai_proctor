@@ -122,8 +122,11 @@ export function buildSegments(input: DayInput): Segment[] {
       pieces.push(segment(span, type, projectAt(span.start), input.policy.breaksPaid));
     }
   }
+  const entries = [...input.manualEntries].sort(
+    (a, b) => a.start - b.start || a.end - b.end || byProject(a.projectId, b.projectId),
+  );
   for (const m of manual) {
-    const entry = input.manualEntries.find((e) => e.start <= m.start && m.end <= e.end);
+    const entry = entries.find((e) => e.start <= m.start && m.end <= e.end);
     for (const span of cutAt(m, cuts)) {
       const edited = editAt(input, span.start);
       const projectId = edited !== undefined ? edited : (entry?.projectId ?? null);
@@ -197,7 +200,9 @@ function classify(span: Span, overlays: { span: Span; type: SegmentType }[]): Se
 function splitPauses(input: DayInput): { span: Span; type: SegmentType }[] {
   const out: { span: Span; type: SegmentType }[] = [];
   let countedToday = 0;
-  const pauses = [...input.pauses].sort((a, b) => a.start - b.start);
+  const pauses = [...input.pauses].sort(
+    (a, b) => a.start - b.start || (a.end ?? input.now) - (b.end ?? input.now),
+  );
   for (const p of pauses) {
     const end = p.end ?? input.now;
     const duration = Math.max(0, end - p.start);
@@ -216,7 +221,10 @@ function splitPauses(input: DayInput): { span: Span; type: SegmentType }[] {
 
 /** From each missed or failed card being shown until the next pass (TS-01). */
 function unverifiedWindows(input: DayInput): Span[] {
-  const sorted = [...input.checkins].sort((a, b) => a.at - b.at);
+  // At the same instant a miss comes before a pass, so the pass closes the window.
+  const sorted = [...input.checkins].sort(
+    (a, b) => a.at - b.at || OUTCOME_ORDER[a.outcome] - OUTCOME_ORDER[b.outcome],
+  );
   const out: Span[] = [];
   let openSince: number | null = null;
   for (const c of sorted) {
@@ -233,7 +241,9 @@ function unverifiedWindows(input: DayInput): Span[] {
 
 /** The project in force at a moment: session start, then switches, then edits. */
 function projectTimeline(input: DayInput): (t: number) => string | null {
-  const switches = [...input.projectSwitches].sort((a, b) => a.at - b.at);
+  const switches = [...input.projectSwitches].sort(
+    (a, b) => a.at - b.at || byProject(a.projectId, b.projectId),
+  );
   const sessions = [...input.clockSessions].sort((a, b) => a.start - b.start);
   return (t) => {
     const edited = editAt(input, t);
@@ -246,6 +256,13 @@ function projectTimeline(input: DayInput): (t: number) => string | null {
     }
     return project;
   };
+}
+
+const OUTCOME_ORDER = { miss: 0, failed: 1, pass: 2 } as const;
+
+/** A fixed order for facts at the same instant, so input order never matters. */
+function byProject(a: string | null, b: string | null): number {
+  return (a ?? "").localeCompare(b ?? "");
 }
 
 function editAt(input: DayInput, t: number): string | null | undefined {

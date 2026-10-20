@@ -4,7 +4,9 @@
 use std::sync::Mutex;
 
 use crate::contracts::{PermissionState, Permissions};
-use crate::platform::{CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState};
+use crate::platform::{
+    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
+};
 
 /// Every field can be changed mid-test through the setters.
 #[derive(Debug)]
@@ -17,7 +19,7 @@ pub struct FakeState {
     pub idle_seconds: u64,
     pub session: SessionState,
     pub call: CallState,
-    pub screen_shared: bool,
+    pub screen_share: Option<ScreenShare>,
     pub foreground: Option<Foreground>,
     pub permissions: Permissions,
     pub displays: u32,
@@ -32,7 +34,7 @@ impl Default for FakeState {
             idle_seconds: 0,
             session: SessionState::Active,
             call: CallState::default(),
-            screen_shared: false,
+            screen_share: None,
             foreground: None,
             permissions: Permissions {
                 screen: PermissionState::Granted,
@@ -106,8 +108,8 @@ impl Platform for FakePlatform {
         self.state.lock().unwrap().call
     }
 
-    fn screen_shared(&self) -> bool {
-        self.state.lock().unwrap().screen_shared
+    fn screen_share(&self) -> Option<ScreenShare> {
+        self.state.lock().unwrap().screen_share
     }
 
     fn foreground(&self) -> Option<Foreground> {

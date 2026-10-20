@@ -23,6 +23,52 @@
       "type": "string",
       "enum": ["off_shift", "working", "on_break", "paused"]
     },
+    "ProjectRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "client": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["id", "name", "client"],
+      "additionalProperties": false
+    },
+    "CheckinOutcome": {
+      "type": "string",
+      "enum": ["pass", "miss", "failed"]
+    },
+    "LastCheckin": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/definitions/CheckinOutcome"
+        }
+      },
+      "required": ["at", "outcome"],
+      "additionalProperties": false
+    },
+    "MissedCheckin": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "at"],
+      "additionalProperties": false
+    },
     "AgentStatus": {
       "type": "object",
       "properties": {
@@ -40,9 +86,98 @@
         },
         "permissions": {
           "$ref": "#/definitions/Permissions"
+        },
+        "clocked_in_at": {
+          "type": ["string", "null"]
+        },
+        "phase_started_at": {
+          "type": ["string", "null"]
+        },
+        "pause_ends_at": {
+          "type": ["string", "null"]
+        },
+        "pause_planned_min": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "worked_today_s": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "pause_used_today_s": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "pause_daily_cap_s": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "project": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ProjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ProjectRef"
+          }
+        },
+        "last_checkin": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LastCheckin"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "missed_checkin": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MissedCheckin"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
-      "required": ["shift", "signed_in", "account_email", "agent_version", "permissions"],
+      "required": [
+        "shift",
+        "signed_in",
+        "account_email",
+        "agent_version",
+        "permissions",
+        "clocked_in_at",
+        "phase_started_at",
+        "pause_ends_at",
+        "pause_planned_min",
+        "worked_today_s",
+        "pause_used_today_s",
+        "pause_daily_cap_s",
+        "project",
+        "projects",
+        "last_checkin",
+        "missed_checkin"
+      ],
       "additionalProperties": false
     },
     "CommandResult": {
