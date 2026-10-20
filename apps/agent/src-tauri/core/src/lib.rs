@@ -3,6 +3,7 @@
 
 pub mod activity;
 pub mod auth;
+pub mod camera_privacy;
 pub mod capture;
 pub mod checkin;
 pub mod clock;
@@ -11,8 +12,12 @@ pub mod contracts;
 #[cfg(any(test, feature = "fake"))]
 pub mod fake;
 pub mod keystore;
+pub mod liveness;
 pub mod logging;
+pub mod notice;
+pub mod onboarding;
 pub mod outbox;
+pub mod permissions;
 pub mod platform;
 pub mod presence;
 pub mod scheduler;
@@ -20,3 +25,4 @@ pub mod session;
 pub mod shift;
 pub mod status;
 pub mod sync;
+pub mod watchdog;

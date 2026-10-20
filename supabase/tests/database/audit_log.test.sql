@@ -85,7 +85,11 @@ select is((select count(*)::int from public.audit_log where action in
 
 -- Search ----------------------------------------------------------------------------------
 
-select is((select count(*)::int from public.search_audit_log()), 4, 'an admin sees the whole log');
+-- Other migrations and the seed write rows too, so compare with what the select
+-- policy shows the admin rather than a fixed number.
+select is((select count(*)::int from public.search_audit_log()),
+  (select least(count(*), 50)::int from public.audit_log where org_id = :org),
+  'an admin sees the whole log');
 select results_eq(
   $$ select action, actor_name, target_name from public.search_audit_log(p_actions => array['member.role_changed']) $$,
   $$ values ('member.role_changed', 'Ada Admin', 'Erin Employee') $$,
@@ -109,9 +113,11 @@ create temp table page2 as
     p_cursor_at => (select at from page1 order by at, id limit 1),
     p_cursor_id => (select id from page1 order by at, id limit 1));
 select is((select count(*)::int from page1), 3, 'first page has the limit');
-select is((select count(*)::int from page2), 1, 'second page has the rest');
+select is((select count(*)::int from page2),
+  (select least(count(*) - 3, 3)::int from public.audit_log where org_id = :org),
+  'second page has the rest');
 select ok(not exists (select 1 from page1 join page2 using (id)), 'no row on both pages');
-select is((select id from page2), (select min(id) from public.audit_log), 'and it is the oldest');
+select ok((select max(at) from page2) <= (select min(at) from page1), 'and it continues where the first page ended');
 select throws_ok($$ select * from public.search_audit_log(p_cursor_at => now()) $$,
   '22023', 'invalid_cursor', 'a half cursor is refused');
 

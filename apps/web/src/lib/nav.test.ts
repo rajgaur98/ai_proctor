@@ -3,17 +3,16 @@ import { homeFor, initials, navFor } from "./nav";
 
 describe("navFor", () => {
   it("gives managers the team pages", () => {
-    expect(navFor("manager").map((l) => l.label)).toEqual([
-      "Live team",
-      "Timesheets",
-      "Projects",
-      "Policy",
-    ]);
+    expect(navFor("manager").map((l) => l.label)).toEqual(["Live team", "Timesheets", "Projects"]);
+    expect(navFor("manager").map((l) => l.to)).not.toContain("/policy");
   });
 
   it("gives owners and admins the admin set", () => {
     expect(navFor("owner")).toEqual(navFor("admin"));
     expect(navFor("admin").map((l) => l.label)).toContain("People");
+    expect(navFor("admin").map((l) => l.label)).toContain("Projects");
+    expect(navFor("admin").map((l) => l.label)).toContain("Policy");
+    expect(navFor("admin").map((l) => l.label)).toContain("Monitoring notice");
   });
 
   it("keeps the audit log to owners and admins", () => {
@@ -23,7 +22,12 @@ describe("navFor", () => {
   });
 
   it("gives employees only their own pages", () => {
-    expect(navFor("employee").map((l) => l.to)).toEqual(["/me", "/my-timesheet", "/notice"]);
+    expect(navFor("employee").map((l) => l.to)).toEqual([
+      "/me",
+      "/my-timesheet",
+      "/my-day",
+      "/notice",
+    ]);
   });
 
   it("lands each role on its first page", () => {

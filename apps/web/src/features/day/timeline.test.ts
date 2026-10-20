@@ -70,9 +70,21 @@ describe("markers and ticks", () => {
       scheduledAt: iso("12:58"),
       shownAt: iso("13:00"),
       outcome: "miss" as const,
+      deferralReason: null,
     };
     expect(markerLeft(span, c)).toBe(50);
     expect(markerLeft(span, { ...c, shownAt: iso("18:00") })).toBeNull();
+  });
+
+  it("puts a deferred check-in, which was never shown, at the time it was due", () => {
+    const c = {
+      id: "c2",
+      scheduledAt: iso("13:00"),
+      shownAt: null,
+      outcome: "deferred" as const,
+      deferralReason: "call",
+    };
+    expect(markerLeft(span, c)).toBe(50);
   });
 
   it("labels hours in the given zone", () => {

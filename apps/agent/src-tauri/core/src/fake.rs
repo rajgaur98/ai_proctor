@@ -3,8 +3,13 @@
 
 use std::sync::Mutex;
 
-use crate::contracts::{PermissionState, Permissions};
-use crate::platform::{CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState};
+use chrono::{DateTime, Utc};
+
+use crate::contracts::{PermissionKind, PermissionState, Permissions};
+use crate::platform::{
+    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
+};
+use crate::watchdog::{WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState};
 
 /// Every field can be changed mid-test through the setters.
 #[derive(Debug)]
@@ -17,13 +22,27 @@ pub struct FakeState {
     pub idle_seconds: u64,
     pub session: SessionState,
     pub call: CallState,
-    pub screen_shared: bool,
+    pub screen_share: Option<ScreenShare>,
     pub foreground: Option<Foreground>,
     pub permissions: Permissions,
+    /// The permissions `request_permission` was called for, in order.
+    pub permission_requests: Vec<PermissionKind>,
     pub displays: u32,
+    /// What the screenshot does while the permission reads Granted (macOS can fail
+    /// a capture after revoking while still saying "granted").
+    pub screen: Result<(), CaptureError>,
     pub camera: Result<(), CaptureError>,
     pub injected: bool,
     pub notifications: Vec<(String, String)>,
+    /// The registered watchdog, if any.
+    pub watchdog: Option<WatchdogSpec>,
+    /// This process was started by the watchdog.
+    pub supervised: bool,
+    /// `install_watchdog` starts the watchdog's own copy (macOS first run).
+    pub hands_over: bool,
+    /// `install_watchdog` fails with this.
+    pub watchdog_error: Option<WatchdogError>,
+    pub boot_time: Option<DateTime<Utc>>,
 }
 
 impl Default for FakeState {
@@ -32,16 +51,23 @@ impl Default for FakeState {
             idle_seconds: 0,
             session: SessionState::Active,
             call: CallState::default(),
-            screen_shared: false,
+            screen_share: None,
             foreground: None,
             permissions: Permissions {
                 screen: PermissionState::Granted,
                 camera: PermissionState::Granted,
             },
+            permission_requests: Vec::new(),
             displays: 1,
+            screen: Ok(()),
             camera: Ok(()),
             injected: false,
             notifications: Vec::new(),
+            watchdog: None,
+            supervised: false,
+            hands_over: false,
+            watchdog_error: None,
+            boot_time: None,
         }
     }
 }
@@ -106,8 +132,8 @@ impl Platform for FakePlatform {
         self.state.lock().unwrap().call
     }
 
-    fn screen_shared(&self) -> bool {
-        self.state.lock().unwrap().screen_shared
+    fn screen_share(&self) -> Option<ScreenShare> {
+        self.state.lock().unwrap().screen_share
     }
 
     fn foreground(&self) -> Option<Foreground> {
@@ -119,6 +145,7 @@ impl Platform for FakePlatform {
         if state.permissions.screen != PermissionState::Granted {
             return Err(CaptureError::PermissionMissing);
         }
+        state.screen.clone()?;
         Ok((1..=state.displays)
             .map(|d| Self::frame(Some(d), max_width, max_width * 10 / 16))
             .collect())
@@ -139,6 +166,10 @@ impl Platform for FakePlatform {
         self.state.lock().unwrap().permissions.clone()
     }
 
+    fn request_permission(&self, kind: PermissionKind) {
+        self.state.lock().unwrap().permission_requests.push(kind);
+    }
+
     fn is_injected(&self, _click: &Click) -> bool {
         self.state.lock().unwrap().injected
     }
@@ -149,6 +180,37 @@ impl Platform for FakePlatform {
             .unwrap()
             .notifications
             .push((title.into(), body.into()));
+    }
+
+    fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError> {
+        let mut state = self.state.lock().unwrap();
+        if let Some(error) = state.watchdog_error.clone() {
+            return Err(error);
+        }
+        let outcome = match &state.watchdog {
+            None => WatchdogOutcome::Installed,
+            Some(current) if current == spec => WatchdogOutcome::Unchanged,
+            Some(_) => WatchdogOutcome::Updated,
+        };
+        state.watchdog = Some(spec.clone());
+        Ok(WatchdogState {
+            outcome,
+            supervised: state.supervised,
+            handed_over: state.hands_over && !state.supervised,
+        })
+    }
+
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError> {
+        self.state.lock().unwrap().watchdog = None;
+        Ok(())
+    }
+
+    fn watchdog_installed(&self) -> bool {
+        self.state.lock().unwrap().watchdog.is_some()
+    }
+
+    fn boot_time(&self) -> Option<DateTime<Utc>> {
+        self.state.lock().unwrap().boot_time
     }
 }
 
@@ -182,6 +244,33 @@ mod tests {
         let fake = FakePlatform::default();
         fake.update(|s| s.camera = Err(CaptureError::CameraBusy));
         assert_eq!(fake.capture_webcam(320, 240), Err(CaptureError::CameraBusy));
+    }
+
+    #[test]
+    fn installing_the_watchdog_twice_changes_nothing_the_second_time() {
+        let fake = FakePlatform::default();
+        let spec = WatchdogSpec {
+            executable: "/Applications/AI Proctor.app/Contents/MacOS/agent".into(),
+        };
+        assert!(!fake.watchdog_installed());
+        assert_eq!(
+            fake.install_watchdog(&spec).unwrap().outcome,
+            WatchdogOutcome::Installed
+        );
+        assert_eq!(
+            fake.install_watchdog(&spec).unwrap().outcome,
+            WatchdogOutcome::Unchanged
+        );
+        let moved = WatchdogSpec {
+            executable: "/Users/lucas/AI Proctor.app/Contents/MacOS/agent".into(),
+        };
+        assert_eq!(
+            fake.install_watchdog(&moved).unwrap().outcome,
+            WatchdogOutcome::Updated
+        );
+        assert_eq!(fake.snapshot().watchdog, Some(moved));
+        fake.uninstall_watchdog().unwrap();
+        assert!(!fake.watchdog_installed());
     }
 
     #[test]

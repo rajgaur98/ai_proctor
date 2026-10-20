@@ -1,24 +1,53 @@
-/* Tokens from the Claude Design StyleSheet (light, then dark). */
+/* Tokens from the Claude Design StyleSheet (light, then dark). Status colours are
+   used only with a shape and a label, never alone (NFR-UX-01). */
 :root {
   --bg: #f5f5f2;
   --panel: #ffffff;
+  --sunk: #f0f0ec;
   --line: #e4e4df;
+  --line2: #cfcfc9;
   --ink: #16171a;
   --ink2: #4b4e54;
-  --ink3: #6c7077;
+  --ink3: #696d74;
   --acc: #2f5d9e;
+  --accink: #ffffff;
+  --accsoft: #e8eef8;
+  --acctext: #2a5592;
+  --warnbg: #fbf3df;
+  --warnline: #ecd9a6;
+  --warnink: #5e4410;
+  --sactive: oklch(0.62 0.15 150);
+  --sbreak: oklch(0.76 0.1 205);
+  --spaused: oklch(0.6 0.03 255);
+  --stamper: oklch(0.54 0.18 25);
   --soff: oklch(0.8 0.005 255);
+  --soffline: oklch(0.7 0.01 255);
+  --shadow: 0 12px 32px rgb(0 0 0 / 0.14), 0 2px 6px rgb(0 0 0 / 0.06);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0f1012;
     --panel: #18191c;
+    --sunk: #1f2024;
     --line: #2a2c31;
+    --line2: #3b3e44;
     --ink: #ededeb;
     --ink2: #b6b8bd;
     --ink3: #8f939a;
     --acc: #7fa6e3;
+    --accink: #0c1422;
+    --accsoft: #1d2a3f;
+    --acctext: #93b6ee;
+    --warnbg: #2a2416;
+    --warnline: #4a3d1f;
+    --warnink: #f0d89a;
+    --sactive: oklch(0.72 0.15 150);
+    --sbreak: oklch(0.8 0.09 205);
+    --spaused: oklch(0.66 0.03 255);
+    --stamper: oklch(0.66 0.17 25);
     --soff: oklch(0.45 0.005 255);
+    --soffline: oklch(0.58 0.01 255);
+    --shadow: 0 12px 32px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.3);
   }
 }

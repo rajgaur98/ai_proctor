@@ -1,0 +1,592 @@
+/* Onboarding window: the monitoring notice (#48, step 1) and the permission flow (#59,
+   steps 2 to 4). Ported from the Claude Design "Onboarding" screen
+   (docs/design/screens/Onboarding.dc.html). */
+@import "../tokens.css";
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--panel);
+  color: var(--ink);
+  font:
+    13px / 1.4 -apple-system,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.notice {
+  box-sizing: border-box;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.n-body {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 28px;
+  overflow-y: auto;
+}
+.notice h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.n-intro {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink2);
+  text-wrap: pretty;
+}
+.n-table {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.n-row {
+  display: contents;
+}
+.n-row dt,
+.n-row dd {
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.n-row dt {
+  background: var(--sunk);
+  font-weight: 600;
+}
+.n-row dd {
+  color: var(--ink2);
+  text-wrap: pretty;
+}
+.n-row:first-child dt,
+.n-row:first-child dd {
+  border-top: 0;
+}
+.n-foot {
+  flex: none;
+  min-height: 64px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 28px;
+  border-top: 1px solid var(--line);
+}
+.n-version {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--ink3);
+}
+.n-error {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--stamper);
+}
+.n-primary {
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--acc);
+  color: var(--accink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.n-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.n-primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.n-primary:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.n-state {
+  margin: auto;
+  color: var(--ink2);
+}
+
+/* Progress strip (design: 56 px, circles joined by lines) */
+.n-steps {
+  flex: none;
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line);
+}
+.n-steps ol {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.n-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink3);
+}
+.n-step:not(:last-child) {
+  flex: 1;
+}
+.n-step:not(:last-child)::after {
+  content: "";
+  flex: 1;
+  min-width: 16px;
+  height: 1px;
+  margin-left: 4px;
+  background: var(--line2);
+}
+.n-step-circle {
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line2);
+  border-radius: 50%;
+  font:
+    600 11.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    "Cascadia Mono",
+    monospace;
+}
+.n-step-current {
+  font-weight: 600;
+  color: var(--ink);
+}
+.n-step-current .n-step-circle {
+  border: 0;
+  background: var(--acc);
+  color: var(--accink);
+}
+.n-step-done {
+  color: var(--ink2);
+}
+.n-step-done .n-step-circle {
+  border: 0;
+  background: var(--accsoft);
+  color: var(--acctext);
+}
+
+/* Secondary button */
+.n-secondary {
+  height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.n-secondary:hover:not(:disabled) {
+  background: var(--sunk);
+}
+.n-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.n-secondary:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.n-block {
+  width: 100%;
+}
+
+/* Warning (restart guidance, capture problems) */
+.n-warn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--warnline);
+  border-radius: 9px;
+  background: var(--warnbg);
+  color: var(--warnink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.n-warn p {
+  margin: 0;
+}
+
+/* Step 2: permission cards */
+.n-perms {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.n-perms-one {
+  grid-template-columns: minmax(0, 340px);
+  justify-content: center;
+}
+.n-perm {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.n-perm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.n-perm h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.n-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.n-dot {
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+}
+.n-dot-on {
+  background: var(--sactive);
+}
+.n-dot-off {
+  border: 2px solid var(--soffline);
+}
+.n-perm-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--ink2);
+}
+
+/* The stylised settings pane */
+.n-pane {
+  height: 96px;
+  box-sizing: border-box;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sunk);
+  font-size: 10.5px;
+}
+.n-pane-side {
+  width: 36%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 6px;
+  border-right: 1px solid var(--line);
+}
+.n-bar {
+  height: 6px;
+  margin: 3px 4px;
+  border-radius: 3px;
+  background: var(--line2);
+}
+.n-bar-70 {
+  width: 70%;
+}
+.n-bar-55 {
+  width: 55%;
+}
+.n-bar-62 {
+  width: 62%;
+}
+.n-bar-40 {
+  width: 40px;
+  height: 5px;
+  margin: 0;
+}
+.n-bar-26 {
+  width: 26px;
+  margin: 0;
+}
+.n-bar-18 {
+  width: 18px;
+  margin: 0;
+}
+.n-pane-pick {
+  padding: 3px 4px;
+  border-radius: 4px;
+  background: var(--accsoft);
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.2;
+}
+.n-pane-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+}
+.n-pane-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+.n-pane-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.n-pane-other {
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  opacity: 0.6;
+}
+.n-app {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--acc);
+}
+.n-app-other {
+  background: var(--line2);
+}
+.n-switch {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+  width: 22px;
+  height: 13px;
+  border-radius: 7px;
+  background: var(--line2);
+}
+.n-switch-on {
+  background: var(--acc);
+}
+.n-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff;
+}
+.n-switch-on .n-knob {
+  left: 11px;
+}
+
+/* Step 3: previews */
+.n-shots {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+}
+.n-shots-one {
+  grid-template-columns: 1fr;
+}
+.n-shot {
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.n-shot figcaption {
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+.n-preview {
+  width: 100%;
+  height: 154px;
+  box-sizing: border-box;
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.n-preview-tall {
+  height: 206px;
+}
+.n-shots-one .n-preview-tall {
+  object-fit: contain;
+}
+.n-preview-empty {
+  display: flex;
+  align-items: flex-end;
+  padding: 10px;
+  background: repeating-linear-gradient(135deg, var(--sunk) 0 7px, var(--panel) 7px 14px);
+  font:
+    11px ui-monospace,
+    "SF Mono",
+    Menlo,
+    "Cascadia Mono",
+    monospace;
+  color: var(--ink3);
+}
+.n-info {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--sunk);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink2);
+}
+.n-i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  border: 1.5px solid var(--ink3);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink2);
+}
+
+/* Step 4 */
+.n-done {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+.notice .n-done h1 {
+  font-size: 26px;
+  letter-spacing: -0.025em;
+}
+.n-done-sub {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--ink2);
+}
+.n-check {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--sactive);
+}
+.n-check::after {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: 12px;
+  width: 11px;
+  height: 20px;
+  border-right: 3px solid var(--panel);
+  border-bottom: 3px solid var(--panel);
+  transform: rotate(45deg);
+}
+.n-menubar {
+  width: 340px;
+  height: 28px;
+  box-sizing: border-box;
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--sunk);
+}
+.n-menubar-icon {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--acc);
+  box-shadow: 0 0 0 3px var(--accsoft);
+}
+.n-menubar-icon::before,
+.n-menubar-icon::after {
+  content: "";
+  position: absolute;
+  background: var(--accink);
+}
+.n-menubar-icon::before {
+  left: 8px;
+  top: 4px;
+  width: 2px;
+  height: 6px;
+}
+.n-menubar-icon::after {
+  left: 8px;
+  top: 8px;
+  width: 5px;
+  height: 2px;
+}
+.n-menubar-time {
+  font:
+    11px ui-monospace,
+    "SF Mono",
+    Menlo,
+    "Cascadia Mono",
+    monospace;
+  color: var(--ink2);
+}
+.n-done-note {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink3);
+}
