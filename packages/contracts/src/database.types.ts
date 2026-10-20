@@ -387,6 +387,7 @@ export type Database = {
       checkin_events: {
         Row: {
           capture_errors: Json | null;
+          captures_purged_at: string | null;
           created_at: string;
           deferral_reason: string | null;
           device_id: string;
@@ -411,6 +412,7 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           capture_errors?: Json | null;
+          captures_purged_at?: string | null;
           created_at?: string;
           deferral_reason?: string | null;
           device_id: string;
@@ -434,6 +436,7 @@ export type Database = {
         };
         Update: {
           capture_errors?: Json | null;
+          captures_purged_at?: string | null;
           created_at?: string;
           deferral_reason?: string | null;
           device_id?: string;
@@ -1529,6 +1532,39 @@ export type Database = {
           },
         ];
       };
+      retention_runs: {
+        Row: {
+          at: string;
+          category: string;
+          deleted: number;
+          id: number;
+          org_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          at?: string;
+          category: string;
+          deleted: number;
+          id?: never;
+          org_id?: string | null;
+        };
+        Update: {
+          at?: string;
+          category?: string;
+          deleted?: number;
+          id?: never;
+          org_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "retention_runs_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       shifts: {
         Row: {
           created_at: string;
@@ -2208,6 +2244,7 @@ export type Database = {
         }[];
       };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
+      policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
         Args: {
@@ -2227,6 +2264,15 @@ export type Database = {
         Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };
         Returns: string;
       };
+      retention_expired_captures: {
+        Args: { p_limit?: number };
+        Returns: {
+          checkin_id: string;
+          paths: string[];
+        }[];
+      };
+      retention_mark_captures_purged: { Args: { p_checkin_ids: string[] }; Returns: number };
+      retention_purge_rows: { Args: Record<PropertyKey, never>; Returns: Json };
       return_timesheet: { Args: { p_comment: string; p_id: string }; Returns: undefined };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       save_client: {
@@ -2244,6 +2290,10 @@ export type Database = {
         Returns: string;
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      set_approval_required: {
+        Args: { p_required: boolean; p_user_id: string };
+        Returns: undefined;
+      };
       set_delegation: {
         Args: {
           p_delegate_id: string;
@@ -2323,6 +2373,10 @@ export type Database = {
           p_work_state: string;
         };
         Returns: undefined;
+      };
+      update_policy: {
+        Args: { p_dpia_confirmed?: boolean; p_policy: Json; p_works_council_confirmed?: boolean };
+        Returns: Json;
       };
     };
     Enums: {
