@@ -84,6 +84,8 @@ jobs:
         run: |
           pnpm core:gen
           git diff --exit-code supabase/tests/database/status_vectors.test.sql
+      - name: Edge Function copy of packages/core is up to date
+        run: pnpm core:fn --check
 
   rust:
     name: Rust fmt, clippy, test (Linux)

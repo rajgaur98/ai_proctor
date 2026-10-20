@@ -46,6 +46,9 @@ pub struct Foreground {
     pub app: String,
     pub title: Option<String>,
     pub domain: Option<String>,
+    /// The display (1-based, as in `Frame.display`) the app's front window is on;
+    /// `None` when unknown (no Screen Recording, no window, not supported).
+    pub display: Option<u32>,
 }
 
 /// One captured image as raw pixels; blur and WebP encoding happen in
