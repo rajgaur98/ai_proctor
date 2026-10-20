@@ -2,7 +2,10 @@
 //! (LLD section 01). macOS and Windows implement it in `agent-platform`; tests use
 //! `FakePlatform`.
 
-use crate::contracts::Permissions;
+use chrono::{DateTime, Utc};
+
+use crate::contracts::{PermissionKind, Permissions};
+use crate::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 
 /// Whether the user's session is usable right now.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -26,6 +29,16 @@ impl CallState {
     }
 }
 
+/// Why the screen counts as shared (CHK-03). Recorded as the reason on a deferred
+/// check-in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScreenShare {
+    /// A screen share is running (Meet, Zoom, Teams).
+    Sharing,
+    /// A full-screen presentation (slideshow) is running.
+    Presenting,
+}
+
 /// The frontmost app, for activity sampling (#25). Title and domain may be withheld
 /// by policy or missing permissions.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +46,9 @@ pub struct Foreground {
     pub app: String,
     pub title: Option<String>,
     pub domain: Option<String>,
+    /// The display (1-based, as in `Frame.display`) the app's front window is on;
+    /// `None` when unknown (no Screen Recording, no window, not supported).
+    pub display: Option<u32>,
 }
 
 /// One captured image as raw pixels; blur and WebP encoding happen in
@@ -84,14 +100,28 @@ pub trait Platform: Send + Sync {
     fn idle_seconds(&self) -> u64;
     fn session_state(&self) -> SessionState;
     fn call_state(&self) -> CallState;
-    /// Screen sharing or a full-screen presentation (CHK-04 deferral).
-    fn screen_shared(&self) -> bool;
+    /// Screen sharing or a full-screen presentation (CHK-03 deferral).
+    fn screen_share(&self) -> Option<ScreenShare>;
     fn foreground(&self) -> Option<Foreground>;
     fn capture_screens(&self, max_width: u32) -> Result<Vec<Frame>, CaptureError>;
     fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError>;
     /// Current Screen Recording / Camera permission. Must never show a prompt.
     fn permissions(&self) -> Permissions;
+    /// Asks the OS for a permission, showing its own prompt where it has one (macOS
+    /// Screen Recording and Camera, onboarding #59). Returns without waiting for the
+    /// answer; `permissions()` reports it. A no-op where there is nothing to ask.
+    fn request_permission(&self, kind: PermissionKind);
     fn is_injected(&self, click: &Click) -> bool;
     /// OS notification (CHK-13 optional check-in notification).
     fn notify(&self, title: &str, body: &str);
+    /// ANT-01: registers the helper the OS runs to start the agent again if it is
+    /// killed (macOS LaunchAgent, Windows scheduled task). Safe to call at every
+    /// launch: an existing registration with the same content is left alone.
+    fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError>;
+    /// Removes the helper (uninstall, or a dev build trying the agent without one).
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError>;
+    fn watchdog_installed(&self) -> bool;
+    /// When the device last started up, to tell a reboot from a kill (ANT-01).
+    /// `None` when the OS can't say.
+    fn boot_time(&self) -> Option<DateTime<Utc>>;
 }

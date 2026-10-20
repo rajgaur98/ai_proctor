@@ -1,5 +1,7 @@
 //! State changes sent as events the moment they happen (STS-01): idle, lock,
-//! sleep and calls. The heartbeat repeats the same state every 60 s; these events
+//! sleep and calls. A screen share or presentation counts as a call (STS rule 8):
+//! it starts and ends `call_start`/`call_end` with its own source, so the server
+//! stays In meeting until every source has ended. The heartbeat repeats the same state every 60 s; these events
 //! let the live grid change within seconds (STS-03).
 //!
 //! Only while working: a break, a pause or clock-out collects nothing, and the
@@ -9,7 +11,7 @@
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 
-use crate::platform::{Platform, SessionState};
+use crate::platform::{Platform, ScreenShare, SessionState};
 
 /// Org default (`idle_threshold_min`), the same the server uses.
 pub const DEFAULT_IDLE_THRESHOLD: Duration = Duration::minutes(10);
@@ -28,6 +30,7 @@ struct Reported {
     session: SessionStateKey,
     camera: bool,
     mic: bool,
+    share: Option<ScreenShare>,
 }
 
 /// `SessionState` without the `Default` meaning drifting: Active until told.
@@ -75,7 +78,7 @@ impl PresenceTracker {
     }
 
     /// Reads the platform and returns the events for whatever changed since the
-    /// last call, in a stable order (session, idle, calls).
+    /// last call, in a stable order (session, idle, call starts, call ends).
     pub fn observe(&mut self, platform: &dyn Platform, now: DateTime<Utc>) -> Vec<StateEvent> {
         let idle_s = platform.idle_seconds();
         let call = platform.call_state();
@@ -84,6 +87,7 @@ impl PresenceTracker {
             session: platform.session_state().into(),
             camera: call.camera,
             mic: call.mic,
+            share: platform.screen_share(),
         };
         let before = std::mem::replace(&mut self.reported, current);
         let mut events = Vec::new();
@@ -116,15 +120,29 @@ impl PresenceTracker {
                 push("idle_end", json!({}));
             }
         }
-        for (source, was, is) in [
+        // Each source is its own call; the share is one source at a time, so a
+        // switch between sharing and presenting is an end and a start.
+        let sources = [
             ("camera", before.camera, current.camera),
             ("mic", before.mic, current.mic),
-        ] {
-            if was != is {
-                push(
-                    if is { "call_start" } else { "call_end" },
-                    json!({ "source": source }),
-                );
+            (
+                "screen_share",
+                before.share == Some(ScreenShare::Sharing),
+                current.share == Some(ScreenShare::Sharing),
+            ),
+            (
+                "presenting",
+                before.share == Some(ScreenShare::Presenting),
+                current.share == Some(ScreenShare::Presenting),
+            ),
+        ];
+        // Starts before ends, so a switch (share → presenting) never passes through
+        // a moment with no call and leaves a zero-length Active period behind.
+        for (event_type, starting) in [("call_start", true), ("call_end", false)] {
+            for (source, was, is) in sources {
+                if was != is && is == starting {
+                    push(event_type, json!({ "source": source }));
+                }
             }
         }
         events
@@ -135,7 +153,7 @@ impl PresenceTracker {
 mod tests {
     use super::*;
     use crate::fake::FakePlatform;
-    use crate::platform::CallState;
+    use crate::platform::{CallState, ScreenShare};
 
     fn t(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
@@ -232,6 +250,86 @@ mod tests {
         let events = p.observe(&fake, t("2026-10-20T10:05:00Z"));
         assert_eq!(types(&events), ["call_end"]);
         assert_eq!(events[0].payload["source"], "camera");
+    }
+
+    #[test]
+    fn a_screen_share_is_a_call_from_start_to_end() {
+        let fake = FakePlatform::default();
+        let mut p = PresenceTracker::default();
+        fake.update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        let events = p.observe(&fake, t("2026-10-20T10:00:00Z"));
+        assert_eq!(types(&events), ["call_start"]);
+        assert_eq!(events[0].payload["source"], "screen_share");
+        assert!(p.observe(&fake, t("2026-10-20T10:00:05Z")).is_empty());
+        fake.update(|s| s.screen_share = None);
+        let events = p.observe(&fake, t("2026-10-20T10:30:00Z"));
+        assert_eq!(types(&events), ["call_end"]);
+        assert_eq!(events[0].payload["source"], "screen_share");
+    }
+
+    #[test]
+    fn a_presentation_is_a_call_of_its_own_source() {
+        let fake = FakePlatform::default();
+        let mut p = PresenceTracker::default();
+        fake.update(|s| s.screen_share = Some(ScreenShare::Presenting));
+        let events = p.observe(&fake, t("2026-10-20T10:00:00Z"));
+        assert_eq!(types(&events), ["call_start"]);
+        assert_eq!(events[0].payload["source"], "presenting");
+        fake.update(|s| s.screen_share = None);
+        let events = p.observe(&fake, t("2026-10-20T10:10:00Z"));
+        assert_eq!(types(&events), ["call_end"]);
+        assert_eq!(events[0].payload["source"], "presenting");
+    }
+
+    #[test]
+    fn switching_from_sharing_to_presenting_starts_before_it_ends() {
+        let fake = FakePlatform::default();
+        let mut p = PresenceTracker::default();
+        fake.update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        p.observe(&fake, t("2026-10-20T10:00:00Z"));
+        fake.update(|s| s.screen_share = Some(ScreenShare::Presenting));
+        let events = p.observe(&fake, t("2026-10-20T10:05:00Z"));
+        assert_eq!(types(&events), ["call_start", "call_end"]);
+        assert_eq!(events[0].payload["source"], "presenting");
+        assert_eq!(events[1].payload["source"], "screen_share");
+    }
+
+    #[test]
+    fn a_call_and_a_share_overlap_as_separate_sources() {
+        let fake = FakePlatform::default();
+        let mut p = PresenceTracker::default();
+        fake.update(|s| s.call.mic = true);
+        assert_eq!(
+            types(&p.observe(&fake, t("2026-10-20T10:00:00Z"))),
+            ["call_start"]
+        );
+        // The share starts while the mic is open, the mic closes first: the share
+        // alone keeps the meeting going, so only the mic's end is reported.
+        fake.update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        let events = p.observe(&fake, t("2026-10-20T10:05:00Z"));
+        assert_eq!(types(&events), ["call_start"]);
+        assert_eq!(events[0].payload["source"], "screen_share");
+        fake.update(|s| s.call.mic = false);
+        let events = p.observe(&fake, t("2026-10-20T10:20:00Z"));
+        assert_eq!(types(&events), ["call_end"]);
+        assert_eq!(events[0].payload["source"], "mic");
+        fake.update(|s| s.screen_share = None);
+        let events = p.observe(&fake, t("2026-10-20T10:25:00Z"));
+        assert_eq!(types(&events), ["call_end"]);
+        assert_eq!(events[0].payload["source"], "screen_share");
+    }
+
+    #[test]
+    fn a_share_running_after_a_reset_is_reported_again() {
+        let fake = FakePlatform::default();
+        let mut p = PresenceTracker::default();
+        fake.update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        p.observe(&fake, t("2026-10-20T10:00:00Z"));
+        p.reset();
+        assert_eq!(
+            types(&p.observe(&fake, t("2026-10-20T10:20:00Z"))),
+            ["call_start"]
+        );
     }
 
     #[test]

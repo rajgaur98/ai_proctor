@@ -8,8 +8,8 @@ describe("navFor", () => {
       "Timesheets",
       "Reports",
       "Projects",
-      "Policy",
     ]);
+    expect(navFor("manager").map((l) => l.to)).not.toContain("/policy");
   });
 
   it("gives owners and admins the admin set", () => {
@@ -17,6 +17,8 @@ describe("navFor", () => {
     expect(navFor("admin").map((l) => l.label)).toContain("People");
     expect(navFor("admin").map((l) => l.label)).toContain("Reports");
     expect(navFor("admin").map((l) => l.label)).toContain("Projects");
+    expect(navFor("admin").map((l) => l.label)).toContain("Policy");
+    expect(navFor("admin").map((l) => l.label)).toContain("Monitoring notice");
   });
 
   it("gives employees only their own pages", () => {

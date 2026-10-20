@@ -8,7 +8,9 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { DayPage } from "./features/day/DayPage";
+import { NoticePage } from "./features/notice/Notice";
 import { People } from "./features/people/People";
+import { PolicyPage } from "./features/policy/PolicyPage";
 import { Projects } from "./features/projects/Projects";
 import { Reports } from "./features/reports/Reports";
 import { LiveTeam } from "./features/team/LiveTeam";
@@ -155,6 +157,14 @@ const myDayRoute = createRoute({
   },
 });
 
+/** Everyone with an account reads the notice they acknowledged (EMP-05, opened from the
+ * tray); owners and admins also edit it there (#48), so no role gate. */
+const noticeRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/notice",
+  component: NoticePage,
+});
+
 const routeTree = rootRoute.addChildren([
   signInRoute,
   signUpRoute,
@@ -171,10 +181,10 @@ const routeTree = rootRoute.addChildren([
     page("/reports", "Reports", 47, Reports),
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
-    page("/policy", "Policy", 52),
+    page("/policy", "Policy", 52, PolicyPage),
     page("/me", "My data", 49),
     page("/my-timesheet", "My timesheet", 43, MyTimesheets),
-    page("/notice", "Monitoring notice", 48),
+    noticeRoute,
   ]),
 ]);
 

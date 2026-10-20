@@ -9,11 +9,13 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
 import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
+import { canDecideQuery } from "../timesheets/timesheetData";
 import { CaptureViewer } from "./CaptureViewer";
 import { ManualEntries } from "./ManualEntries";
 import {
   barSpan,
   type Checkin,
+  deferralLabel,
   localDay,
   markerLeft,
   type Outcome,
@@ -30,6 +32,7 @@ interface CheckinRow extends Checkin {
   idleSAtShow: number | null;
   deviceState: string | null;
   missedReason: string | null;
+  missedReasonKind: string | null;
   captures: number;
 }
 
@@ -40,7 +43,20 @@ const outcomeLabel: Record<Outcome, string> = {
   pass: "Passed check-in",
   miss: "Missed check-in",
   failed: "Failed check-in",
+  deferred: "Deferred check-in",
 };
+
+function deferralText(reason: string | null): string {
+  return (reason && deferralLabel[reason]) || "Held back";
+}
+
+/** What the marker button says: the outcome, the time, and for a deferral the reason. */
+function markerLabel(c: Checkin, zone: string): string {
+  const at = DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone }).toFormat("HH:mm");
+  const reason =
+    c.outcome === "deferred" ? ` (${deferralText(c.deferralReason).toLowerCase()})` : "";
+  return `${outcomeLabel[c.outcome]} at ${at}${reason}`;
+}
 
 function minutesText(m: number): string {
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
@@ -59,7 +75,7 @@ export function DayPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, timezone, manager_id, presence(status)")
+        .select("id, full_name, timezone, presence(status)")
         .eq("id", userId)
         .maybeSingle();
       if (error) throw error;
@@ -91,7 +107,7 @@ export function DayPage() {
         supabase
           .from("checkin_events")
           .select(
-            "id, scheduled_at, shown_at, responded_at, outcome, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, object_keys",
+            "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys",
           )
           .eq("user_id", userId)
           .gte("scheduled_at", from)
@@ -112,11 +128,13 @@ export function DayPage() {
             shownAt: c.shown_at,
             respondedAt: c.responded_at,
             outcome: c.outcome,
+            deferralReason: c.deferral_reason,
             responseMs: c.response_ms,
             wrongClicks: c.wrong_clicks,
             idleSAtShow: c.idle_s_at_show,
             deviceState: c.device_state,
             missedReason: c.missed_reason,
+            missedReasonKind: c.missed_reason_kind,
             captures: c.object_keys.length,
           }),
         ),
@@ -131,10 +149,10 @@ export function DayPage() {
   const segs = segments(span, periods, now);
   const viewer = viewerZone();
   const chosen = checkins.find((c) => c.id === selected) ?? null;
-  const canSchedule =
-    profile.role === "owner" || profile.role === "admin" || person.data?.manager_id === profile.id;
+  // The server decides who is the person's manager or active delegate (TS-12, TS-14).
+  const canDecide = useQuery(canDecideQuery(userId)).data === true;
+  const canSchedule = profile.role === "owner" || profile.role === "admin" || canDecide;
   const isSelf = userId === profile.id;
-  const isManager = person.data?.manager_id === profile.id;
 
   const go = (d: string) =>
     navigate({ to: "/team/$userId", params: { userId }, search: { date: d } });
@@ -237,7 +255,7 @@ export function DayPage() {
                     key={c.id}
                     type="button"
                     aria-pressed={selected === c.id}
-                    aria-label={`${outcomeLabel[c.outcome]} at ${DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone: viewer }).toFormat("HH:mm")}`}
+                    aria-label={markerLabel(c, viewer)}
                     onClick={() => setSelected(selected === c.id ? null : c.id)}
                     className="absolute top-0 grid h-6 w-6 -translate-x-1/2 place-items-center rounded-full"
                     style={{ left: `${left}%` }}
@@ -279,6 +297,9 @@ export function DayPage() {
                 <span className="flex items-center gap-1.5">
                   <Marker outcome="failed" /> failed
                 </span>
+                <span className="flex items-center gap-1.5">
+                  <Marker outcome="deferred" /> deferred
+                </span>
               </li>
             </ul>
             {isToday && <p className="text-xs text-ink3">Updates every 30 seconds.</p>}
@@ -304,6 +325,9 @@ export function DayPage() {
                   <Marker outcome={c.outcome} />
                   <Time iso={c.shownAt ?? c.scheduledAt} employeeZone={zone} />
                   <span>{outcomeLabel[c.outcome]}</span>
+                  {c.outcome === "deferred" && (
+                    <span className="text-ink3">{deferralText(c.deferralReason)}</span>
+                  )}
                   {c.outcome === "pass" && c.responseMs !== null && (
                     <span className="text-ink3">in {Math.round(c.responseMs / 1000)} s</span>
                   )}
@@ -321,7 +345,7 @@ export function DayPage() {
         dayStart={day.start}
         dayEnd={day.end}
         isSelf={isSelf}
-        canDecide={isManager}
+        canDecide={canDecide}
       />
 
       {canSchedule && (
@@ -358,6 +382,16 @@ function Marker({ outcome }: { outcome: Outcome }) {
       />
     );
   }
+  if (outcome === "deferred") {
+    // A hollow diamond: not a result, only a check-in that waited for a call or share.
+    return (
+      <span
+        aria-hidden
+        className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-panel"
+        style={{ border: "2px solid var(--smeeting)" }}
+      />
+    );
+  }
   return (
     <span
       aria-hidden
@@ -369,20 +403,43 @@ function Marker({ outcome }: { outcome: Outcome }) {
   );
 }
 
+// CHK-23 quick picks; the employee adds them from the tray (#37).
+const reasonLabel: Record<string, string> = {
+  meeting: "Meeting",
+  phone_call: "Phone call",
+  break: "Break",
+  away: "Away from desk",
+  other: "Other",
+};
+
+function reasonText(c: CheckinRow): string {
+  const kind = c.missedReasonKind ? (reasonLabel[c.missedReasonKind] ?? c.missedReasonKind) : null;
+  if (kind && c.missedReason) return `${kind}: ${c.missedReason}`;
+  return kind ?? c.missedReason ?? "No reason given yet";
+}
+
 function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
   const [showCaptures, setShowCaptures] = useState(false);
   const rows: [string, React.ReactNode][] = [
-    ["Scheduled", <Time key="s" iso={c.scheduledAt} employeeZone={zone} />],
+    [
+      c.outcome === "deferred" ? "Due" : "Scheduled",
+      <Time key="s" iso={c.scheduledAt} employeeZone={zone} />,
+    ],
   ];
   if (c.shownAt) rows.push(["Shown", <Time key="sh" iso={c.shownAt} employeeZone={zone} />]);
-  if (c.outcome === "miss") {
+  if (c.outcome === "deferred") {
+    rows.push(
+      ["Reason", deferralText(c.deferralReason)],
+      ["Shown", "Not shown. The check-in comes once it ends, and this is not counted as missed."],
+    );
+  } else if (c.outcome === "miss") {
     rows.push(
       [
         "Idle when shown",
         c.idleSAtShow === null ? "—" : minutesText(Math.round(c.idleSAtShow / 60)),
       ],
       ["Device", c.deviceState ?? "—"],
-      ["Reason", c.missedReason ?? "No reason given yet"],
+      ["Reason", reasonText(c)],
     );
   } else {
     if (c.respondedAt)

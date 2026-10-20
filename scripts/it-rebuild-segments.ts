@@ -187,3 +187,34 @@ assert.equal((await segmentsOf(erin)).length, expected.length, "Erin reads her o
 assert.equal((await segmentsOf(manager)).length, expected.length, "her manager reads them");
 assert.equal((await segmentsOf(lucas)).length, 0, "a peer reads none");
 console.log("ok  row-level security: employee and manager read, peer doesn't");
+
+// A day that fails every time (#126): a date the database can't turn into timestamps.
+// The cron run records the failure and backs the day off instead of retrying it first
+// on every run.
+const POISON = "294277-01-01";
+const poisonRow = () =>
+  call(`/rest/v1/dirty_days?user_id=eq.${ERIN}&day=eq.${POISON}`, service).then(
+    (r) => r.json[0] as { attempts: number; last_error: string | null; next_attempt_at: string },
+  );
+const inserted = await call("/rest/v1/dirty_days", service, {
+  body: { user_id: ERIN, day: POISON },
+});
+assert.ok(inserted.status < 300, `insert poison day: ${JSON.stringify(inserted.json)}`);
+const failing = await rebuild(service, {});
+assert.equal(failing.status, 200, JSON.stringify(failing.json));
+assert.equal(failing.json.failed, 1, JSON.stringify(failing.json));
+const failed = await poisonRow();
+assert.equal(failed.attempts, 1, "the failure was counted");
+assert.ok(failed.last_error, "and its error kept");
+assert.ok(
+  Date.parse(failed.next_attempt_at) > Date.now() + 4 * 60 * 1000,
+  "and the day backed off",
+);
+const quiet = await rebuild(service, {});
+assert.equal(quiet.json.days.length, 0, "a backed-off day isn't picked again");
+assert.equal((await poisonRow()).attempts, 1, "and isn't counted again");
+const cleaned = await call(`/rest/v1/dirty_days?user_id=eq.${ERIN}&day=eq.${POISON}`, service, {
+  method: "DELETE",
+});
+assert.ok(cleaned.status < 300, "poison day removed");
+console.log("ok  poison day: failure recorded, backed off, not retried until due");

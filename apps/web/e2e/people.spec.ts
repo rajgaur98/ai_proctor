@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { clientFor } from "./agent";
 
 // The local stack's mail catcher (`pnpm supabase status`).
 const mailpit = process.env.MAILPIT_URL ?? "http://127.0.0.1:54324";
@@ -138,4 +139,46 @@ test("an admin sets a night shift that crosses midnight", async ({ page }) => {
   await expect(
     page.getByRole("dialog", { name: "Edit Lucas Martin" }).getByLabel("Shift 1 start"),
   ).toHaveValue("22:00");
+});
+
+test("an admin turns approval off for someone, and it is audit-logged (TS-16)", async ({
+  page,
+}) => {
+  await signInAsAdmin(page);
+  await page.goto("/people");
+  const edit = async (approvalNotRequired: boolean) => {
+    await page.getByRole("button", { name: "Edit Lucas Martin" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit Lucas Martin" });
+    const box = dialog.getByLabel("Approval not required");
+    await expect(box).toBeChecked({ checked: !approvalNotRequired });
+    await box.setChecked(approvalNotRequired);
+    await dialog.getByRole("button", { name: "Save details" }).click();
+    await expect(dialog).toHaveCount(0);
+  };
+  await edit(true);
+  const { data } = await (await clientFor("admin@acme.test"))
+    .from("users")
+    .select("approval_required")
+    .eq("email", "lucas@acme.test")
+    .single();
+  expect(data?.approval_required).toBe(false);
+  await page.getByRole("button", { name: "Edit Lucas Martin" }).click();
+  await expectNoA11yViolations(page);
+  await page
+    .getByRole("dialog", { name: "Edit Lucas Martin" })
+    .getByRole("button", { name: "Cancel" })
+    .click();
+
+  // Back to the seed state for the other specs.
+  await edit(false);
+  const { data: log } = await (await clientFor("admin@acme.test"))
+    .from("audit_log")
+    .select("metadata")
+    .eq("action", "member.approval_changed")
+    .order("id", { ascending: false })
+    .limit(2);
+  expect(log?.map((r) => r.metadata)).toEqual([
+    { from: false, to: true },
+    { from: true, to: false },
+  ]);
 });

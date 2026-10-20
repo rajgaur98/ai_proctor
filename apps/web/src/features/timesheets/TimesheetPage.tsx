@@ -22,6 +22,7 @@ import {
   approveWeek,
   breakdownQuery,
   canDecideQuery,
+  canReopenQuery,
   editSegment,
   editsQuery,
   type FlaggedSegment,
@@ -99,6 +100,7 @@ export function TimesheetPage() {
   const flagged = useQuery({ ...flaggedQuery(userId, week), enabled: fresh });
   const edits = useQuery({ ...editsQuery(sheet.data?.id ?? ""), enabled: !!sheet.data });
   const canDecideQ = useQuery(canDecideQuery(userId));
+  const canReopenQ = useQuery(canReopenQuery(userId));
   const weekFrom = week ? DateTime.fromISO(week, { zone }) : null;
   const entries = useQuery({
     ...dayEntriesQuery(
@@ -173,6 +175,7 @@ export function TimesheetPage() {
   const first = name.split(" ")[0] ?? name;
   const isSelf = userId === profile.id;
   const canDecide = canDecideQ.data === true;
+  const canReopen = canReopenQ.data === true;
   const status = sheet.data?.status;
   const days = weekDays(week);
   const summary = summarizeWeek(breakdown.data ?? [], days);
@@ -257,7 +260,7 @@ export function TimesheetPage() {
                   </Button>
                 </>
               )}
-              {canDecide && status === "approved" && (
+              {canReopen && status === "approved" && (
                 <Button variant="secondary" onClick={() => reopenRef.current?.showModal()}>
                   Reopen week
                 </Button>
@@ -275,7 +278,7 @@ export function TimesheetPage() {
             <span id="approve-note" className="text-[12.5px] text-ink2">
               {canDecide && status === "submitted"
                 ? pendingText
-                : canDecide && status === "approved"
+                : canReopen && status === "approved"
                   ? "Approved weeks are locked until reopened."
                   : canDecide
                     ? `Waiting for ${first} to submit.`
@@ -491,6 +494,26 @@ export function TimesheetPage() {
         </div>
       </div>
 
+      {canReopen && sheet.data && (
+        <NoteDialog
+          dialogRef={reopenRef}
+          id="reopen"
+          title="Reopen week"
+          description={
+            isSelf
+              ? "Unlocks your auto-approved week for changes. It goes back to draft, to submit again, and the reopening is audit-logged."
+              : `Unlocks the approved week for changes. It goes back to submitted, the reopening is audit-logged, and ${first} is notified.`
+          }
+          label="Reason"
+          submitLabel="Reopen week"
+          schema={TimesheetReason}
+          onSubmit={async (text) => {
+            await reopenWeek(sheet.data.id, text);
+            await refreshAfterRebuild();
+          }}
+        />
+      )}
+
       {canDecide && sheet.data && (
         <>
           <NoteDialog
@@ -503,19 +526,6 @@ export function TimesheetPage() {
             schema={ReturnComment}
             onSubmit={async (text) => {
               await returnWeek(sheet.data.id, text);
-              await refreshAfterRebuild();
-            }}
-          />
-          <NoteDialog
-            dialogRef={reopenRef}
-            id="reopen"
-            title="Reopen week"
-            description={`Unlocks the approved week for changes. It goes back to submitted, the reopening is audit-logged, and ${first} is notified.`}
-            label="Reason"
-            submitLabel="Reopen week"
-            schema={TimesheetReason}
-            onSubmit={async (text) => {
-              await reopenWeek(sheet.data.id, text);
               await refreshAfterRebuild();
             }}
           />

@@ -125,8 +125,11 @@ export function buildSegments(input: DayInput): Segment[] {
       pieces.push(segment(span, type, projectAt(span.start), input.policy.breaksPaid));
     }
   }
+  const entries = [...input.manualEntries].sort(
+    (a, b) => a.start - b.start || a.end - b.end || byProject(a.projectId, b.projectId),
+  );
   for (const m of manual) {
-    const entry = input.manualEntries.find((e) => e.start <= m.start && m.end <= e.end);
+    const entry = entries.find((e) => e.start <= m.start && m.end <= e.end);
     for (const span of cutAt(m, cuts)) {
       const edited = editAt(input, span.start);
       const projectId = edited !== undefined ? edited : (entry?.projectId ?? null);
@@ -195,31 +198,51 @@ function classify(span: Span, overlays: { span: Span; type: SegmentType }[]): Se
 /**
  * BRK-06: each pause counts up to the per-pause cap and while the day's counted
  * pause time stays under the daily cap; the rest of it is over the cap. Same
- * arithmetic as the server's `pauses.over_cap_s`.
+ * arithmetic as the server's `internal.close_pause` (`pauses.over_cap_s`).
+ *
+ * A pause that runs past local midnight is split there, and this day sees only its
+ * own part:
+ *  - The per-pause cap is anchored at the pause's start and covers the whole pause:
+ *    only its first `pauseMaxS` seconds are eligible, on whichever day they fall.
+ *  - The daily cap is per local day: each day's eligible time counts while that
+ *    day's counted pause time stays under `pauseDailyMaxS`. Pauses on a day are
+ *    taken in start order, so what an earlier day counted never changes this day's
+ *    answer (buildSegments stays a function of one day's facts).
+ * Within a day's part, the counted time comes first, then the over-cap rest.
  */
 function splitPauses(input: DayInput): { span: Span; type: SegmentType }[] {
   const out: { span: Span; type: SegmentType }[] = [];
   let countedToday = 0;
-  const pauses = [...input.pauses].sort((a, b) => a.start - b.start);
+  const pauses = [...input.pauses].sort(
+    (a, b) => a.start - b.start || (a.end ?? input.now) - (b.end ?? input.now),
+  );
   for (const p of pauses) {
     const end = p.end ?? input.now;
-    const duration = Math.max(0, end - p.start);
+    const part = clip({ start: p.start, end }, input.day);
+    if (!nonEmpty(part)) continue;
+    const eligible = clip(
+      { start: p.start, end: p.start + Math.min(end - p.start, input.policy.pauseMaxS) },
+      input.day,
+    );
     const counted = Math.min(
-      duration,
-      input.policy.pauseMaxS,
+      Math.max(0, eligible.end - eligible.start),
       Math.max(0, input.policy.pauseDailyMaxS - countedToday),
     );
     countedToday += counted;
-    if (counted > 0) out.push({ span: { start: p.start, end: p.start + counted }, type: "pause" });
-    if (counted < duration)
-      out.push({ span: { start: p.start + counted, end }, type: "pause_over_cap" });
+    if (counted > 0)
+      out.push({ span: { start: part.start, end: part.start + counted }, type: "pause" });
+    if (part.start + counted < part.end)
+      out.push({ span: { start: part.start + counted, end: part.end }, type: "pause_over_cap" });
   }
   return out;
 }
 
 /** From each missed or failed card being shown until the next pass (TS-01). */
 function unverifiedWindows(input: DayInput): Span[] {
-  const sorted = [...input.checkins].sort((a, b) => a.at - b.at);
+  // At the same instant a miss comes before a pass, so the pass closes the window.
+  const sorted = [...input.checkins].sort(
+    (a, b) => a.at - b.at || OUTCOME_ORDER[a.outcome] - OUTCOME_ORDER[b.outcome],
+  );
   const out: Span[] = [];
   let openSince: number | null = null;
   for (const c of sorted) {
@@ -236,7 +259,9 @@ function unverifiedWindows(input: DayInput): Span[] {
 
 /** The project in force at a moment: session start, then switches, then edits. */
 function projectTimeline(input: DayInput): (t: number) => string | null {
-  const switches = [...input.projectSwitches].sort((a, b) => a.at - b.at);
+  const switches = [...input.projectSwitches].sort(
+    (a, b) => a.at - b.at || byProject(a.projectId, b.projectId),
+  );
   const sessions = [...input.clockSessions].sort((a, b) => a.start - b.start);
   return (t) => {
     const edited = editAt(input, t);
@@ -249,6 +274,13 @@ function projectTimeline(input: DayInput): (t: number) => string | null {
     }
     return project;
   };
+}
+
+const OUTCOME_ORDER = { miss: 0, failed: 1, pass: 2 } as const;
+
+/** A fixed order for facts at the same instant, so input order never matters. */
+function byProject(a: string | null, b: string | null): number {
+  return (a ?? "").localeCompare(b ?? "");
 }
 
 function editAt(input: DayInput, t: number): string | null | undefined {

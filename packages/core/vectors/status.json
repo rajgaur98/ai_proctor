@@ -255,6 +255,141 @@
         "idle": false
       },
       "expected": "tamper"
+    },
+    {
+      "name": "a deferred check-in is neither a miss nor a pass",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "deferred",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "active"
+    },
+    {
+      "name": "a deferred check-in leaves a call and idle as they are",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "deferred",
+        "in_call": true,
+        "idle": true
+      },
+      "expected": "in_meeting"
+    },
+    {
+      "name": "a permission missing off shift is not tamper",
+      "input": {
+        "clocked_in": false,
+        "tamper": true,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "off_shift"
+    },
+    {
+      "name": "a permission missing while working is tamper",
+      "input": {
+        "clocked_in": true,
+        "tamper": true,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "tamper"
+    },
+    {
+      "name": "tamper beats paused",
+      "input": {
+        "clocked_in": true,
+        "tamper": true,
+        "offline": false,
+        "on_break": false,
+        "paused": true,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "tamper"
+    },
+    {
+      "name": "tamper beats locked",
+      "input": {
+        "clocked_in": true,
+        "tamper": true,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": true,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "tamper"
+    },
+    {
+      "name": "tamper beats a missed check-in, a call and idle",
+      "input": {
+        "clocked_in": true,
+        "tamper": true,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "miss",
+        "in_call": true,
+        "idle": true
+      },
+      "expected": "tamper"
+    },
+    {
+      "name": "the permission back on is working again",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "pass",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "active"
+    },
+    {
+      "name": "the permission back on after a miss is still away until a pass",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "miss",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "away"
     }
   ]
 }

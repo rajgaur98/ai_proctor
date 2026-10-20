@@ -5,6 +5,7 @@ import {
   type DayInput,
   localDayBounds,
   type Segment,
+  type SegmentType,
   segmentTotals,
 } from "./segments.ts";
 
@@ -102,6 +103,64 @@ describe("buildSegments", () => {
     expect(totals.byType.pause_over_cap).toBe(15 * 60);
     expect(show(segments)).toContain("10:15-10:20 pause_over_cap");
     expect(show(segments)).toContain("14:00-14:10 pause_over_cap");
+  });
+
+  // BRK-06: a pause across local midnight is split there. The per-pause cap covers the
+  // whole pause (anchored at its start); each day has its own daily cap.
+  describe("pauses across midnight", () => {
+    const day1 = day;
+    const day2 = { start: day.end, end: day.end + 24 * H };
+    const night = (pauses: DayInput["pauses"], p = policy): [DayInput, DayInput] => {
+      const facts = {
+        clockSessions: [{ start: t("20:00"), end: day2.start + 2 * H, projectId: null }],
+        pauses,
+        policy: p,
+      };
+      return [
+        input({ ...facts, day: day1, now: day2.end }),
+        input({ ...facts, day: day2, now: day2.end }),
+      ];
+    };
+
+    it("counts the first 15 minutes of the whole pause, across the two days", () => {
+      const [a, b] = night([{ start: t("23:50"), end: day2.start + 30 * 60 }]);
+      expect(show(buildSegments(a))).toEqual(["20:00-23:50 verified", "23:50-00:00 pause"]);
+      expect(show(buildSegments(b))).toEqual([
+        "00:00-00:05 pause",
+        "00:05-00:30 pause_over_cap",
+        "00:30-02:00 verified",
+      ]);
+    });
+
+    it("gives each day its own daily cap", () => {
+      // Day one has 55 minutes counted before midnight: only 5 of the late pause's
+      // 10 eligible minutes fit. Day two starts clean, so its 5 eligible minutes count.
+      const earlier = [
+        { start: t("20:00"), end: t("20:15") },
+        { start: t("21:00"), end: t("21:15") },
+        { start: t("22:00"), end: t("22:15") },
+        { start: t("23:00"), end: t("23:10") },
+      ];
+      const [a, b] = night([...earlier, { start: t("23:50"), end: day2.start + 30 * 60 }]);
+      const first = segmentTotals(buildSegments(a));
+      expect(first.byType.pause).toBe(60 * 60);
+      expect(first.byType.pause_over_cap).toBe(5 * 60);
+      expect(show(buildSegments(a)).slice(-2)).toEqual([
+        "23:50-23:55 pause",
+        "23:55-00:00 pause_over_cap",
+      ]);
+      expect(show(buildSegments(b)).slice(0, 2)).toEqual([
+        "00:00-00:05 pause",
+        "00:05-00:30 pause_over_cap",
+      ]);
+    });
+
+    it("a long pause counts nothing on the second day once the first 15 minutes are used", () => {
+      const [a, b] = night([{ start: t("23:00"), end: day2.start + H }]);
+      expect(show(buildSegments(a))).toContain("23:00-23:15 pause");
+      expect(show(buildSegments(a))).toContain("23:15-00:00 pause_over_cap");
+      expect(show(buildSegments(b))[0]).toBe("00:00-01:00 pause_over_cap");
+    });
   });
 
   it("break wins over everything; offline and locked over a miss", () => {
@@ -366,6 +425,117 @@ describe("properties", () => {
           if (a.end === b.start)
             expect(a.type !== b.type || a.projectId !== b.projectId).toBe(true);
         }
+      }),
+    );
+  });
+});
+
+describe("pause caps across midnight (properties)", () => {
+  const day1 = day;
+  const day2 = { start: day.end, end: day.end + 24 * H };
+  // Non-overlapping pauses around the midnight between the two days, built from a
+  // gap and a length each (the server never has two open at once).
+  const pauseList = fc
+    .array(fc.tuple(fc.integer({ min: 0, max: 4 * H }), fc.integer({ min: 1, max: 2 * H })), {
+      minLength: 1,
+      maxLength: 5,
+    })
+    .map((steps) => {
+      const out: { start: number; end: number }[] = [];
+      let cursor = day2.start - 8 * H;
+      for (const [gap, length] of steps) {
+        const start = cursor + gap;
+        out.push({ start, end: start + length });
+        cursor = start + length;
+      }
+      return out;
+    });
+  const caps = fc.record({
+    breaksPaid: fc.boolean(),
+    pauseMaxS: fc.integer({ min: 60, max: 30 * 60 }),
+    pauseDailyMaxS: fc.integer({ min: 60, max: 2 * H }),
+  });
+  const forDay = (
+    d: { start: number; end: number },
+    pauses: { start: number; end: number }[],
+    p: DayInput["policy"],
+  ) =>
+    buildSegments(
+      input({
+        day: d,
+        now: day2.end,
+        // Clocked in the whole time, so every pause second shows up in a segment.
+        clockSessions: [{ start: day1.start, end: day2.end, projectId: null }],
+        pauses,
+        policy: p,
+      }),
+    );
+  const seconds = (segments: Segment[], type: SegmentType) =>
+    segments.filter((s) => s.type === type).reduce((n, s) => n + s.end - s.start, 0);
+  const overlap = (a: { start: number; end: number }, b: { start: number; end: number }) =>
+    Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start));
+
+  it("each day shows exactly its own part of the pauses, counted or not", () => {
+    fc.assert(
+      fc.property(pauseList, caps, (pauses, p) => {
+        for (const d of [day1, day2]) {
+          const segments = forDay(d, pauses, p);
+          const own = pauses.reduce((n, x) => n + overlap(x, d), 0);
+          expect(seconds(segments, "pause") + seconds(segments, "pause_over_cap")).toBe(own);
+        }
+      }),
+    );
+  });
+
+  it("a day never counts more than its daily cap", () => {
+    fc.assert(
+      fc.property(pauseList, caps, (pauses, p) => {
+        for (const d of [day1, day2]) {
+          expect(seconds(forDay(d, pauses, p), "pause")).toBeLessThanOrEqual(p.pauseDailyMaxS);
+        }
+      }),
+    );
+  });
+
+  it("a day counts min(daily cap, the eligible time it holds), the rule close_pause uses", () => {
+    fc.assert(
+      fc.property(pauseList, caps, (pauses, p) => {
+        for (const d of [day1, day2]) {
+          const eligible = pauses.reduce(
+            (n, x) =>
+              n +
+              overlap({ start: x.start, end: x.start + Math.min(x.end - x.start, p.pauseMaxS) }, d),
+            0,
+          );
+          expect(seconds(forDay(d, pauses, p), "pause")).toBe(Math.min(p.pauseDailyMaxS, eligible));
+        }
+      }),
+    );
+  });
+
+  it("one pause counts at most the per-pause cap in total, over both days", () => {
+    fc.assert(
+      fc.property(pauseList, caps, (pauses, p) => {
+        const [only] = pauses as [{ start: number; end: number }];
+        const counted = [day1, day2].reduce(
+          (n, d) => n + seconds(forDay(d, [only], p), "pause"),
+          0,
+        );
+        expect(counted).toBeLessThanOrEqual(Math.min(only.end - only.start, p.pauseMaxS));
+      }),
+    );
+  });
+
+  it("without a daily cap in the way, a single pause counts min(length, per-pause cap) in total", () => {
+    fc.assert(
+      fc.property(pauseList, caps, (pauses, p) => {
+        const [only] = pauses as [{ start: number; end: number }];
+        const wide = { ...p, pauseDailyMaxS: 24 * H };
+        const counted = [day1, day2].reduce(
+          (n, d) => n + seconds(forDay(d, [only], wide), "pause"),
+          0,
+        );
+        expect(counted).toBe(Math.min(only.end - only.start, p.pauseMaxS));
       }),
     );
   });

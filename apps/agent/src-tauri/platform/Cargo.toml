@@ -9,6 +9,7 @@ description = "Platform implementations: macOS (objc2) and Windows (windows-rs)"
 [dependencies]
 agent-core.workspace = true
 tracing.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -26,3 +27,4 @@ objc2-core-media-io = "0.3"
 objc2-core-video = "0.3"
 objc2-foundation = "0.3"
 objc2-screen-capture-kit = "0.3"
+objc2-user-notifications = "0.3"
