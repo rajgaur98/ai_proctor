@@ -60,8 +60,8 @@ impl Platform for ActiveSession {
     fn call_state(&self) -> CallState {
         self.0.call_state()
     }
-    fn screen_shared(&self) -> bool {
-        self.0.screen_shared()
+    fn screen_share(&self) -> Option<agent_core::platform::ScreenShare> {
+        self.0.screen_share()
     }
     fn foreground(&self) -> Option<Foreground> {
         self.0.foreground()

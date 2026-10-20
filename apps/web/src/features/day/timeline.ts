@@ -9,6 +9,13 @@ import { DateTime } from "luxon";
 export type Status = Enums<"presence_status">;
 export type Outcome = Enums<"checkin_outcome">;
 
+/** Why a due check-in was held back (CHK-03); the database stores it as text. */
+export const deferralLabel: Record<string, string> = {
+  call: "On a call",
+  screen_share: "Screen shared",
+  presenting: "Presenting",
+};
+
 export interface Period {
   status: Status;
   start: string;
@@ -20,6 +27,8 @@ export interface Checkin {
   scheduledAt: string;
   shownAt: string | null;
   outcome: Outcome;
+  /** Only on a deferred check-in. */
+  deferralReason: string | null;
 }
 
 export interface Span {
@@ -92,7 +101,8 @@ export function segments(span: Span, periods: Period[], now: number): Segment[] 
     }));
 }
 
-/** Where a check-in sits on the bar (0–100), or null outside it. */
+/** Where a check-in sits on the bar (0–100), or null outside it. A deferred one has
+ * no shown time, so it sits at the time it was due. */
 export function markerLeft(span: Span, c: Checkin): number | null {
   const t = Date.parse(c.shownAt ?? c.scheduledAt);
   if (t < span.start || t > span.end) return null;

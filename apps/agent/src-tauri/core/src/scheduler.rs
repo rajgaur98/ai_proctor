@@ -6,6 +6,10 @@
 //! sleeping Mac shows nothing. Once the condition clears, the card comes within
 //! 2 minutes. Breaks, pauses and clock-out cancel it.
 //!
+//! A deferral leaves one record (`Decision::Deferred`, once per due check-in, with
+//! the due time and the reason); recording it changes nothing about when the card
+//! comes. A lock leaves none.
+//!
 //! The next check-in time stays inside this module: it is never part of
 //! `AgentStatus` or any IPC payload.
 
@@ -16,7 +20,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::Clock;
-use crate::platform::{Platform, SessionState};
+use crate::platform::{Platform, ScreenShare, SessionState};
 
 /// Org interval settings (CHK-01). Defaults: 20–90 min; EU preset 45–120 min.
 #[derive(Clone, Debug, PartialEq)]
@@ -58,6 +62,36 @@ pub enum Hold {
     Locked,
 }
 
+/// Why a check-in was deferred (CHK-03); the `deferral_reason` of a deferred check-in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeferralReason {
+    /// Camera or microphone in use by another app.
+    Call,
+    /// A screen share is running.
+    ScreenShare,
+    /// A full-screen presentation is running.
+    Presenting,
+}
+
+impl DeferralReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Call => "call",
+            Self::ScreenShare => "screen_share",
+            Self::Presenting => "presenting",
+        }
+    }
+}
+
+/// A due check-in that was held for a call, a share or a presentation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Deferral {
+    /// The originally drawn time, reported as `scheduled_at`.
+    pub due_at: DateTime<Utc>,
+    pub reason: DeferralReason,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Decision {
     /// Nothing scheduled (not working).
@@ -66,6 +100,9 @@ pub enum Decision {
     Wait,
     /// Due but held back; check again soon.
     Held(Hold),
+    /// Due but deferred, the first time for this check-in: record it. Later polls
+    /// of the same hold answer `Held(Hold::Deferred)`.
+    Deferred(Deferral),
     /// Show the card now. `scheduled_at` is the original due time.
     Show { scheduled_at: DateTime<Utc> },
 }
@@ -86,6 +123,10 @@ pub struct ScheduleSnapshot {
     pub scheduled_at: Option<DateTime<Utc>>,
     /// Set while a due check-in is held back.
     pub held: Option<Hold>,
+    /// A deferral was already reported for this check-in, so a hold that lasts, or
+    /// comes back, leaves one record. Reset when the next check-in is armed.
+    #[serde(default)]
+    pub deferral_recorded: bool,
 }
 
 /// Random numbers, injectable for tests.
@@ -199,13 +240,28 @@ impl Scheduler {
         if now < next_at {
             return Decision::Wait;
         }
-        if let Some(hold) = self.gate() {
+        if let Some((hold, reason)) = self.gate() {
+            let mut changed = false;
             if state.held != Some(hold) {
                 tracing::info!(?hold, "check-in due but held");
                 state.held = Some(hold);
+                changed = true;
+            }
+            let report = reason.filter(|_| !state.deferral_recorded);
+            if report.is_some() {
+                state.deferral_recorded = true;
+                changed = true;
+            }
+            if changed {
                 self.store.save(&state);
             }
-            return Decision::Held(hold);
+            return match report {
+                Some(reason) => Decision::Deferred(Deferral {
+                    due_at: state.scheduled_at.unwrap_or(next_at),
+                    reason,
+                }),
+                None => Decision::Held(hold),
+            };
         }
         if state.held.take().is_some() {
             // Cleared: show within 2 min, at a random moment so it isn't predictable.
@@ -252,14 +308,21 @@ impl Scheduler {
         Some(until.min(std::time::Duration::from_secs(60)))
     }
 
-    fn gate(&self) -> Option<Hold> {
+    /// What holds a due check-in back, and for a deferral, why. A call wins over a
+    /// share, and a share over a presentation, when several apply.
+    fn gate(&self) -> Option<(Hold, Option<DeferralReason>)> {
         if self.platform.session_state() != SessionState::Active {
-            return Some(Hold::Locked);
+            return Some((Hold::Locked, None));
         }
-        if self.platform.call_state().in_call() || self.platform.screen_shared() {
-            return Some(Hold::Deferred);
-        }
-        None
+        let reason = if self.platform.call_state().in_call() {
+            DeferralReason::Call
+        } else {
+            match self.platform.screen_share()? {
+                ScreenShare::Sharing => DeferralReason::ScreenShare,
+                ScreenShare::Presenting => DeferralReason::Presenting,
+            }
+        };
+        Some((Hold::Deferred, Some(reason)))
     }
 
     fn arm(&self, state: &mut ScheduleSnapshot, lo_s: i64, hi_s: i64) {
@@ -267,6 +330,7 @@ impl Scheduler {
         state.next_at = Some(at);
         state.scheduled_at = Some(at);
         state.held = None;
+        state.deferral_recorded = false;
         // On disk before it counts as armed, so a restart keeps the same time.
         self.store.save(state);
     }
@@ -428,7 +492,13 @@ mod tests {
             }
         });
         r.clock.advance(Duration::minutes(20));
-        assert_eq!(r.scheduler.poll(), Decision::Held(Hold::Deferred));
+        assert_eq!(
+            r.scheduler.poll(),
+            Decision::Deferred(Deferral {
+                due_at: at("2026-10-19T09:20:00Z"),
+                reason: DeferralReason::Call
+            })
+        );
         r.clock.advance(Duration::minutes(40));
         assert_eq!(
             r.scheduler.poll(),
@@ -455,9 +525,143 @@ mod tests {
     fn screen_sharing_defers_too() {
         let r = rig();
         r.scheduler.start();
-        r.platform.update(|s| s.screen_shared = true);
+        r.platform
+            .update(|s| s.screen_share = Some(ScreenShare::Sharing));
         r.clock.advance(Duration::minutes(20));
+        assert!(matches!(r.scheduler.poll(), Decision::Deferred(_)));
         assert_eq!(r.scheduler.poll(), Decision::Held(Hold::Deferred));
+    }
+
+    fn due_with(r: &Rig, set: impl FnOnce(&mut crate::fake::FakeState)) -> Decision {
+        r.scheduler.start();
+        r.platform.update(set);
+        r.clock.advance(Duration::minutes(20));
+        r.scheduler.poll()
+    }
+
+    fn deferred(reason: DeferralReason) -> Decision {
+        Decision::Deferred(Deferral {
+            due_at: at("2026-10-19T09:20:00Z"),
+            reason,
+        })
+    }
+
+    #[test]
+    fn the_deferral_names_what_held_it() {
+        let call = CallState {
+            camera: false,
+            mic: true,
+        };
+        assert_eq!(
+            due_with(&rig(), |s| s.call = call),
+            deferred(DeferralReason::Call)
+        );
+        assert_eq!(
+            due_with(&rig(), |s| s.screen_share = Some(ScreenShare::Sharing)),
+            deferred(DeferralReason::ScreenShare)
+        );
+        assert_eq!(
+            due_with(&rig(), |s| s.screen_share = Some(ScreenShare::Presenting)),
+            deferred(DeferralReason::Presenting)
+        );
+        assert_eq!(
+            due_with(&rig(), |s| {
+                s.call = call;
+                s.screen_share = Some(ScreenShare::Presenting);
+            }),
+            deferred(DeferralReason::Call),
+            "a call wins when several apply"
+        );
+    }
+
+    #[test]
+    fn a_long_hold_is_reported_once() {
+        let r = rig();
+        r.scheduler.start();
+        r.platform
+            .update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        r.clock.advance(Duration::minutes(20));
+        assert!(matches!(r.scheduler.poll(), Decision::Deferred(_)));
+        for _ in 0..30 {
+            r.clock.advance(Duration::minutes(1));
+            assert_eq!(r.scheduler.poll(), Decision::Held(Hold::Deferred));
+        }
+        // The share ends and a call starts: still the same check-in.
+        r.platform.update(|s| {
+            s.screen_share = None;
+            s.call.mic = true;
+        });
+        assert_eq!(r.scheduler.poll(), Decision::Held(Hold::Deferred));
+    }
+
+    #[test]
+    fn a_lock_during_a_hold_does_not_report_again() {
+        let r = rig();
+        r.scheduler.start();
+        r.platform.update(|s| s.call.mic = true);
+        r.clock.advance(Duration::minutes(20));
+        assert!(matches!(r.scheduler.poll(), Decision::Deferred(_)));
+        r.platform.update(|s| s.session = SessionState::Locked);
+        assert_eq!(r.scheduler.poll(), Decision::Held(Hold::Locked));
+        r.platform.update(|s| s.session = SessionState::Active);
+        assert_eq!(r.scheduler.poll(), Decision::Held(Hold::Deferred));
+    }
+
+    #[test]
+    fn a_restart_during_a_hold_does_not_report_again() {
+        let r = rig();
+        r.scheduler.start();
+        r.platform.update(|s| s.call.mic = true);
+        r.clock.advance(Duration::minutes(20));
+        assert!(matches!(r.scheduler.poll(), Decision::Deferred(_)));
+        let restarted = Scheduler::new(
+            SchedulePolicy::default(),
+            r.clock.clone(),
+            r.platform.clone(),
+            r.random.clone(),
+            r.store.clone(),
+        );
+        assert_eq!(restarted.poll(), Decision::Held(Hold::Deferred));
+    }
+
+    #[test]
+    fn each_check_in_gets_its_own_deferral() {
+        let r = rig();
+        r.scheduler.start();
+        r.platform.update(|s| s.call.mic = true);
+        r.clock.advance(Duration::minutes(20));
+        assert!(matches!(r.scheduler.poll(), Decision::Deferred(_)));
+        r.platform.update(|s| s.call = CallState::default());
+        assert!(matches!(r.scheduler.poll(), Decision::Show { .. }));
+        r.scheduler.finished(Outcome::Pass);
+
+        r.platform.update(|s| s.call.mic = true);
+        r.clock.advance(Duration::minutes(20));
+        assert_eq!(
+            r.scheduler.poll(),
+            Decision::Deferred(Deferral {
+                due_at: at("2026-10-19T09:40:00Z"),
+                reason: DeferralReason::Call
+            })
+        );
+    }
+
+    #[test]
+    fn a_deferral_does_not_move_the_card() {
+        // Recording the deferral changes nothing: the card still comes once the
+        // call ends, against the original time (CHK-03).
+        let r = rig();
+        r.scheduler.start();
+        r.platform.update(|s| s.call.mic = true);
+        r.clock.advance(Duration::minutes(25));
+        assert!(matches!(r.scheduler.poll(), Decision::Deferred(_)));
+        r.platform.update(|s| s.call = CallState::default());
+        assert_eq!(
+            r.scheduler.poll(),
+            Decision::Show {
+                scheduled_at: at("2026-10-19T09:20:00Z")
+            }
+        );
     }
 
     #[test]
@@ -466,7 +670,11 @@ mod tests {
         r.scheduler.start();
         r.platform.update(|s| s.session = SessionState::Locked);
         r.clock.advance(Duration::minutes(25));
-        assert_eq!(r.scheduler.poll(), Decision::Held(Hold::Locked));
+        assert_eq!(
+            r.scheduler.poll(),
+            Decision::Held(Hold::Locked),
+            "a lock leaves no deferral"
+        );
         r.platform.update(|s| s.session = SessionState::Active);
         // Random 0: shows at once on unlock.
         assert!(matches!(r.scheduler.poll(), Decision::Show { .. }));

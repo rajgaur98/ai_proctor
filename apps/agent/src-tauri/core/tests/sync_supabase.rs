@@ -7,8 +7,10 @@
 
 use std::sync::Arc;
 
+use agent_core::checkin::deferred_payload;
 use agent_core::clock::{Clock, SystemClock};
 use agent_core::outbox::Outbox;
+use agent_core::scheduler::{Deferral, DeferralReason};
 use agent_core::sync::{
     Api, ApiConfig, DeviceIdentity, Heartbeat, SyncError, Syncer, TokenProvider,
 };
@@ -62,11 +64,20 @@ fn queued_events_and_captures_reach_supabase() {
     outbox
         .append("clock_in", now, 1, json!({ "reason": "manual" }), now)
         .unwrap();
+    // A due check-in held for a call (CHK-03): the real payload must pass the
+    // server's schema and projection.
+    let deferral = Deferral {
+        due_at: now,
+        reason: DeferralReason::Call,
+    };
+    outbox
+        .append("checkin", now, 2, deferred_payload(&deferral, None), now)
+        .unwrap();
     let checkin = outbox
         .append(
             "checkin",
             now,
-            2,
+            3,
             json!({
                 "scheduled_at": now.to_rfc3339_opts(SecondsFormat::Millis, true),
                 "outcome": "pass",
@@ -86,7 +97,7 @@ fn queued_events_and_captures_reach_supabase() {
         )
         .unwrap();
     outbox
-        .append("clock_out", now, 3, json!({ "reason": "manual" }), now)
+        .append("clock_out", now, 4, json!({ "reason": "manual" }), now)
         .unwrap();
 
     let syncer = Syncer::new(
@@ -103,7 +114,7 @@ fn queued_events_and_captures_reach_supabase() {
     let stats = syncer.sync_once().unwrap();
     assert_eq!(
         (stats.accepted, stats.rejected, stats.uploaded),
-        (3, 0, 1),
+        (4, 0, 1),
         "{stats:?}"
     );
     assert_eq!(outbox.stats().unwrap().pending_events, 0);

@@ -15,7 +15,7 @@ use account::Account;
 use agent_core::activity::{self, ActivityPolicy, Sampler};
 use agent_core::auth::{AuthError, REDIRECT_URL};
 use agent_core::capture::{self, CapturePolicy, Captured};
-use agent_core::checkin::{Card, CardPolicy, ClickResult, Finished};
+use agent_core::checkin::{deferred_payload, Card, CardPolicy, ClickResult, Finished};
 use agent_core::clock::{Clock, SystemClock};
 use agent_core::config::ProjectConfig;
 use agent_core::contracts::{
@@ -253,8 +253,18 @@ impl AgentState {
             }
             return CardAction::Nothing;
         }
-        let Decision::Show { scheduled_at } = self.scheduler.poll() else {
-            return CardAction::Nothing;
+        let scheduled_at = match self.scheduler.poll() {
+            Decision::Show { scheduled_at } => scheduled_at,
+            Decision::Deferred(deferral) => {
+                // Held for a call, a share or a presentation: leave a record, show
+                // nothing and capture nothing (CHK-03). The card comes later as usual.
+                tracing::info!(reason = deferral.reason.as_str(), "check-in deferred");
+                let payload =
+                    deferred_payload(&deferral, self.session.lock().unwrap().project_id());
+                self.append_checkin(now, payload);
+                return CardAction::Nothing;
+            }
+            _ => return CardAction::Nothing,
         };
         let shown = Card::show(
             scheduled_at,
@@ -511,6 +521,19 @@ impl AgentState {
     fn queue(&self, finished: Finished) -> Option<uuid::Uuid> {
         tracing::info!(outcome = ?finished.outcome, "check-in finished");
         let (at, outcome) = (finished.at, finished.outcome);
+        self.append_checkin(at, finished.payload).inspect(|id| {
+            *self.last_checkin.lock().unwrap() = Some((at, outcome));
+            if outcome == Outcome::Miss {
+                *self.missed_checkin.lock().unwrap() = Some((*id, at));
+            }
+        })
+    }
+
+    fn append_checkin(
+        &self,
+        at: chrono::DateTime<chrono::Utc>,
+        payload: serde_json::Value,
+    ) -> Option<uuid::Uuid> {
         let Some(outbox) = &self.outbox else {
             tracing::error!("check-in not queued: the local queue is unavailable");
             return None;
@@ -518,20 +541,14 @@ impl AgentState {
         outbox
             .append(
                 "checkin",
-                finished.at,
+                at,
                 self.clock.mono_ms(),
-                finished.payload,
+                payload,
                 self.clock.now(),
             )
             .map(|event| event.id)
             .map_err(|error| tracing::error!(%error, "check-in not queued"))
             .ok()
-            .inspect(|id| {
-                *self.last_checkin.lock().unwrap() = Some((at, outcome));
-                if outcome == Outcome::Miss {
-                    *self.missed_checkin.lock().unwrap() = Some((*id, at));
-                }
-            })
     }
 
     fn account(&self) -> Result<&Arc<Account>, String> {
@@ -1688,6 +1705,86 @@ mod tests {
         w.clock.advance(chrono::Duration::seconds(5));
         w.state.activity_tick();
         assert_eq!(w.events("app_session").len(), 2, "nothing on a break");
+    }
+
+    /// Past the longest interval with `hold` in effect: the check-in is due and held.
+    fn deferred_by(w: &Working, hold: impl FnOnce(&mut agent_core::fake::FakeState)) {
+        w.platform.update(hold);
+        w.clock.advance(chrono::Duration::minutes(91));
+        assert_eq!(w.state.card_tick(), CardAction::Nothing, "nothing is shown");
+    }
+
+    #[test]
+    fn a_held_checkin_leaves_one_deferred_record_with_the_reason_and_no_capture() {
+        let w = working();
+        deferred_by(&w, |s| s.call.mic = true);
+        for _ in 0..20 {
+            w.clock.advance(chrono::Duration::minutes(1));
+            assert_eq!(w.state.card_tick(), CardAction::Nothing);
+        }
+        let checkins = w.checkins();
+        assert_eq!(checkins.len(), 1, "one record however long the call lasts");
+        assert_eq!(checkins[0]["outcome"], "deferred");
+        assert_eq!(checkins[0]["deferral_reason"], "call");
+        assert!(checkins[0]["shown_at"].is_null());
+        assert!(checkins[0]["response_ms"].is_null());
+        assert_eq!(checkins[0]["object_keys"], serde_json::json!([]));
+        assert_eq!(w.outbox.stats().unwrap().uploads, 0, "nothing captured");
+        assert!(
+            w.state.scheduler.wake_in().is_some(),
+            "still scheduled: the card comes after the call"
+        );
+    }
+
+    #[test]
+    fn the_deferral_names_a_share_or_a_presentation() {
+        use agent_core::platform::ScreenShare;
+        for (share, reason) in [
+            (ScreenShare::Sharing, "screen_share"),
+            (ScreenShare::Presenting, "presenting"),
+        ] {
+            let w = working();
+            deferred_by(&w, |s| s.screen_share = Some(share));
+            let checkins = w.checkins();
+            assert_eq!(checkins.len(), 1);
+            assert_eq!(checkins[0]["deferral_reason"], reason);
+        }
+    }
+
+    #[test]
+    fn the_card_still_comes_after_the_hold_against_the_original_time() {
+        let w = working();
+        deferred_by(&w, |s| s.call.mic = true);
+        w.platform.update(|s| s.call = Default::default());
+        // Within 2 min of the call ending (CHK-03).
+        let mut shown = None;
+        for _ in 0..=120 {
+            if let CardAction::Show(challenge) = w.state.card_tick() {
+                shown = Some(challenge);
+                break;
+            }
+            w.clock.advance(chrono::Duration::seconds(1));
+        }
+        let card = shown.expect("the card comes within 2 minutes");
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+
+        let checkins = w.checkins();
+        assert_eq!(checkins.len(), 2);
+        assert_eq!(checkins[0]["outcome"], "deferred");
+        assert_eq!(checkins[1]["outcome"], "pass");
+        assert_eq!(checkins[1]["scheduled_at"], checkins[0]["scheduled_at"]);
+        assert_eq!(
+            checkins[1]["object_keys"],
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+    }
+
+    #[test]
+    fn a_lock_leaves_no_deferred_record() {
+        let w = working();
+        deferred_by(&w, |s| s.session = SessionState::Locked);
+        assert!(w.checkins().is_empty());
     }
 
     #[test]
