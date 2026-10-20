@@ -740,7 +740,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
             <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Calls <code>rebuild-segments</code> when <code>dirty_days</code> is not empty</td></tr>
-            <tr><td><code>reminders</code></td><td>Hourly</td><td>Submit and approval reminders, admin escalations</td></tr>
+            <tr><td><code>reminders</code></td><td>Every 15 min</td><td>Submit and approval reminders, admin escalations</td></tr>
             <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
             <tr><td><code>partitions</code></td><td>Weekly</td><td>Creates next weekly partitions, drops expired ones</td></tr>
           </tbody>

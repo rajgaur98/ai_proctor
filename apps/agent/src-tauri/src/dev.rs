@@ -81,6 +81,21 @@ impl Platform for ActiveSession {
     fn notify(&self, title: &str, body: &str) {
         self.0.notify(title, body)
     }
+    fn install_watchdog(
+        &self,
+        spec: &agent_core::watchdog::WatchdogSpec,
+    ) -> Result<agent_core::watchdog::WatchdogState, agent_core::watchdog::WatchdogError> {
+        self.0.install_watchdog(spec)
+    }
+    fn uninstall_watchdog(&self) -> Result<(), agent_core::watchdog::WatchdogError> {
+        self.0.uninstall_watchdog()
+    }
+    fn watchdog_installed(&self) -> bool {
+        self.0.watchdog_installed()
+    }
+    fn boot_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.0.boot_time()
+    }
 }
 
 /// One file per secret, unencrypted: for throwaway test runs only.
