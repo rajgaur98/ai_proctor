@@ -1,7 +1,9 @@
 //! One screenshot per monitor through DXGI Desktop Duplication (CAP-01, CAP-03,
 //! CAP-06). Per monitor: a Direct3D device on its adapter, one duplicated frame
 //! copied to a CPU-readable texture, then scaled (box filter), swizzled to RGBA and
-//! turned upright by `agent_core::pixels`. Everything is released before the next
+//! turned upright by `agent_core::pixels`. SDR desktops arrive as BGRA8; HDR ones as
+//! half-float scRGB (`DXGI_FORMAT_R16G16B16A16_FLOAT`), tone mapped to sRGB by
+//! `agent_core::pixels::hdr_surface_to_upright_rgba` (#174). Everything is released before the next
 //! monitor. Monitors are ordered left to right, top to bottom, so `screen-N` always
 //! names the same monitor (`agent_core::displays`).
 //!
@@ -12,7 +14,7 @@
 use std::time::{Duration, Instant};
 
 use agent_core::displays::{display_order, upright_quarter_turns, Rect};
-use agent_core::pixels::surface_to_upright_rgba;
+use agent_core::pixels::{hdr_surface_to_upright_rgba, surface_to_upright_rgba};
 use agent_core::platform::{CaptureError, Frame};
 use windows::core::Interface;
 use windows::Win32::Foundation::HMODULE;
@@ -22,7 +24,9 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_FLAG, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ, D3D11_SDK_VERSION,
     D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
 };
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT,
+};
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication,
     IDXGIResource, DXGI_ERROR_WAIT_TIMEOUT, DXGI_OUTDUPL_FRAME_INFO,
@@ -148,12 +152,16 @@ fn grab(monitor: &Monitor, max_width: u32) -> Result<(u32, u32, Vec<u8>), Captur
 
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     unsafe { texture.GetDesc(&mut desc) };
-    if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM {
-        return Err(CaptureError::Failed(format!(
-            "unsupported surface format {}",
-            desc.Format.0
-        )));
-    }
+    let hdr = match desc.Format {
+        DXGI_FORMAT_B8G8R8A8_UNORM => false,
+        DXGI_FORMAT_R16G16B16A16_FLOAT => true,
+        format => {
+            return Err(CaptureError::Failed(format!(
+                "unsupported surface format {}",
+                format.0
+            )))
+        }
+    };
     desc.Usage = D3D11_USAGE_STAGING;
     desc.BindFlags = 0;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
@@ -173,14 +181,12 @@ fn grab(monitor: &Monitor, max_width: u32) -> Result<(u32, u32, Vec<u8>), Captur
         desc.Height as usize,
         mapped.RowPitch as usize,
     );
-    let rgba = surface_to_upright_rgba(
-        unsafe { std::slice::from_raw_parts(mapped.pData as *const u8, stride * height) },
-        width,
-        height,
-        stride,
-        turns,
-        max_width,
-    );
+    let bytes = unsafe { std::slice::from_raw_parts(mapped.pData as *const u8, stride * height) };
+    let rgba = if hdr {
+        hdr_surface_to_upright_rgba(bytes, width, height, stride, turns, max_width)
+    } else {
+        surface_to_upright_rgba(bytes, width, height, stride, turns, max_width)
+    };
     unsafe { context.Unmap(&staging, 0) };
     rgba.ok_or_else(|| CaptureError::Failed("screenshot pixel buffer too short".into()))
 }

@@ -33,7 +33,7 @@ impl CallState {
 /// check-in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScreenShare {
-    /// A screen share is running (Meet, Zoom, Teams).
+    /// A screen share is running (Meet, Zoom, Teams, Webex).
     Sharing,
     /// A full-screen presentation (slideshow) is running.
     Presenting,
