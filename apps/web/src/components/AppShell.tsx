@@ -56,6 +56,11 @@ export function AppShell({ profile, children }: { profile: Profile; children: Re
           </summary>
           <div className="absolute right-0 z-10 mt-2 flex w-56 flex-col rounded-xl border border-line bg-panel p-1 shadow-lg">
             <span className="px-3 py-2 text-[12.5px] text-ink3">{profile.fullName}</span>
+            {profile.role !== "employee" && (
+              <Link to="/me" className="rounded-lg px-3 py-2 text-sm hover:bg-sunk">
+                My data
+              </Link>
+            )}
             <Link to="/mfa" className="rounded-lg px-3 py-2 text-sm hover:bg-sunk">
               Two-factor authentication
             </Link>

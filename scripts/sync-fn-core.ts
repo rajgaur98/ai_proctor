@@ -1,4 +1,4 @@
-// Copies the pure rules the Edge Functions share with the dashboard (segments.ts and
+// Copies the pure rules the Edge Functions share with the dashboard (csv.ts, segments.ts and
 // status.ts from packages/core) into supabase/functions/_shared/core, because the
 // local Edge runtime only sees supabase/functions. `luxon` becomes the npm: import
 // Deno resolves. `--check` writes nothing and fails when a copy is stale (CI).
@@ -6,7 +6,7 @@
 // Usage: pnpm core:fn [--check]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-const FILES = ["segments.ts", "status.ts"];
+const FILES = ["csv.ts", "segments.ts", "status.ts"];
 const check = process.argv.includes("--check");
 
 const root = new URL("../", import.meta.url);

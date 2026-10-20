@@ -1989,6 +1989,15 @@ export type Database = {
     };
     Functions: {
       acknowledge_notice: { Args: { p_notice_id: string }; Returns: undefined };
+      activity_summary: {
+        Args: { p_from: string; p_to: string; p_user_id: string };
+        Returns: {
+          app_name: string;
+          domain: string;
+          seconds: number;
+          titles: string[];
+        }[];
+      };
       add_invited_member: {
         Args: {
           p_email: string;
@@ -2083,10 +2092,51 @@ export type Database = {
       email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
       email_mark_sent: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
+      export_capture_objects: {
+        Args: { p_paths: string[]; p_user_id: string };
+        Returns: {
+          bytes: number;
+          name: string;
+        }[];
+      };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
       mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
+      my_capture_views: {
+        Args: { p_days?: number };
+        Returns: {
+          checkin_at: string;
+          checkin_id: string;
+          viewed_at: string;
+          viewer_id: string;
+          viewer_name: string;
+          viewer_role: string;
+        }[];
+      };
+      my_edit_history: {
+        Args: { p_limit?: number };
+        Returns: {
+          created_at: string;
+          editor_id: string;
+          editor_name: string;
+          end_at: string;
+          id: string;
+          kind: string;
+          period_start: string;
+          project_id: string;
+          reason: string;
+          start_at: string;
+        }[];
+      };
+      my_manager: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          full_name: string;
+          id: string;
+        }[];
+      };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
+      record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
       register_device: {
         Args: {
           agent_version: string;
