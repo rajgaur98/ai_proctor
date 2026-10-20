@@ -1937,6 +1937,9 @@ export type Database = {
           comment: string | null;
           created_at: string;
           id: string;
+          late_data_at: string | null;
+          late_data_count: number;
+          late_data_last_at: string | null;
           org_id: string;
           period_start: string;
           returned_at: string | null;
@@ -1951,6 +1954,9 @@ export type Database = {
           comment?: string | null;
           created_at?: string;
           id?: string;
+          late_data_at?: string | null;
+          late_data_count?: number;
+          late_data_last_at?: string | null;
           org_id: string;
           period_start: string;
           returned_at?: string | null;
@@ -1964,6 +1970,9 @@ export type Database = {
           comment?: string | null;
           created_at?: string;
           id?: string;
+          late_data_at?: string | null;
+          late_data_count?: number;
+          late_data_last_at?: string | null;
           org_id?: string;
           period_start?: string;
           returned_at?: string | null;
