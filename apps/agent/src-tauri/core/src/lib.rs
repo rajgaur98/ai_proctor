@@ -14,6 +14,7 @@ pub mod keystore;
 pub mod logging;
 pub mod outbox;
 pub mod platform;
+pub mod presence;
 pub mod scheduler;
 pub mod session;
 pub mod shift;
