@@ -6,6 +6,7 @@ describe("navFor", () => {
     expect(navFor("manager").map((l) => l.label)).toEqual([
       "Live team",
       "Timesheets",
+      "Reports",
       "Projects",
       "Policy",
     ]);
@@ -14,6 +15,7 @@ describe("navFor", () => {
   it("gives owners and admins the admin set", () => {
     expect(navFor("owner")).toEqual(navFor("admin"));
     expect(navFor("admin").map((l) => l.label)).toContain("People");
+    expect(navFor("admin").map((l) => l.label)).toContain("Reports");
     expect(navFor("admin").map((l) => l.label)).toContain("Projects");
   });
 
@@ -24,6 +26,10 @@ describe("navFor", () => {
       "/my-day",
       "/notice",
     ]);
+  });
+
+  it("keeps Reports from employees", () => {
+    expect(navFor("employee").map((l) => l.to)).not.toContain("/reports");
   });
 
   it("lands each role on its first page", () => {
