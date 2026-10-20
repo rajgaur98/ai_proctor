@@ -80,6 +80,7 @@ export function Tray({ status, receivedAt }: { status: AgentStatus; receivedAt: 
         {view.issues.map((issue) => (
           <PermissionBanner key={issue.kind} issue={issue} />
         ))}
+        {view.accessibility && <AccessibilityBanner />}
         {view.notice === "review" && <NoticeReview />}
         {view.missed && <MissedCard missed={view.missed} />}
         {view.phase === "off_shift" && (
@@ -203,6 +204,33 @@ function PermissionBanner({ issue }: { issue: PermissionIssue }) {
           Fix
         </button>
       )}
+      <InlineError message={open.error} />
+    </div>
+  );
+}
+
+/** Optional Accessibility (browser domains, #169): says what is lost, not "Capture blocked". */
+function AccessibilityBanner() {
+  const open = useCommand();
+  return (
+    <div className="t-warn">
+      <div className="msg">
+        <span className="mark" aria-hidden="true">
+          !
+        </span>
+        <p>
+          <strong>Accessibility is off.</strong> The websites you use in your browser aren’t
+          recorded. This is optional.
+        </p>
+      </div>
+      <button
+        type="button"
+        className="btn btn-warn"
+        disabled={open.busy}
+        onClick={() => open.run(() => invoke("show_onboarding", { step: 2 }))}
+      >
+        Set up
+      </button>
       <InlineError message={open.error} />
     </div>
   );

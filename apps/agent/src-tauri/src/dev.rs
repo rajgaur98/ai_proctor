@@ -75,6 +75,9 @@ impl Platform for ActiveSession {
     fn permissions(&self) -> Permissions {
         self.0.permissions()
     }
+    fn accessibility_permission(&self) -> agent_core::contracts::PermissionState {
+        self.0.accessibility_permission()
+    }
     fn request_permission(&self, kind: agent_core::contracts::PermissionKind) {
         self.0.request_permission(kind)
     }

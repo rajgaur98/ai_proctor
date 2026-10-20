@@ -60,11 +60,12 @@ function sentence(rows: ReportRow[], part: (r: ReportRow) => string): string {
   return `${rows.map((r) => `${r.fullName}: ${part(r)}`).join("; ")}. The table below lists every number.`;
 }
 
-export function ReportCharts({ rows }: { rows: ReportRow[] }) {
-  // The most time first, so a long team keeps its busiest people in view.
-  const people = [...rows].sort((a, b) => b.workedS - a.workedS).slice(0, CHART_PEOPLE);
-  const note =
-    rows.length > people.length ? `Top ${people.length} of ${rows.length} by worked time` : null;
+/**
+ * `rows` are all the people in the table's order, so the charts show the first rows of
+ * what the table is sorted by; `note` says so when that cuts the list.
+ */
+export function ReportCharts({ rows, note }: { rows: ReportRow[]; note: string | null }) {
+  const people = rows.slice(0, CHART_PEOPLE);
   const height = Math.max(180, people.length * 44 + 70);
 
   const time = people.map((r) => ({

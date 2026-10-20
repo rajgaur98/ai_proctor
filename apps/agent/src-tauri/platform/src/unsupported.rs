@@ -48,6 +48,10 @@ impl Platform for UnsupportedPlatform {
         }
     }
 
+    fn accessibility_permission(&self) -> PermissionState {
+        PermissionState::Unsupported
+    }
+
     fn request_permission(&self, _kind: PermissionKind) {}
 
     fn start_input_guard(&self, _area: ScreenRect) {}

@@ -31,6 +31,11 @@ export interface TrayView {
   chip: ChipKind;
   /** Permissions that stop capture while signed in; each gets a warning with Fix. */
   issues: PermissionIssue[];
+  /**
+   * Browser domains are collected but the optional Accessibility permission is off (#169):
+   * a softer banner with Fix. Not a capture problem, so it never turns the chip to blocked.
+   */
+  accessibility: boolean;
   /** A miss today without a reason yet; the reason card sits above the phase content. */
   missed: MissedCheckin | null;
   notice: NoticePrompt;
@@ -104,6 +109,7 @@ export function trayView(status: AgentStatus): TrayView {
     phase: status.shift,
     chip,
     issues,
+    accessibility: status.accessibility_missing,
     missed: status.missed_checkin,
     notice: noticePrompt(status.notice),
   };

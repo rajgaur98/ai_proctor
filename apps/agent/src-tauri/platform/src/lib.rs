@@ -21,8 +21,9 @@ mod unsupported;
 #[cfg(target_os = "windows")]
 mod windows;
 
-/// Shows the Accessibility prompt (browser domains, #25), which onboarding doesn't
-/// cover. Debug builds use it; a no-op where there's nothing to ask.
+/// Shows the Accessibility prompt (browser domains, #25). Onboarding asks through
+/// `Platform::request_permission` (#169); debug builds also call this at launch with
+/// AI_PROCTOR_DEV_REQUEST_PERMISSIONS=1. A no-op where there's nothing to ask.
 pub fn request_accessibility() {
     #[cfg(target_os = "macos")]
     macos::request_accessibility();
