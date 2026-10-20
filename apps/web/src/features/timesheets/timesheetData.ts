@@ -20,6 +20,10 @@ export interface Timesheet {
   approvedAt: string | null;
   returnedAt: string | null;
   comment: string | null;
+  /** TS-18: first and last time events arrived for the approved week; null when none did. */
+  lateDataAt: string | null;
+  lateDataLastAt: string | null;
+  lateDataCount: number;
 }
 
 export interface FlaggedSegment {
@@ -46,8 +50,8 @@ export interface SheetEdit {
   createdAt: string;
 }
 
-const sheetColumns =
-  "id, user_id, period_start, status, submitted_at, approved_at, returned_at, comment";
+export const sheetColumns =
+  "id, user_id, period_start, status, submitted_at, approved_at, returned_at, comment, late_data_at, late_data_last_at, late_data_count";
 
 export const statusLabel: Record<SheetStatus, string> = {
   draft: "Draft",
@@ -89,7 +93,7 @@ export const timesheetQuery = (userId: string, weekStart: string) =>
     },
   });
 
-function toTimesheet(r: {
+export function toTimesheet(r: {
   id: string;
   user_id: string;
   period_start: string;
@@ -98,6 +102,9 @@ function toTimesheet(r: {
   approved_at: string | null;
   returned_at: string | null;
   comment: string | null;
+  late_data_at: string | null;
+  late_data_last_at: string | null;
+  late_data_count: number;
 }): Timesheet {
   return {
     id: r.id,
@@ -108,6 +115,9 @@ function toTimesheet(r: {
     approvedAt: r.approved_at,
     returnedAt: r.returned_at,
     comment: r.comment,
+    lateDataAt: r.late_data_at,
+    lateDataLastAt: r.late_data_last_at,
+    lateDataCount: r.late_data_count,
   };
 }
 
