@@ -9,7 +9,11 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
 import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
+import { canDecideQuery } from "../timesheets/timesheetData";
 import { CaptureViewer } from "./CaptureViewer";
+import { flagCheckinIds } from "./flagText";
+import { ManualEntries } from "./ManualEntries";
+import { dayFlagsQuery, NeedsReviewBadge, NeedsReviewPanel } from "./NeedsReview";
 import {
   barSpan,
   type Checkin,
@@ -73,7 +77,7 @@ export function DayPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, timezone, manager_id, presence(status)")
+        .select("id, full_name, timezone, presence(status)")
         .eq("id", userId)
         .maybeSingle();
       if (error) throw error;
@@ -140,6 +144,18 @@ export function DayPage() {
     },
   });
 
+  // ANT-08: anti-cheat flags for the day, shown as "needs review".
+  const flagsQ = useQuery({
+    ...dayFlagsQuery(userId, date),
+    enabled: !!person.data,
+    refetchInterval: isToday ? 30_000 : false,
+  });
+  const flags = flagsQ.data ?? [];
+  const unreviewed = flags.filter((f) => f.reviewedAt === null).length;
+  const flaggedCheckins = new Set(
+    flags.filter((f) => f.reviewedAt === null).flatMap((f) => flagCheckinIds(f.details)),
+  );
+
   const now = activity.data?.now ?? Date.now();
   const periods = activity.data?.periods ?? [];
   const checkins = activity.data?.checkins ?? [];
@@ -147,8 +163,12 @@ export function DayPage() {
   const segs = segments(span, periods, now);
   const viewer = viewerZone();
   const chosen = checkins.find((c) => c.id === selected) ?? null;
-  const canSchedule =
-    profile.role === "owner" || profile.role === "admin" || person.data?.manager_id === profile.id;
+  // Nobody reviews flags about themselves.
+  const canReview = profile.id !== userId;
+  // The server decides who is the person's manager or active delegate (TS-12, TS-14).
+  const canDecide = useQuery(canDecideQuery(userId)).data === true;
+  const canSchedule = profile.role === "owner" || profile.role === "admin" || canDecide;
+  const isSelf = userId === profile.id;
 
   const go = (d: string) =>
     navigate({ to: "/team/$userId", params: { userId }, search: { date: d } });
@@ -171,9 +191,11 @@ export function DayPage() {
     <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <Link to={teamPath} className="text-[13px] text-acctext">
-            Live team
-          </Link>
+          {profile.role !== "employee" && (
+            <Link to={teamPath} className="text-[13px] text-acctext">
+              Live team
+            </Link>
+          )}
           <h1 className="mt-1 text-2xl font-semibold tracking-[-0.025em]">
             {person.data.full_name}
           </h1>
@@ -182,6 +204,7 @@ export function DayPage() {
           </p>
         </div>
         {status && isToday && <StatusChip status={status} />}
+        {unreviewed > 0 && <NeedsReviewBadge />}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="secondary" className="h-10" onClick={() => shift(-1)}>
             Previous day
@@ -301,7 +324,18 @@ export function DayPage() {
         )}
       </div>
 
-      {chosen && <CheckinDetails key={chosen.id} c={chosen} zone={zone} />}
+      {flags.length > 0 && (
+        <NeedsReviewPanel flags={flags} userId={userId} date={date} canReview={canReview} />
+      )}
+
+      {chosen && (
+        <CheckinDetails
+          key={chosen.id}
+          c={chosen}
+          zone={zone}
+          needsReview={flaggedCheckins.has(chosen.id)}
+        />
+      )}
 
       <div className="overflow-hidden rounded-xl border border-line bg-panel">
         <h2 className="border-b border-line px-5 py-3 text-sm font-semibold">Check-ins</h2>
@@ -325,12 +359,23 @@ export function DayPage() {
                   {c.outcome === "pass" && c.responseMs !== null && (
                     <span className="text-ink3">in {Math.round(c.responseMs / 1000)} s</span>
                   )}
+                  {flaggedCheckins.has(c.id) && <NeedsReviewBadge />}
                 </button>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <ManualEntries
+        userId={userId}
+        zone={zone}
+        date={date}
+        dayStart={day.start}
+        dayEnd={day.end}
+        isSelf={isSelf}
+        canDecide={canDecide}
+      />
 
       {canSchedule && (
         <dialog
@@ -402,7 +447,15 @@ function reasonText(c: CheckinRow): string {
   return kind ?? c.missedReason ?? "No reason given yet";
 }
 
-function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
+function CheckinDetails({
+  c,
+  zone,
+  needsReview,
+}: {
+  c: CheckinRow;
+  zone: string;
+  needsReview: boolean;
+}) {
   const [showCaptures, setShowCaptures] = useState(false);
   const rows: [string, React.ReactNode][] = [
     [
@@ -438,6 +491,7 @@ function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
       <h2 id="checkin-title" className="mb-3 flex items-center gap-2 text-sm font-semibold">
         <Marker outcome={c.outcome} />
         {outcomeLabel[c.outcome]}
+        {needsReview && <NeedsReviewBadge />}
       </h2>
       <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-[13.5px]">
         {rows.map(([k, v]) => (

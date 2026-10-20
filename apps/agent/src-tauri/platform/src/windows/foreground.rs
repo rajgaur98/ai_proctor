@@ -129,10 +129,15 @@ pub fn foreground() -> Option<Foreground> {
     let app = app_name(&image_path(pid)?)?;
     let title = clean_title(&window_text(hwnd));
     let domain = browser_kind(&app).and_then(|kind| browser_domain(hwnd, kind));
-    // The display is worked out here for the day `Foreground` carries it (#106, so
-    // an excluded app blanks only its own screen); for now it is only logged.
-    tracing::trace!(app, display = ?display_index(hwnd), "foreground window");
-    Some(Foreground { app, title, domain })
+    // The display, in screenshot order, so an excluded app blanks only its own
+    // screen (#106).
+    let display = display_index(hwnd);
+    Some(Foreground {
+        app,
+        title,
+        domain,
+        display,
+    })
 }
 
 /// The page's domain from the address bar, on a helper thread so a hung browser

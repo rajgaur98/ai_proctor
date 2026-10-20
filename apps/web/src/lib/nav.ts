@@ -12,7 +12,6 @@ const manager: NavLink[] = [
   { to: "/team", label: "Live team" },
   { to: "/timesheets", label: "Timesheets" },
   { to: "/projects", label: "Projects" },
-  { to: "/policy", label: "Policy" },
 ];
 
 const admin: NavLink[] = [
@@ -22,11 +21,13 @@ const admin: NavLink[] = [
   { to: "/projects", label: "Projects" },
   { to: "/policy", label: "Policy" },
   { to: "/notice", label: "Monitoring notice" },
+  { to: "/audit", label: "Audit log" },
 ];
 
 const employee: NavLink[] = [
   { to: "/me", label: "My data" },
   { to: "/my-timesheet", label: "My timesheet" },
+  { to: "/my-day", label: "My day" },
   { to: "/notice", label: "Monitoring notice" },
 ];
 

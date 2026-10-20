@@ -392,7 +392,7 @@ footer { color: var(--muted); font-size: 13px; }
           <thead><tr><th>Module</th><th>Owns</th></tr></thead>
           <tbody>
             <tr><td><code>policy</code></td><td>Org policy cached on disk with its version. Replaced when a heartbeat reply carries a newer version.</td></tr>
-            <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events, and closes an <code>app_session</code> on every foreground change.</td></tr>
+            <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events (camera, mic, screen share and presentation each start and end a call, so In meeting holds while any is on), and closes an <code>app_session</code> on every foreground change.</td></tr>
             <tr><td><code>session</code></td><td>Shift state machine (section 2). Auto clock-in on first input inside the shift; auto clock-out after 30 min without input past shift end.</td></tr>
             <tr><td><code>scheduler</code></td><td>Draws <code>next_at</code> uniformly in [min, max] and writes it to disk before arming, so a restart keeps the same time. Applies deferral and lock rules. A due check-in held for a call, share or presentation leaves one <code>deferred</code> check-in (due time and <code>deferral_reason</code> call | screen_share | presenting; no capture); the card still follows once the hold ends.</td></tr>
             <tr><td><code>checkin</code></td><td>Builds the challenge (target number, three shuffled buttons), validates clicks in Rust, rejects injected clicks, records <code>response_ms</code> and the outcome.</td></tr>
@@ -416,7 +416,10 @@ pub trait Platform: Send + Sync {
     fn capture_webcam(&amp;self, w: u32, h: u32)
         -&gt; Result&lt;Frame, CaptureError&gt;;
     fn permissions(&amp;self) -&gt; Permissions;    <span class="cm">// screen, camera</span>
-    fn is_injected(&amp;self, click: &amp;Click) -&gt; bool;
+    <span class="cm">// Windows: low-level mouse hook while the card is up; injected clicks
+    // inside it are swallowed and counted (ANT-02). No-op elsewhere.</span>
+    fn start_input_guard(&amp;self, area: ScreenRect);
+    fn stop_input_guard(&amp;self) -&gt; InjectedInput;
 }
 
 <span class="cm">// Tests use FakePlatform + a fake clock, so the
@@ -691,7 +694,7 @@ pub trait Platform: Send + Sync {
           <tr><td><code>checkin</code></td><td>see example above</td><td><code>checkin_events</code> row; presence Active or Away</td></tr>
           <tr><td><code>idle_start</code> / <code>idle_end</code></td><td>since</td><td><code>status_periods</code>; presence Idle</td></tr>
           <tr><td><code>lock</code> / <code>unlock</code> / <code>sleep</code> / <code>wake</code></td><td>none</td><td>Presence Away (Locked)</td></tr>
-          <tr><td><code>call_start</code> / <code>call_end</code></td><td>source (camera, mic)</td><td>Presence In meeting</td></tr>
+          <tr><td><code>call_start</code> / <code>call_end</code></td><td>source (camera, mic, screen_share, presenting)</td><td>Presence In meeting while any source is on; a call and a share overlapping are one Meeting period</td></tr>
           <tr><td><code>app_session</code></td><td>app, title?, domain?, start, end</td><td><code>activity_sessions</code> (title dropped if policy says so)</td></tr>
           <tr><td><code>permission_change</code></td><td>screen, camera</td><td>Tamper (capture blocked) while missing</td></tr>
         </tbody>
@@ -738,8 +741,10 @@ pub trait Platform: Send + Sync {
           <tbody>
             <tr><td><code>offline_sweep</code></td><td>Every 1 min</td><td>Clocked-in users with <code>last_seen</code> older than 3 min become Offline</td></tr>
             <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
-            <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Calls <code>rebuild-segments</code> when <code>dirty_days</code> is not empty</td></tr>
-            <tr><td><code>reminders</code></td><td>Hourly</td><td>Submit and approval reminders, admin escalations</td></tr>
+            <tr><td><code>anticheat_daily</code></td><td>Daily 03:30 UTC</td><td>Flags each employee's previous local day: passes under 300 ms, implausibly even response times. Rows land in <code>anticheat_flags</code> as "needs review" (ANT-04, ANT-08)</td></tr>
+            <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
+            <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Queues today (and any unfinished earlier day) for users with an open clock session, then calls <code>rebuild-segments</code> when a <code>dirty_days</code> row is due</td></tr>
+            <tr><td><code>reminders</code></td><td>Every 15 min</td><td>Submit and approval reminders, admin escalations</td></tr>
             <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
             <tr><td><code>partitions</code></td><td>Weekly</td><td>Creates next weekly partitions, drops expired ones</td></tr>
           </tbody>
@@ -870,8 +875,9 @@ pub trait Platform: Send + Sync {
           <li>project_members: (project_id, user_id)</li>
         </ul></div>
         <div class="t-card"><div class="name">dirty_days · alerts · audit_log</div><ul>
-          <li>dirty_days: <b>(user_id, day)</b> rebuild queue</li>
-          <li>alerts: type · payload · sent_at</li>
+          <li>dirty_days: <b>(user_id, day)</b> rebuild queue · attempts · last_error · next_attempt_at (backoff 5 min × 2^attempts, 6 h cap)</li>
+          <li>alerts: user_id · recipient_id · kind · episode · details · triggered_at · read_at · email_id</li>
+          <li>email_outbox: to · template · payload · batch_key · attempts · sent_at</li>
           <li>audit_log <em>(append-only)</em>: actor_id · action · target · metadata · at</li>
         </ul></div>
       </div>

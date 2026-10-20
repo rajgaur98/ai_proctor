@@ -12,27 +12,10 @@ tracing.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-block2 = "0.6"
-dispatch2 = "0.3"
-objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSRunningApplication", "NSWorkspace"] }
-objc2-application-services = { version = "0.3", default-features = false, features = ["std", "libc", "HIServices", "AXError", "AXUIElement"] }
-objc2-av-foundation = "0.3"
-objc2-core-audio = "0.3"
-objc2-core-foundation = "0.3"
-objc2-core-graphics = "0.3"
-objc2-core-media = "0.3"
-objc2-core-media-io = "0.3"
-objc2-core-video = "0.3"
-objc2-foundation = "0.3"
-objc2-screen-capture-kit = "0.3"
-
-# Windows capture and presence signals (#167). Version matches the one tauri already
-# resolves; the features are the Win32 areas used under src/windows/.
-[target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.62"
-features = [
+# Windows: the input guard (ANT-02, a low-level mouse hook on its own thread),
+# capture and presence signals (#167, under src/windows/).
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Graphics_Direct3D",
   "Win32_Graphics_Direct3D11",
@@ -53,4 +36,21 @@ features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
-]
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSRunningApplication", "NSWorkspace"] }
+objc2-application-services = { version = "0.3", default-features = false, features = ["std", "libc", "HIServices", "AXError", "AXUIElement"] }
+objc2-av-foundation = "0.3"
+objc2-core-audio = "0.3"
+objc2-core-foundation = "0.3"
+objc2-core-graphics = "0.3"
+objc2-core-media = "0.3"
+objc2-core-media-io = "0.3"
+objc2-core-video = "0.3"
+objc2-foundation = "0.3"
+objc2-screen-capture-kit = "0.3"
+objc2-user-notifications = "0.3"

@@ -13,7 +13,8 @@ use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
+    SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use block2::RcBlock;
@@ -41,11 +42,12 @@ use objc2_core_foundation::{
     CFArray, CFBoolean, CFDictionary, CFRetained, CFString, CFType, CFURL,
 };
 use objc2_core_graphics::{
-    CGDataProvider, CGDisplayBounds, CGEventSource, CGEventSourceStateID, CGEventType,
-    CGGetActiveDisplayList, CGImage, CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess,
-    CGSessionCopyCurrentDictionary, CGWindowListCopyWindowInfo, CGWindowListOption,
+    CGDataProvider, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayMode, CGEventSource,
+    CGEventSourceStateID, CGEventType, CGGetActiveDisplayList, CGImage,
+    CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess, CGSessionCopyCurrentDictionary,
+    CGWindowListCopyWindowInfo, CGWindowListOption,
 };
-use objc2_core_media::CMSampleBuffer;
+use objc2_core_media::{CMSampleBuffer, CMTime, CMTimeFlags};
 use objc2_core_media_io::{
     kCMIODevicePropertyDeviceIsRunningSomewhere, kCMIOHardwarePropertyDevices,
     kCMIOObjectPropertyElementMain, kCMIOObjectPropertyScopeGlobal, kCMIOObjectSystemObject,
@@ -53,15 +55,18 @@ use objc2_core_media_io::{
 };
 use objc2_core_video::{
     kCVPixelBufferHeightKey, kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey,
-    kCVPixelFormatType_32BGRA, CVPixelBufferGetBaseAddress, CVPixelBufferGetBytesPerRow,
-    CVPixelBufferGetHeight, CVPixelBufferGetWidth, CVPixelBufferLockBaseAddress,
-    CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
+    kCVPixelFormatType_32BGRA, CVPixelBuffer, CVPixelBufferGetBaseAddress,
+    CVPixelBufferGetBytesPerRow, CVPixelBufferGetHeight, CVPixelBufferGetWidth,
+    CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
 };
 use objc2_foundation::{
-    NSArray, NSDictionary, NSError, NSNotification, NSNumber, NSObject, NSObjectProtocol, NSString,
+    NSArray, NSDictionary, NSError, NSNotification, NSNumber, NSObject, NSObjectProtocol,
+    NSProcessInfo, NSString,
 };
 use objc2_screen_capture_kit::{
-    SCContentFilter, SCScreenshotManager, SCShareableContent, SCStreamConfiguration,
+    SCContentFilter, SCDisplay, SCFrameStatus, SCScreenshotManager, SCShareableContent, SCStream,
+    SCStreamConfiguration, SCStreamDelegate, SCStreamFrameInfoStatus, SCStreamOutput,
+    SCStreamOutputType,
 };
 
 /// How long a capture may take before the caller gets `Failed`, so a completion
@@ -253,7 +258,9 @@ impl Platform for MacPlatform {
         let front = NSWorkspace::sharedWorkspace().frontmostApplication()?;
         let app = front.localizedName()?.to_string();
         let pid = front.processIdentifier();
-        let title = foreground_title(&window_list(), pid);
+        let windows = window_list();
+        let title = foreground_title(&windows, pid);
+        let display = foreground_display(&windows, &display_bounds(), pid);
         let bundle = front
             .bundleIdentifier()
             .map(|id| id.to_string())
@@ -263,7 +270,12 @@ impl Platform for MacPlatform {
         } else {
             None
         };
-        Some(Foreground { app, title, domain })
+        Some(Foreground {
+            app,
+            title,
+            domain,
+            display,
+        })
     }
 
     /// One frame per display. Blocks until done (up to 5 s): call from a worker
@@ -303,12 +315,16 @@ impl Platform for MacPlatform {
         }
     }
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        false
+    // TODO(ANT-03, P1): best-effort detection of synthetic events on macOS
+    // (event-source heuristics); flag only. Until then nothing is guarded.
+    fn start_input_guard(&self, _area: ScreenRect) {}
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        InjectedInput::default()
     }
 
-    fn notify(&self, title: &str, _body: &str) {
-        tracing::debug!(title, "notification (stub)");
+    fn notify(&self, title: &str, body: &str) {
+        crate::macos_notify::notify(title, body);
     }
 
     fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError> {
@@ -389,6 +405,22 @@ fn foreground_title(windows: &[WindowInfo], pid: i32) -> Option<String> {
         .map(|w| w.title.trim())
         .find(|t| !t.is_empty())
         .map(|t| t.chars().take(MAX_TITLE_CHARS).collect())
+}
+
+/// The display (1-based, in `display_bounds` order) holding the centre of the app's
+/// front window: the first layer-0 window of `pid` with a size, front to back. Its
+/// title is not needed, so this works without Screen Recording. `None` when the app
+/// has no such window or the centre is on no display.
+fn foreground_display(windows: &[WindowInfo], displays: &[Rect], pid: i32) -> Option<u32> {
+    let window = windows.iter().find(|w| {
+        w.owner_pid == pid && w.layer == 0 && w.bounds.width > 0.0 && w.bounds.height > 0.0
+    })?;
+    let cx = window.bounds.x + window.bounds.width / 2.0;
+    let cy = window.bounds.y + window.bounds.height / 2.0;
+    displays
+        .iter()
+        .position(|d| cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height)
+        .map(|i| i as u32 + 1)
 }
 
 /// True for the browsers we read a domain from, by bundle identifier.
@@ -510,6 +542,55 @@ fn display_capture_size(
     Some((w as u32, h as u32))
 }
 
+/// Points to pixels for a display, from its pixel and point widths. 1x when either
+/// is nonsense.
+fn pixel_scale(points_w: f64, pixel_w: f64) -> f64 {
+    if points_w >= 1.0 && pixel_w >= points_w {
+        pixel_w / points_w
+    } else {
+        1.0
+    }
+}
+
+/// Which API takes the screenshots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScreenshotApi {
+    /// `SCScreenshotManager` (macOS 14+).
+    Manager,
+    /// A short-lived `SCStream` per display (macOS 13, the PRD minimum).
+    Stream,
+}
+
+/// `SCScreenshotManager` and `SCContentFilter.pointPixelScale` arrive in macOS 14.
+const SCREENSHOT_MANAGER_MIN_MACOS: isize = 14;
+
+/// `force_stream` is the debug switch that runs the macOS 13 path on a newer Mac.
+fn screenshot_api(os_major: isize, force_stream: bool) -> ScreenshotApi {
+    if os_major >= SCREENSHOT_MANAGER_MIN_MACOS && !force_stream {
+        ScreenshotApi::Manager
+    } else {
+        ScreenshotApi::Stream
+    }
+}
+
+/// Debug builds only: AI_PROCTOR_DEV_FORCE_SCSTREAM=1 takes screenshots with the
+/// macOS 13 `SCStream` path whatever the OS version.
+#[cfg(debug_assertions)]
+fn force_stream() -> bool {
+    std::env::var("AI_PROCTOR_DEV_FORCE_SCSTREAM").is_ok_and(|v| v == "1")
+}
+
+#[cfg(not(debug_assertions))]
+fn force_stream() -> bool {
+    false
+}
+
+/// A stream sample is a screenshot only when it is a complete frame; idle, blank and
+/// suspended samples carry no new pixels. No status at all is taken as complete.
+fn frame_status_is_complete(status: Option<isize>) -> bool {
+    status.is_none_or(|s| s == SCFrameStatus::Complete.0)
+}
+
 /// ScreenCaptureKit's "user declined TCC" error. `CGPreflightScreenCaptureAccess`
 /// can stay true after the grant is revoked and the app keeps running, so this is
 /// the reliable signal (spike #13).
@@ -536,15 +617,17 @@ fn camera_permission() -> PermissionState {
 /// Maps a ScreenCaptureKit error to the capture error stored with the check-in.
 fn sck_error(error: *mut NSError, what: &str) -> CaptureError {
     match unsafe { Retained::retain(error) } {
-        Some(e) => {
-            let description = e.localizedDescription().to_string();
-            if is_tcc_declined(e.code(), &description) {
-                CaptureError::PermissionMissing
-            } else {
-                CaptureError::Failed(format!("{what}: {description}"))
-            }
-        }
+        Some(e) => sck_ns_error(&e, what),
         None => CaptureError::Failed(format!("{what}: no result")),
+    }
+}
+
+fn sck_ns_error(error: &NSError, what: &str) -> CaptureError {
+    let description = error.localizedDescription().to_string();
+    if is_tcc_declined(error.code(), &description) {
+        CaptureError::PermissionMissing
+    } else {
+        CaptureError::Failed(format!("{what}: {description}"))
     }
 }
 
@@ -564,10 +647,33 @@ fn rgba_from_cgimage(image: &CGImage) -> Result<(u32, u32, Vec<u8>), CaptureErro
 
 type ScreenResult = Result<(u32, u32, Vec<u8>), CaptureError>;
 
+/// How long to wait for stopped streams to confirm, so a handler that never fires
+/// cannot hold up the check-in.
+const STREAM_STOP_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// One screenshot request in flight, per display.
+struct Shot {
+    index: u32,
+    rx: mpsc::Receiver<ScreenResult>,
+    /// Filter, configuration and handlers, kept alive until the request completes.
+    keep: Box<dyn std::any::Any>,
+    /// The short-lived stream (macOS 13 path), stopped once the frame is in.
+    stream: Option<Retained<SCStream>>,
+}
+
+fn os_major() -> isize {
+    NSProcessInfo::processInfo()
+        .operatingSystemVersion()
+        .majorVersion
+}
+
 /// One ScreenCaptureKit screenshot per display, started together and collected
-/// under one deadline. SCK scales on the GPU to `max_width`.
+/// under one deadline. SCK scales on the GPU to `max_width`. macOS 14+ uses
+/// `SCScreenshotManager`; macOS 13 takes the first frame of a short-lived `SCStream`.
 fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
     let deadline = Instant::now() + CAPTURE_TIMEOUT;
+    let api = screenshot_api(os_major(), force_stream());
+    tracing::debug!(?api, "screenshot api");
     let (tx, rx) = mpsc::channel();
     let handler = RcBlock::new(
         move |content: *mut SCShareableContent, error: *mut NSError| {
@@ -588,10 +694,13 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
         Err(_) => return Err(CaptureError::Failed("shareable content timed out".into())),
     };
 
-    let displays = unsafe { content.displays() };
+    // Ordered by display ID, like `display_bounds`, so `screen-N` and the display
+    // `foreground()` reports for an excluded app (CAP-04) are the same screen.
+    let mut displays: Vec<_> = unsafe { content.displays() }.iter().collect();
     if displays.is_empty() {
         return Err(CaptureError::Failed("no displays".into()));
     }
+    displays.sort_by_key(|d| unsafe { d.displayID() });
     // Start every display, keep filter and configuration alive until it completes.
     let mut pending = Vec::new();
     for (index, display) in displays.iter().enumerate() {
@@ -599,11 +708,15 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
         let filter = unsafe {
             SCContentFilter::initWithDisplay_excludingWindows(
                 SCContentFilter::alloc(),
-                &display,
+                display,
                 &NSArray::new(),
             )
         };
-        let scale = unsafe { filter.pointPixelScale() } as f64;
+        let scale = match api {
+            ScreenshotApi::Manager => (unsafe { filter.pointPixelScale() }) as f64,
+            // `pointPixelScale` does not exist before macOS 14.
+            ScreenshotApi::Stream => display_pixel_scale(display, points_w),
+        };
         let Some((w, h)) = display_capture_size(points_w, points_h, scale, max_width) else {
             tracing::warn!(display = index + 1, points_w, points_h, "bad display size");
             continue;
@@ -614,29 +727,39 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
             config.setHeight(h as usize);
             config.setShowsCursor(false);
         }
-        let (tx, rx) = mpsc::channel::<ScreenResult>();
-        let handler = RcBlock::new(move |image: *mut CGImage, error: *mut NSError| {
-            let result = match unsafe { image.as_ref() } {
-                Some(image) => rgba_from_cgimage(image),
-                None => Err(sck_error(error, "screenshot")),
-            };
-            let _ = tx.send(result);
+        let index = index as u32 + 1;
+        pending.push(match api {
+            ScreenshotApi::Manager => start_manager_shot(index, filter, config),
+            ScreenshotApi::Stream => start_stream_shot(index, filter, config),
         });
-        unsafe {
-            SCScreenshotManager::captureImageWithFilter_configuration_completionHandler(
-                &filter,
-                &config,
-                Some(&handler),
-            )
-        };
-        pending.push((index as u32 + 1, rx, filter, config, handler));
     }
 
     let mut frames = Vec::new();
     let mut first_error = None;
-    for (index, rx, _filter, _config, _handler) in pending {
+    // Stopping streams: (confirmation, stream and handler kept alive until then).
+    let mut stopping = Vec::new();
+    let mut alive = Vec::new();
+    for Shot {
+        index,
+        rx,
+        keep,
+        stream,
+    } in pending
+    {
         let wait = deadline.saturating_duration_since(Instant::now());
-        match rx.recv_timeout(wait) {
+        let result = rx.recv_timeout(wait);
+        // Whatever the outcome, the stream must not keep recording.
+        if let Some(stream) = stream {
+            let (stopped_tx, stopped_rx) = mpsc::channel();
+            let stopped = RcBlock::new(move |_error: *mut NSError| {
+                let _ = stopped_tx.send(());
+            });
+            unsafe { stream.stopCaptureWithCompletionHandler(Some(&stopped)) };
+            stopping.push(stopped_rx);
+            alive.push(Box::new((stream, stopped)) as Box<dyn std::any::Any>);
+        }
+        alive.push(keep);
+        match result {
             Ok(Ok((width, height, rgba))) => frames.push(Frame {
                 display: Some(index),
                 width,
@@ -653,12 +776,218 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
             }
         }
     }
+    let stop_deadline = Instant::now() + STREAM_STOP_TIMEOUT;
+    for stopped in stopping {
+        let wait = stop_deadline.saturating_duration_since(Instant::now());
+        if stopped.recv_timeout(wait).is_err() {
+            tracing::warn!("screenshot stream did not confirm stop");
+        }
+    }
+    drop(alive);
     // A missing permission fails the whole capture; partial failures keep the
     // displays that did work (the check-in still passes, CAP-08).
     match (frames.is_empty(), first_error) {
         (true, Some(e)) => Err(e),
         (true, None) => Err(CaptureError::Failed("no displays captured".into())),
         (false, _) => Ok(frames),
+    }
+}
+
+/// Points to pixels for a display on systems without `pointPixelScale`: the active
+/// mode's pixel width over the display's width in points.
+fn display_pixel_scale(display: &SCDisplay, points_w: f64) -> f64 {
+    let mode = CGDisplayCopyDisplayMode(unsafe { display.displayID() });
+    pixel_scale(points_w, CGDisplayMode::pixel_width(mode.as_deref()) as f64)
+}
+
+/// macOS 14+: `SCScreenshotManager` takes the image.
+fn start_manager_shot(
+    index: u32,
+    filter: Retained<SCContentFilter>,
+    config: Retained<SCStreamConfiguration>,
+) -> Shot {
+    let (tx, rx) = mpsc::channel::<ScreenResult>();
+    let handler = RcBlock::new(move |image: *mut CGImage, error: *mut NSError| {
+        let result = match unsafe { image.as_ref() } {
+            Some(image) => rgba_from_cgimage(image),
+            None => Err(sck_error(error, "screenshot")),
+        };
+        let _ = tx.send(result);
+    });
+    unsafe {
+        SCScreenshotManager::captureImageWithFilter_configuration_completionHandler(
+            &filter,
+            &config,
+            Some(&handler),
+        )
+    };
+    Shot {
+        index,
+        rx,
+        keep: Box::new((filter, config, handler)),
+        stream: None,
+    }
+}
+
+/// macOS 13: a stream that is started for the first complete frame and then stopped.
+/// BGRA at the target size, the slowest rate and the shallowest queue, no cursor.
+fn start_stream_shot(
+    index: u32,
+    filter: Retained<SCContentFilter>,
+    config: Retained<SCStreamConfiguration>,
+) -> Shot {
+    let (tx, rx) = mpsc::channel::<ScreenResult>();
+    unsafe {
+        config.setPixelFormat(kCVPixelFormatType_32BGRA);
+        config.setMinimumFrameInterval(CMTime {
+            value: 1,
+            timescale: 1,
+            flags: CMTimeFlags::Valid,
+            epoch: 0,
+        });
+        config.setQueueDepth(3);
+    }
+    let output = ScreenStreamOutput::new(tx.clone());
+    let queue = DispatchQueue::new("ai-proctor.screenshot", None);
+    let stream = unsafe {
+        SCStream::initWithFilter_configuration_delegate(
+            SCStream::alloc(),
+            &filter,
+            &config,
+            Some(ProtocolObject::from_ref(&*output)),
+        )
+    };
+    let added = unsafe {
+        stream.addStreamOutput_type_sampleHandlerQueue_error(
+            ProtocolObject::from_ref(&*output),
+            SCStreamOutputType::Screen,
+            Some(&queue),
+        )
+    };
+    if let Err(e) = added {
+        let _ = tx.send(Err(sck_ns_error(&e, "screenshot")));
+        return Shot {
+            index,
+            rx,
+            keep: Box::new((filter, config, output, queue, stream)),
+            stream: None,
+        };
+    }
+    // A refused start (Screen Recording declined) arrives here, not as a frame.
+    let started = RcBlock::new(move |error: *mut NSError| {
+        if !error.is_null() {
+            let _ = tx.send(Err(sck_error(error, "screenshot")));
+        }
+    });
+    unsafe { stream.startCaptureWithCompletionHandler(Some(&started)) };
+    Shot {
+        index,
+        rx,
+        keep: Box::new((filter, config, output, queue, started)),
+        stream: Some(stream),
+    }
+}
+
+struct StreamOutputIvars {
+    tx: Mutex<Option<mpsc::Sender<ScreenResult>>>,
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "AIProctorScreenStreamOutput"]
+    #[ivars = StreamOutputIvars]
+    struct ScreenStreamOutput;
+
+    unsafe impl NSObjectProtocol for ScreenStreamOutput {}
+
+    unsafe impl SCStreamOutput for ScreenStreamOutput {
+        #[unsafe(method(stream:didOutputSampleBuffer:ofType:))]
+        fn did_output(
+            &self,
+            _stream: &SCStream,
+            sample: &CMSampleBuffer,
+            kind: SCStreamOutputType,
+        ) {
+            if kind == SCStreamOutputType::Screen {
+                self.on_sample(sample);
+            }
+        }
+    }
+
+    unsafe impl SCStreamDelegate for ScreenStreamOutput {
+        #[unsafe(method(stream:didStopWithError:))]
+        fn did_stop(&self, _stream: &SCStream, error: &NSError) {
+            self.finish(Err(sck_ns_error(error, "screenshot")));
+        }
+    }
+);
+
+impl ScreenStreamOutput {
+    fn new(tx: mpsc::Sender<ScreenResult>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(StreamOutputIvars {
+            tx: Mutex::new(Some(tx)),
+        });
+        unsafe { msg_send![super(this), init] }
+    }
+
+    /// Hands the result to the waiting caller; anything after the first is ignored.
+    fn finish(&self, result: ScreenResult) {
+        if let Ok(mut tx) = self.ivars().tx.lock() {
+            if let Some(tx) = tx.take() {
+                let _ = tx.send(result);
+            }
+        }
+    }
+
+    /// Takes the first complete frame: BGRA pixels copied out of the pixel buffer
+    /// (honouring its row stride) and swapped to RGBA.
+    fn on_sample(&self, sample: &CMSampleBuffer) {
+        if self.ivars().tx.lock().map_or(true, |tx| tx.is_none()) {
+            return;
+        }
+        if !frame_status_is_complete(sample_frame_status(sample)) {
+            return;
+        }
+        let Some(buffer) = (unsafe { sample.image_buffer() }) else {
+            return;
+        };
+        let (w, h, stride, bytes) = copy_pixel_buffer(&buffer);
+        self.finish(match bgra_to_rgba(&bytes, w, h, stride) {
+            Some(rgba) => Ok((w as u32, h as u32, rgba)),
+            None => Err(CaptureError::Failed(
+                "screenshot pixel buffer too short".into(),
+            )),
+        });
+    }
+}
+
+/// The `SCFrameStatus` ScreenCaptureKit attaches to a stream sample, if any.
+fn sample_frame_status(sample: &CMSampleBuffer) -> Option<isize> {
+    let attachments = unsafe { sample.sample_attachments_array(false) }?;
+    // CFArray and NSArray are toll-free bridged; the element is a CFDictionary.
+    let attachments: &NSArray<NSDictionary<NSString, AnyObject>> =
+        unsafe { &*(&*attachments as *const CFArray as *const NSArray<_>) };
+    let info = attachments.firstObject()?;
+    let status = info.objectForKey(unsafe { SCStreamFrameInfoStatus })?;
+    status.downcast_ref::<NSNumber>().map(|n| n.integerValue())
+}
+
+/// Copies a BGRA pixel buffer out while it is locked: (width, height, row stride,
+/// bytes). The bytes are empty when the buffer has no base address.
+fn copy_pixel_buffer(buffer: &CVPixelBuffer) -> (usize, usize, usize, Vec<u8>) {
+    unsafe {
+        CVPixelBufferLockBaseAddress(buffer, CVPixelBufferLockFlags::ReadOnly);
+        let w = CVPixelBufferGetWidth(buffer);
+        let h = CVPixelBufferGetHeight(buffer);
+        let stride = CVPixelBufferGetBytesPerRow(buffer);
+        let base = CVPixelBufferGetBaseAddress(buffer) as *const u8;
+        let bytes = if base.is_null() {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(base, stride * h).to_vec()
+        };
+        CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags::ReadOnly);
+        (w, h, stride, bytes)
     }
 }
 
@@ -712,20 +1041,7 @@ impl FrameGrabber {
         };
         // Copy the pixels out while the buffer is locked; the luma check and the
         // RGBA swap happen on the copy.
-        let (w, h, stride, bytes) = unsafe {
-            CVPixelBufferLockBaseAddress(&buffer, CVPixelBufferLockFlags::ReadOnly);
-            let w = CVPixelBufferGetWidth(&buffer);
-            let h = CVPixelBufferGetHeight(&buffer);
-            let stride = CVPixelBufferGetBytesPerRow(&buffer);
-            let base = CVPixelBufferGetBaseAddress(&buffer) as *const u8;
-            let bytes = if base.is_null() {
-                Vec::new()
-            } else {
-                std::slice::from_raw_parts(base, stride * h).to_vec()
-            };
-            CVPixelBufferUnlockBaseAddress(&buffer, CVPixelBufferLockFlags::ReadOnly);
-            (w, h, stride, bytes)
-        };
+        let (w, h, stride, bytes) = copy_pixel_buffer(&buffer);
         let Some(luma) = mean_luma_bgra(&bytes, w, h, stride) else {
             return;
         };
@@ -1008,12 +1324,16 @@ fn window_list() -> Vec<WindowInfo> {
         .collect()
 }
 
+/// Bounds of the active displays, ordered by display ID (the order `capture_screens`
+/// numbers them in).
 fn display_bounds() -> Vec<Rect> {
     let mut ids = [0u32; 16];
     let mut count = 0u32;
     unsafe { CGGetActiveDisplayList(16, ids.as_mut_ptr(), &mut count) };
-    ids[..(count as usize).min(ids.len())]
-        .iter()
+    let count = (count as usize).min(ids.len());
+    let ids = &mut ids[..count];
+    ids.sort_unstable();
+    ids.iter()
         .map(|id| {
             let r = CGDisplayBounds(*id);
             Rect {
@@ -1287,6 +1607,111 @@ mod tests {
     }
 
     #[test]
+    fn foreground_display_is_the_one_holding_the_front_window_centre() {
+        let displays = [MAIN, SECOND];
+        let on_main = Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let on_second = Rect {
+            x: 2000.0,
+            y: 50.0,
+            width: 600.0,
+            height: 400.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, on_main)], &displays, 10),
+            Some(1)
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, on_second)], &displays, 10),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn foreground_display_uses_the_centre_of_a_window_spanning_displays() {
+        let displays = [MAIN, SECOND];
+        // Mostly on the second display: centre x = 1800 + 500 = 2300.
+        let mostly_second = Rect {
+            x: 1800.0,
+            y: 0.0,
+            width: 1000.0,
+            height: 500.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, mostly_second)], &displays, 10),
+            Some(2)
+        );
+        // Mostly on the main display: centre x = 1000 + 300 = 1300.
+        let mostly_main = Rect {
+            x: 1000.0,
+            y: 0.0,
+            width: 600.0,
+            height: 500.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, mostly_main)], &displays, 10),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn foreground_display_takes_the_apps_frontmost_normal_window() {
+        let displays = [MAIN, SECOND];
+        let on_main = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let on_second = Rect {
+            x: 2000.0,
+            y: 0.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let windows = [
+            window(11, "Other app", 0, on_main),
+            window(10, "Menu", 25, on_main),
+            window(10, "", 0, Rect::default()),
+            window(10, "", 0, on_second),
+            window(10, "Older", 0, on_main),
+        ];
+        assert_eq!(foreground_display(&windows, &displays, 10), Some(2));
+    }
+
+    #[test]
+    fn foreground_display_is_none_when_unknown() {
+        let displays = [MAIN, SECOND];
+        let nowhere = Rect {
+            x: 9000.0,
+            y: 9000.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        assert_eq!(foreground_display(&[], &displays, 10), None);
+        assert_eq!(
+            foreground_display(&[window(11, "A", 0, MAIN)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 25, MAIN)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, nowhere)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, MAIN)], &[], 10),
+            None
+        );
+    }
+
+    #[test]
     fn title_is_none_without_titles_or_windows() {
         assert_eq!(foreground_title(&[], 10), None);
         let untitled = [window(10, "", 0, MAIN), window(10, "   ", 0, MAIN)];
@@ -1543,5 +1968,79 @@ mod tests {
             "The user declined TCCs for application, window, display capture"
         ));
         assert!(!is_tcc_declined(-3805, "Stream was interrupted"));
+    }
+
+    #[test]
+    fn manager_from_macos_14_stream_before() {
+        assert_eq!(screenshot_api(13, false), ScreenshotApi::Stream);
+        assert_eq!(screenshot_api(12, false), ScreenshotApi::Stream);
+        assert_eq!(screenshot_api(14, false), ScreenshotApi::Manager);
+        assert_eq!(screenshot_api(26, false), ScreenshotApi::Manager);
+    }
+
+    #[test]
+    fn forcing_the_stream_path_wins_on_any_version() {
+        assert_eq!(screenshot_api(14, true), ScreenshotApi::Stream);
+        assert_eq!(screenshot_api(26, true), ScreenshotApi::Stream);
+        assert_eq!(screenshot_api(13, true), ScreenshotApi::Stream);
+    }
+
+    #[test]
+    fn pixel_scale_is_pixels_over_points() {
+        assert_eq!(pixel_scale(1728.0, 3456.0), 2.0);
+        assert_eq!(pixel_scale(1920.0, 1920.0), 1.0);
+        // A 13 path size comes out the same as the 14+ one: 3456 px capped to 1280.
+        let scale = pixel_scale(1728.0, 3456.0);
+        assert_eq!(
+            display_capture_size(1728.0, 1117.0, scale, 1280),
+            Some((1280, 827))
+        );
+    }
+
+    #[test]
+    fn nonsense_pixel_scale_falls_back_to_1x() {
+        assert_eq!(pixel_scale(0.0, 100.0), 1.0);
+        assert_eq!(pixel_scale(1920.0, 0.0), 1.0);
+        assert_eq!(pixel_scale(1920.0, 960.0), 1.0);
+    }
+
+    #[test]
+    fn only_complete_frames_are_screenshots() {
+        assert!(frame_status_is_complete(Some(SCFrameStatus::Complete.0)));
+        assert!(frame_status_is_complete(None));
+        assert!(!frame_status_is_complete(Some(SCFrameStatus::Idle.0)));
+        assert!(!frame_status_is_complete(Some(SCFrameStatus::Blank.0)));
+        assert!(!frame_status_is_complete(Some(SCFrameStatus::Suspended.0)));
+        assert!(!frame_status_is_complete(Some(SCFrameStatus::Started.0)));
+    }
+
+    /// Takes one screenshot per display with the macOS 13 `SCStream` path, whatever
+    /// the OS version. Needs Screen Recording for the process that runs it (the
+    /// terminal or the Claude app), so it is ignored by default. Run it by hand:
+    ///
+    /// `cargo test -p agent-platform --lib stream_screenshot -- --ignored --nocapture`
+    #[test]
+    #[ignore = "needs Screen Recording; run by hand"]
+    fn stream_screenshot_captures_every_display() {
+        assert!(
+            CGPreflightScreenCaptureAccess(),
+            "grant Screen Recording to the terminal first"
+        );
+        std::env::set_var("AI_PROCTOR_DEV_FORCE_SCSTREAM", "1");
+        assert_eq!(
+            screenshot_api(os_major(), force_stream()),
+            ScreenshotApi::Stream
+        );
+        let frames = capture_screens(1280).expect("capture");
+        assert!(!frames.is_empty());
+        for frame in &frames {
+            assert!(frame.width >= 1 && frame.width <= 1280, "{}", frame.width);
+            assert_eq!(
+                frame.rgba.len(),
+                frame.width as usize * frame.height as usize * 4
+            );
+            assert!(frame.rgba.as_chunks::<4>().0.iter().all(|px| px[3] == 255));
+            assert!(frame.rgba.iter().any(|&b| b != 0), "frame is all black");
+        }
     }
 }

@@ -3,6 +3,10 @@
 
 pub mod account;
 mod card;
+#[cfg(debug_assertions)]
+mod dev;
+#[cfg(all(debug_assertions, unix))]
+mod dev_control;
 mod notice_window;
 
 use std::sync::{Arc, Mutex};
@@ -28,7 +32,7 @@ use agent_core::onboarding::{
 };
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
 use agent_core::permissions::{PermissionMonitor, Required};
-use agent_core::platform::{Platform, SessionState};
+use agent_core::platform::{Platform, ScreenRect, SessionState};
 use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{
     Decision, FileScheduleStore, Outcome, Random, SchedulePolicy, Scheduler, ThreadRandom,
@@ -320,13 +324,16 @@ impl AgentState {
     fn card_tick(&self) -> CardAction {
         let now = self.clock.now();
         let mut card = self.card.lock().unwrap();
-        if let Some(current) = card.as_ref() {
+        if let Some(current) = card.as_mut() {
             if self.session.lock().unwrap().shift() != ShiftState::Working {
                 tracing::info!("check-in cancelled by a shift change");
+                // Nothing is reported for a card that was cancelled.
+                self.platform.stop_input_guard();
                 *card = None;
                 return CardAction::Hide;
             }
             if current.expired(now) {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Miss, now);
                 *card = None;
                 self.record(finished);
@@ -365,6 +372,44 @@ impl AgentState {
         CardAction::Show(challenge)
     }
 
+    /// ANT-02: while the card is up, injected clicks inside it are swallowed and
+    /// counted by the platform. Only starts if the card is still current (it may
+    /// have ended while its window was being placed); `area` is the card window.
+    fn start_input_guard(&self, area: ScreenRect) {
+        if self.card.lock().unwrap().is_some() {
+            self.platform.start_input_guard(area);
+        }
+    }
+
+    /// Stops the guard and notes what it swallowed on the card, for its flags.
+    fn end_input_guard(&self, card: &mut Card) {
+        let injected = self.platform.stop_input_guard();
+        if injected.count > 0 {
+            tracing::warn!(count = injected.count, "injected clicks on the card");
+        }
+        card.record_injected(injected);
+    }
+
+    /// The card on screen, as the card window shows it.
+    #[cfg(all(debug_assertions, unix))]
+    fn current_challenge(&self) -> Option<CardChallenge> {
+        self.card
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|c| self.challenge(c))
+    }
+
+    /// Marks the card on screen: the flag goes on its `checkin` event.
+    #[cfg(all(debug_assertions, unix))]
+    fn flag_card(&self, flag: &str) {
+        if let Some(card) = self.card.lock().unwrap().as_mut() {
+            if !card.flags.iter().any(|f| f == flag) {
+                card.flags.push(flag.to_owned());
+            }
+        }
+    }
+
     /// A click on the card. Only real pointer clicks count (CHK-11); anything for
     /// a card that is no longer up is ignored.
     fn card_click(&self, card_id: &str, value: i64, trusted: bool) -> ClickReply {
@@ -383,6 +428,7 @@ impl AgentState {
                 ..ClickReply::just(CardClickResult::Wrong)
             },
             ClickResult::Pass => {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Pass, now);
                 *card = None;
                 self.scheduler.finished(Outcome::Pass);
@@ -392,6 +438,7 @@ impl AgentState {
                 }
             }
             ClickResult::Failed => {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Failed, now);
                 *card = None;
                 self.record(finished);
@@ -566,6 +613,19 @@ impl AgentState {
                 sampler.stop()
             }
         };
+        self.queue_activity(sessions);
+    }
+
+    /// A shift change (clock-out, break, pause, and back) closes the open buckets
+    /// there and then, so none spans the change; the time since the last sample
+    /// isn't counted (#105).
+    fn flush_activity(&self) {
+        let sessions = self.activity.lock().unwrap().stop();
+        self.queue_activity(sessions);
+    }
+
+    fn queue_activity(&self, sessions: Vec<activity::AppSession>) {
+        let now = self.clock.now();
         let Some(outbox) = &self.outbox else {
             return;
         };
@@ -903,9 +963,32 @@ impl AgentState {
 
     /// Runs a transition; failures are logged and shown as a notification.
     fn act(&self, what: &str, f: impl FnOnce(&mut Session) -> Result<(), TransitionError>) {
-        if let Err(error) = self.try_act(what, f) {
-            self.platform.notify(&format!("Couldn't {what}"), &error);
+        if let Err(error) = self.act_checked(what, f) {
+            self.platform
+                .notify(&format!("Couldn't {what}"), &error.to_string());
         }
+    }
+
+    /// `act`, handing the failure back too.
+    fn act_checked(
+        &self,
+        what: &str,
+        f: impl FnOnce(&mut Session) -> Result<(), TransitionError>,
+    ) -> Result<(), TransitionError> {
+        let (before, result, after) = {
+            let mut session = self.session.lock().unwrap();
+            let before = session.shift();
+            let result = f(&mut session);
+            (before, result, session.shift())
+        };
+        if before != after {
+            self.flush_activity();
+        }
+        if let Err(error) = &result {
+            tracing::warn!(%error, what, "transition refused");
+        }
+        self.sync_schedule();
+        result
     }
 
     /// A transition from the popover: the error comes back to show there.
@@ -914,12 +997,7 @@ impl AgentState {
         what: &str,
         f: impl FnOnce(&mut Session) -> Result<(), TransitionError>,
     ) -> Result<(), String> {
-        let result = f(&mut self.session.lock().unwrap());
-        self.sync_schedule();
-        result.map_err(|error| {
-            tracing::warn!(%error, what, "transition refused");
-            error.to_string()
-        })
+        self.act_checked(what, f).map_err(|error| error.to_string())
     }
 }
 
@@ -945,10 +1023,31 @@ pub struct OutboxState(pub Option<Arc<Outbox>>);
 /// Name of the outbox key in the OS keychain.
 const OUTBOX_KEY: &str = "outbox-key";
 
+/// Where secrets live: the OS keychain. Debug builds can use files instead
+/// (`AI_PROCTOR_DEV_KEYSTORE`), so an unattended run raises no keychain prompt.
+fn key_store() -> Arc<dyn KeyStore> {
+    #[cfg(debug_assertions)]
+    if let Some(store) = dev::keystore() {
+        tracing::warn!("dev keystore: secrets are kept in files");
+        return Arc::new(store);
+    }
+    Arc::new(agent_platform::keychain::OsKeychain)
+}
+
+/// The app data dir; debug builds can point it elsewhere (`AI_PROCTOR_DEV_DATA_DIR`).
+fn data_dir(app: &tauri::App) -> tauri::Result<std::path::PathBuf> {
+    #[cfg(debug_assertions)]
+    if let Some(dir) = dev::data_dir() {
+        tracing::warn!(dir = %dir.display(), "dev data dir");
+        std::fs::create_dir_all(&dir)?;
+        return Ok(dir);
+    }
+    app.path().app_data_dir()
+}
+
 fn open_outbox(data_dir: &std::path::Path) -> Result<Outbox, String> {
-    let keychain = agent_platform::keychain::OsKeychain;
-    let key =
-        agent_core::keystore::get_or_create(&keychain, OUTBOX_KEY).map_err(|e| e.to_string())?;
+    let key = agent_core::keystore::get_or_create(key_store().as_ref(), OUTBOX_KEY)
+        .map_err(|e| e.to_string())?;
     Outbox::open(&data_dir.join("outbox"), &key).map_err(|e: OutboxError| e.to_string())
 }
 
@@ -998,21 +1097,30 @@ async fn sign_in_start(app: AppHandle, email: String) -> CommandResult {
 #[tauri::command(rename_all = "snake_case")]
 async fn sign_out(app: AppHandle) -> CommandResult {
     off_main_thread(move || {
-        let state = app.state::<AgentState>();
-        state.sign_out();
-        let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+        end_session(&app);
         Ok(())
     })
     .await
 }
 
+fn end_session(app: &AppHandle) {
+    let state = app.state::<AgentState>();
+    state.sign_out();
+    let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+}
+
 /// `card_click`: judged here, in Rust. A wrong click sends the reshuffled card.
 #[tauri::command(rename_all = "snake_case")]
 fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> CardClickResult {
+    click_card(&app, &card_id, value, trusted)
+}
+
+/// The click and what follows it: the reshuffled card, hiding it, the captures.
+fn click_card(app: &AppHandle, card_id: &str, value: i64, trusted: bool) -> CardClickResult {
     let state = app.state::<AgentState>();
-    let reply = state.card_click(&card_id, value, trusted);
+    let reply = state.card_click(card_id, value, trusted);
     if let Some(challenge) = reply.next {
-        card::update(&app, challenge);
+        card::update(app, challenge);
     }
     if matches!(
         reply.result,
@@ -1397,8 +1505,7 @@ fn open_account(
         tracing::warn!("no server configured (AI_PROCTOR_SUPABASE_URL); sign-in is off");
         return None;
     };
-    let keychain: Arc<dyn KeyStore> = Arc::new(agent_platform::keychain::OsKeychain);
-    match Account::new(config, keychain, clock, outbox, data_dir) {
+    match Account::new(config, key_store(), clock, outbox, data_dir) {
         Ok(account) => Some(Arc::new(account)),
         Err(error) => {
             tracing::error!(%error, "sign-in unavailable");
@@ -1461,7 +1568,7 @@ pub fn run() {
             // Leaked on purpose: the guard must live as long as the process.
             Box::leak(Box::new(guard));
 
-            let data_dir = app.path().app_data_dir()?;
+            let data_dir = data_dir(app)?;
             let outbox = match open_outbox(&data_dir) {
                 Ok(outbox) => {
                     tracing::info!(stats = ?outbox.stats().ok(), "outbox open");
@@ -1478,7 +1585,10 @@ pub fn run() {
             #[cfg(debug_assertions)]
             if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
                 agent_platform::request_accessibility();
+                agent_platform::request_notification_permission();
             }
+            #[cfg(debug_assertions)]
+            let platform = dev::platform(platform);
             let sink: Arc<dyn EventSink> = match &outbox {
                 Some(outbox) => Arc::new(OutboxSink { outbox: outbox.clone(), clock: clock.clone() }),
                 None => Arc::new(UnavailableSink),
@@ -1519,6 +1629,10 @@ pub fn run() {
             notice_window::create(app.handle())?;
             spawn_card_runner(app.handle().clone());
             spawn_activity(app.handle().clone());
+            #[cfg(all(debug_assertions, unix))]
+            if let Some(path) = dev::control_path() {
+                dev_control::spawn(app.handle().clone(), &path)?;
+            }
 
             let handle = app.handle().clone();
             app.deep_link()
@@ -2307,6 +2421,7 @@ mod tests {
                 app: "Safari".into(),
                 title: Some("Docs".into()),
                 domain: Some("docs.example.com".into()),
+                display: None,
             })
         });
         // 09:00:00 .. 09:01:30 in 5 s steps.
@@ -2435,6 +2550,106 @@ mod tests {
         assert_eq!(w.state.scheduler.wake_in(), None);
     }
 
+    // ANT-02: the input guard watches the card's area while it is up.
+
+    const CARD_AREA: ScreenRect = ScreenRect {
+        x: 100,
+        y: 50,
+        width: 360,
+        height: 220,
+    };
+
+    #[test]
+    fn the_input_guard_only_starts_for_a_card_that_is_up() {
+        let w = working();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(w.platform.snapshot().input_guard, None, "no card, no guard");
+
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(w.platform.snapshot().input_guard, Some(CARD_AREA));
+    }
+
+    #[test]
+    fn a_pass_with_injected_clicks_is_flagged_and_still_a_pass() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 3);
+
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        assert_eq!(reply.result, CardClickResult::Pass);
+        assert_eq!(w.platform.snapshot().input_guard, None, "guard stopped");
+        w.state.finish_pass(reply.pass.unwrap());
+
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "pass");
+        assert_eq!(checkin["wrong_clicks"], 0);
+        assert_eq!(checkin["flags"], serde_json::json!(["injected_click:3"]));
+    }
+
+    #[test]
+    fn a_pass_without_injected_clicks_has_no_flag() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+        assert_eq!(w.checkins()[0]["flags"], serde_json::json!([]));
+        assert_eq!(w.platform.snapshot().input_guard, None);
+    }
+
+    #[test]
+    fn a_wrong_click_keeps_the_guard_running() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        assert_eq!(reply.result, CardClickResult::Wrong);
+        assert_eq!(w.platform.snapshot().input_guard, Some(CARD_AREA));
+    }
+
+    #[test]
+    fn a_failed_check_in_and_a_miss_carry_the_flag_too() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 2);
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        let reply = w
+            .state
+            .card_click(&card.card_id, wrong(&reply.next.unwrap()), true);
+        assert_eq!(reply.result, CardClickResult::Failed);
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!(["injected_click:2"])
+        );
+
+        let w = working();
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 5);
+        w.clock.advance(chrono::Duration::seconds(95));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "miss");
+        assert_eq!(checkin["flags"], serde_json::json!(["injected_click:5"]));
+        assert_eq!(w.platform.snapshot().input_guard, None);
+    }
+
+    #[test]
+    fn a_cancelled_card_stops_the_guard_and_reports_nothing() {
+        let w = working();
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 2);
+        w.state.act("start a break", |s| s.start_break(None));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        assert_eq!(w.platform.snapshot().input_guard, None);
+        assert!(w.checkins().is_empty());
+    }
+
     #[test]
     fn config_from_the_server_sets_shifts_and_auto_clock_in() {
         let dir = tempfile::tempdir().unwrap();
@@ -2488,6 +2703,24 @@ mod tests {
             1,
             "reported fresh after the break"
         );
+    }
+
+    #[test]
+    fn a_screen_share_is_queued_as_a_call_while_working() {
+        use agent_core::platform::ScreenShare;
+        let w = working();
+        w.platform
+            .update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        w.state.presence_tick();
+        let starts = w.events("call_start");
+        assert_eq!(starts.len(), 1, "share started: a call starts");
+        assert_eq!(starts[0]["source"], "screen_share");
+
+        w.platform.update(|s| s.screen_share = None);
+        w.state.presence_tick();
+        let ends = w.events("call_end");
+        assert_eq!(ends.len(), 1, "share ended: the call ends");
+        assert_eq!(ends[0]["source"], "screen_share");
     }
 
     #[test]
@@ -2549,6 +2782,51 @@ mod tests {
         );
         let json = serde_json::to_string(&w.state.status()).unwrap();
         assert!(!json.contains("next"), "never the next check-in time");
+    }
+
+    #[test]
+    fn a_quick_clock_out_and_in_never_spans_both_shifts() {
+        let w = working();
+        w.platform.update(|s| {
+            s.foreground = Some(agent_core::platform::Foreground {
+                app: "Xcode".into(),
+                title: None,
+                domain: None,
+                display: None,
+            })
+        });
+        for _ in 0..4 {
+            w.state.activity_tick();
+            w.clock.advance(chrono::Duration::seconds(5));
+        }
+        // 09:00:20: out and back in before the next 5 s sample.
+        w.state.act("clock out", |s| s.clock_out());
+        let out_at = w.clock.now();
+        w.clock.advance(chrono::Duration::seconds(2));
+        w.state.act("clock in", |s| s.clock_in(None));
+        let in_at = w.clock.now();
+        for _ in 0..3 {
+            w.clock.advance(chrono::Duration::seconds(5));
+            w.state.activity_tick();
+        }
+        w.state.act("clock out", |s| s.clock_out());
+
+        let buckets = w.events("app_session");
+        assert_eq!(buckets.len(), 2, "one per shift: {buckets:?}");
+        let t = |v: &serde_json::Value| {
+            v.as_str()
+                .unwrap()
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap()
+        };
+        assert!(
+            t(&buckets[0]["end"]) <= out_at,
+            "first ends by the clock-out"
+        );
+        assert!(
+            t(&buckets[1]["start"]) >= in_at,
+            "second starts after the clock-in"
+        );
     }
 
     #[test]
