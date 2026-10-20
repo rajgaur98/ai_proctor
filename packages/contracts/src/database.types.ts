@@ -171,6 +171,89 @@ export type Database = {
           },
         ];
       };
+      alerts: {
+        Row: {
+          details: NonNullable<Json>;
+          email_id: string | null;
+          episode: string;
+          id: string;
+          kind: Database["public"]["Enums"]["alert_kind"];
+          org_id: string;
+          read_at: string | null;
+          recipient_id: string;
+          triggered_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          details?: NonNullable<Json>;
+          email_id?: string | null;
+          episode: string;
+          id?: string;
+          kind: Database["public"]["Enums"]["alert_kind"];
+          org_id: string;
+          read_at?: string | null;
+          recipient_id: string;
+          triggered_at?: string;
+          user_id: string;
+        };
+        Update: {
+          details?: NonNullable<Json>;
+          email_id?: string | null;
+          episode?: string;
+          id?: string;
+          kind?: Database["public"]["Enums"]["alert_kind"];
+          org_id?: string;
+          read_at?: string | null;
+          recipient_id?: string;
+          triggered_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "alerts_email_id_fkey";
+            columns: ["email_id"];
+            isOneToOne: false;
+            referencedRelation: "email_outbox";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "alerts_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "alerts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_log: {
         Row: {
           action: string;
@@ -695,6 +778,57 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      email_outbox: {
+        Row: {
+          attempts: number;
+          batch_key: string | null;
+          created_at: string;
+          id: string;
+          last_error: string | null;
+          org_id: string;
+          payload: NonNullable<Json>;
+          send_after: string;
+          sent_at: string | null;
+          template: string;
+          to_email: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          attempts?: number;
+          batch_key?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id: string;
+          payload?: NonNullable<Json>;
+          send_after?: string;
+          sent_at?: string | null;
+          template: string;
+          to_email: string;
+        };
+        Update: {
+          attempts?: number;
+          batch_key?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id?: string;
+          payload?: NonNullable<Json>;
+          send_after?: string;
+          sent_at?: string | null;
+          template?: string;
+          to_email?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "email_outbox_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
             referencedColumns: ["id"];
           },
         ];
@@ -1352,6 +1486,31 @@ export type Database = {
         };
         Returns: string;
       };
+      email_claim: {
+        Args: { p_limit?: number };
+        Returns: {
+          attempts: number;
+          batch_key: string | null;
+          created_at: string;
+          id: string;
+          last_error: string | null;
+          org_id: string;
+          payload: NonNullable<Json>;
+          send_after: string;
+          sent_at: string | null;
+          template: string;
+          to_email: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "email_outbox";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
+      };
+      email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
+      email_mark_sent: { Args: { p_id: string }; Returns: undefined };
+      mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
       register_device: {
         Args: {
           agent_version: string;
@@ -1400,6 +1559,7 @@ export type Database = {
       };
     };
     Enums: {
+      alert_kind: "consecutive_misses" | "offline" | "tamper" | "late_clock_in" | "pause_over_cap";
       checkin_outcome: "pass" | "miss" | "failed";
       data_region: "us" | "eu";
       device_platform: "macos" | "windows";
@@ -1531,6 +1691,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      alert_kind: ["consecutive_misses", "offline", "tamper", "late_clock_in", "pause_over_cap"],
       checkin_outcome: ["pass", "miss", "failed"],
       data_region: ["us", "eu"],
       device_platform: ["macos", "windows"],
