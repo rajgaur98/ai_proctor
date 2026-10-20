@@ -555,20 +555,23 @@ fn open_outbox(data_dir: &std::path::Path) -> Result<Outbox, String> {
     Outbox::open(&data_dir.join("outbox"), &key).map_err(|e: OutboxError| e.to_string())
 }
 
+// Commands take snake_case arguments, as in packages/contracts/src/ipc.ts (Tauri's
+// default would expect camelCase from JavaScript and reject `card_id`).
+
 /// `get_status`: what the tray popover shows.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn get_status(state: tauri::State<'_, AgentState>) -> AgentStatus {
     state.status()
 }
 
 /// `sign_in_start`: emails a magic link to `email`.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn sign_in_start(app: AppHandle, email: String) -> CommandResult {
     off_main_thread(move || app.state::<AgentState>().start_sign_in(&email)).await
 }
 
 /// `sign_out`: ends the shift and the session.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn sign_out(app: AppHandle) -> CommandResult {
     off_main_thread(move || {
         let state = app.state::<AgentState>();
@@ -580,7 +583,7 @@ async fn sign_out(app: AppHandle) -> CommandResult {
 }
 
 /// `card_click`: judged here, in Rust. A wrong click sends the reshuffled card.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> CardClickResult {
     let state = app.state::<AgentState>();
     let reply = state.card_click(&card_id, value, trusted);
@@ -605,7 +608,7 @@ fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> Car
 }
 
 /// `card_switch_project`: opens the popover next to the card; the card stays.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn card_switch_project(app: AppHandle) -> CommandResult {
     if let Some(popover) = app.get_webview_window(POPOVER) {
         let _ = popover.show();
@@ -692,6 +695,9 @@ pub fn run() {
     // aiproctor:// link to this process and exits.
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}));
+    // The check-in card is an NSPanel (card.rs); without this, to_panel() panics.
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
     builder
         .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
@@ -1054,6 +1060,56 @@ mod tests {
 
     fn wrong(c: &CardChallenge) -> i64 {
         c.options.iter().find(|n| **n != c.target).copied().unwrap()
+    }
+
+    // Found only when the bundle first ran on a Mac (#98): each of these broke the
+    // app at runtime while every other test passed.
+
+    #[test]
+    fn every_window_gets_ipc() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let allowed: Vec<&str> = capability["windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|w| w.as_str())
+            .collect();
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let mut windows: Vec<&str> = conf["app"]["windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|w| w["label"].as_str())
+            .collect();
+        windows.push(card::LABEL);
+        for w in windows {
+            assert!(
+                allowed.contains(&w),
+                "window `{w}` is missing from the capability"
+            );
+        }
+    }
+
+    #[test]
+    fn commands_take_the_contracts_snake_case_arguments() {
+        let bare = concat!("#[tauri::", "command]");
+        let source = include_str!("lib.rs");
+        let offenders = source.lines().filter(|l| l.trim() == bare).count();
+        assert_eq!(offenders, 0, "a command would expect camelCase arguments");
+    }
+
+    #[test]
+    fn the_card_panel_plugin_is_registered() {
+        let card = include_str!("card.rs");
+        let source = include_str!("lib.rs");
+        if card.contains("to_panel") {
+            assert!(
+                source.contains(concat!("tauri_nspanel::", "init()")),
+                "card.rs makes an NSPanel, so run() must register tauri_nspanel"
+            );
+        }
     }
 
     #[test]
