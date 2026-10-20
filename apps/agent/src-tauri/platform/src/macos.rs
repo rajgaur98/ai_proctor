@@ -12,6 +12,8 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
+use agent_core::foreground::{clean_title, domain_of, domain_of_address};
+use agent_core::pixels::webcam_frame_ready;
 use agent_core::platform::{
     CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
     SessionState,
@@ -73,18 +75,8 @@ use objc2_screen_capture_kit::{
 /// handler that never fires cannot hang the check-in.
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// A webcam frame is accepted once its mean luma reaches this (warm-up frames are
-/// black) and is within `SETTLE_DELTA` of the previous frame.
-const MIN_LUMA: f64 = 15.0;
-const SETTLE_DELTA: f64 = 2.0;
-/// Give up waiting for the exposure to settle after this many frames (~3 s).
-const MAX_WEBCAM_FRAMES: u32 = 90;
-
 /// `SCStreamErrorUserDeclined`: Screen Recording refused by the user (TCC).
 const SC_ERROR_USER_DECLINED: isize = -3801;
-
-/// Longest window title we keep (the `foreground` contract's maximum).
-const MAX_TITLE_CHARS: usize = 500;
 
 /// Accessibility reads: per-message timeout so a hung browser cannot block, and
 /// the bounds of the search for the page's `AXWebArea` (called every ~5 s).
@@ -397,14 +389,13 @@ fn is_sharing(windows: &[WindowInfo]) -> bool {
 
 /// Title of the app's frontmost normal window: the first layer-0 window of `pid`
 /// with a non-empty title, in front-to-back order. Trimmed, capped at
-/// `MAX_TITLE_CHARS`. Titles are empty without Screen Recording, so this is `None`.
+/// `MAX_TITLE_CHARS` (`clean_title`). Titles are empty without Screen Recording, so
+/// this is `None`.
 fn foreground_title(windows: &[WindowInfo], pid: i32) -> Option<String> {
     windows
         .iter()
         .filter(|w| w.owner_pid == pid && w.layer == 0)
-        .map(|w| w.title.trim())
-        .find(|t| !t.is_empty())
-        .map(|t| t.chars().take(MAX_TITLE_CHARS).collect())
+        .find_map(|w| clean_title(&w.title))
 }
 
 /// The display (1-based, in `display_bounds` order) holding the centre of the app's
@@ -435,46 +426,6 @@ fn is_chromium_bundle(bundle_id: &str) -> bool {
     is_browser_bundle(bundle_id)
         && !bundle_id.starts_with("com.apple.Safari")
         && !bundle_id.starts_with("org.mozilla.")
-}
-
-/// Domain from an address-bar value. Chromium hides the `https://` scheme, so a
-/// value without one is tried as a host: it must look like one (contain a dot, or
-/// be `localhost`), which drops typed search text and `about:blank`.
-fn domain_of_address(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.contains("://") {
-        return domain_of(value);
-    }
-    let host = value.split(['/', '?', '#', ':']).next().unwrap_or("");
-    if !(host.contains('.') || host.eq_ignore_ascii_case("localhost")) {
-        return None;
-    }
-    domain_of(&format!("https://{value}"))
-}
-
-/// Host of an http(s) URL, lower-case, without a leading "www.", port, userinfo,
-/// path, query or fragment. Anything else (file:, about:, chrome://, ...) is `None`.
-/// This is the only part of a URL that ever leaves this function.
-fn domain_of(url: &str) -> Option<String> {
-    let url = url.trim();
-    let (scheme, rest) = url.split_once("://")?;
-    if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")) {
-        return None;
-    }
-    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
-    let host_port = authority.rsplit('@').next().unwrap_or("");
-    let host = if host_port.starts_with('[') {
-        // IPv6 literal: keep the bracketed address, drop any port.
-        &host_port[..host_port.find(']')? + 1]
-    } else {
-        host_port.split(':').next().unwrap_or("")
-    };
-    let host = host.trim_end_matches('.').to_lowercase();
-    let host = host.strip_prefix("www.").unwrap_or(&host);
-    if host.is_empty() || host.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return None;
-    }
-    Some(host.to_string())
 }
 
 /// Copies BGRA rows (ScreenCaptureKit / AVFoundation order) into tightly packed
@@ -514,13 +465,6 @@ fn mean_luma_bgra(bytes: &[u8], width: usize, height: usize, stride: usize) -> O
         }
     }
     Some(sum / (width * height) as f64)
-}
-
-/// Webcam settle rule: real exposure (luma >= `MIN_LUMA`) and stable against the
-/// previous frame, or the frame budget is spent. `n` is the 1-based frame number.
-fn webcam_frame_ready(n: u32, luma: f64, previous: Option<f64>) -> bool {
-    let settled = luma >= MIN_LUMA && previous.is_some_and(|p| (luma - p).abs() < SETTLE_DELTA);
-    settled || n >= MAX_WEBCAM_FRAMES
 }
 
 /// Output size for a display: at most `max_width` wide (never upscaled past the
@@ -1724,7 +1668,10 @@ mod tests {
         let long = "é".repeat(600);
         let windows = [window(10, &long, 0, MAIN)];
         let title = foreground_title(&windows, 10).unwrap_or_default();
-        assert_eq!(title.chars().count(), MAX_TITLE_CHARS);
+        assert_eq!(
+            title.chars().count(),
+            agent_core::foreground::MAX_TITLE_CHARS
+        );
     }
 
     #[test]
@@ -1777,82 +1724,6 @@ mod tests {
     }
 
     #[test]
-    fn address_bar_value_without_scheme_is_read_as_https_host() {
-        let d = |v| domain_of_address(v).unwrap_or_default();
-        assert_eq!(d("github.com/rajgaur98/ai_proctor"), "github.com");
-        assert_eq!(d("www.Example.com"), "example.com");
-        assert_eq!(d("docs.rs:8080/x?q=1"), "docs.rs");
-        assert_eq!(d("localhost:3000/app"), "localhost");
-        assert_eq!(d("127.0.0.1:3000"), "127.0.0.1");
-        assert_eq!(d("  mail.google.com  "), "mail.google.com");
-    }
-
-    #[test]
-    fn address_bar_value_with_a_scheme_follows_domain_of() {
-        assert_eq!(
-            domain_of_address("http://example.com/a").as_deref(),
-            Some("example.com")
-        );
-        assert_eq!(domain_of_address("chrome://settings"), None);
-        assert_eq!(domain_of_address("file:///Users/a/b.html"), None);
-    }
-
-    #[test]
-    fn address_bar_text_that_is_not_a_host_gives_no_domain() {
-        for v in [
-            "",
-            "about:blank",
-            "hello",
-            "best pizza near me",
-            "how to fix a.b error",
-            "/path/only",
-        ] {
-            assert_eq!(domain_of_address(v), None, "{v}");
-        }
-    }
-
-    #[test]
-    fn domain_drops_everything_but_the_host() {
-        let d = |u| domain_of(u).unwrap_or_default();
-        assert_eq!(d("https://www.Example.com/a/b?q=1#frag"), "example.com");
-        assert_eq!(d("http://docs.rs:8080/x"), "docs.rs");
-        assert_eq!(d("https://user:pw@mail.google.com/mail"), "mail.google.com");
-        assert_eq!(d("HTTPS://GitHub.com"), "github.com");
-        assert_eq!(d("https://example.com?x=1"), "example.com");
-        assert_eq!(d("https://example.com./"), "example.com");
-        assert_eq!(d("https://www.example.com:443"), "example.com");
-        assert_eq!(d("  https://a.b.co/  "), "a.b.co");
-    }
-
-    #[test]
-    fn domain_keeps_ip_literals() {
-        assert_eq!(
-            domain_of("http://127.0.0.1:3000/x").as_deref(),
-            Some("127.0.0.1")
-        );
-        assert_eq!(domain_of("http://[::1]:8080/").as_deref(), Some("[::1]"));
-    }
-
-    #[test]
-    fn domain_is_none_for_other_schemes_and_junk() {
-        for url in [
-            "file:///Users/a/b.html",
-            "about:blank",
-            "chrome://settings",
-            "chrome-extension://abc/page.html",
-            "ftp://example.com",
-            "example.com",
-            "",
-            "https://",
-            "https:///path",
-            "https://./",
-            "https://exa mple.com",
-        ] {
-            assert_eq!(domain_of(url), None, "{url}");
-        }
-    }
-
-    #[test]
     fn bgra_is_swapped_to_rgba_with_opaque_alpha() {
         // Two pixels: B,G,R,A = (1,2,3,x) and (4,5,6,x).
         let bytes = [1, 2, 3, 0, 4, 5, 6, 0];
@@ -1898,32 +1769,6 @@ mod tests {
         let luma = mean_luma_bgra(&both, 1, 2, 8).unwrap_or(-1.0);
         assert!((luma - 127.5).abs() < 1e-9);
         assert_eq!(mean_luma_bgra(&[0; 3], 1, 1, 4), None);
-    }
-
-    #[test]
-    fn dark_warm_up_frames_never_settle() {
-        // Identical black frames are stable but have no exposure.
-        assert!(!webcam_frame_ready(3, 12.0, Some(12.0)));
-        assert!(!webcam_frame_ready(2, 0.0, Some(0.0)));
-    }
-
-    #[test]
-    fn first_frame_and_unstable_frames_do_not_settle() {
-        assert!(!webcam_frame_ready(1, 150.0, None));
-        assert!(!webcam_frame_ready(4, 155.0, Some(12.0)));
-        assert!(!webcam_frame_ready(5, 150.0, Some(152.5)));
-    }
-
-    #[test]
-    fn exposed_stable_frame_settles() {
-        assert!(webcam_frame_ready(5, 158.0, Some(157.0)));
-        assert!(webcam_frame_ready(3, 15.0, Some(14.5)));
-    }
-
-    #[test]
-    fn frame_budget_ends_the_wait() {
-        assert!(!webcam_frame_ready(89, 5.0, Some(50.0)));
-        assert!(webcam_frame_ready(90, 5.0, Some(50.0)));
     }
 
     #[test]
