@@ -686,6 +686,7 @@ export type Database = {
           created_at: string;
           created_by: string | null;
           delegate_id: string;
+          end_reason: string | null;
           ended_at: string | null;
           ends_on: string;
           id: string;
@@ -698,6 +699,7 @@ export type Database = {
           created_at?: string;
           created_by?: string | null;
           delegate_id: string;
+          end_reason?: string | null;
           ended_at?: string | null;
           ends_on: string;
           id?: string;
@@ -709,6 +711,7 @@ export type Database = {
           created_at?: string;
           created_by?: string | null;
           delegate_id?: string;
+          end_reason?: string | null;
           ended_at?: string | null;
           ends_on?: string;
           id?: string;
@@ -2280,11 +2283,26 @@ export type Database = {
         Returns: undefined;
       };
       delegate_candidates: {
-        Args: Record<PropertyKey, never>;
+        Args: { p_manager_id?: string };
         Returns: {
           full_name: string;
           id: string;
           role: Database["public"]["Enums"]["user_role"];
+        }[];
+      };
+      delegation_history: {
+        Args: { p_manager_id?: string };
+        Returns: {
+          delegate_id: string;
+          delegate_name: string;
+          end_reason: string;
+          ended_at: string;
+          ends_on: string;
+          id: string;
+          manager_id: string;
+          manager_name: string;
+          starts_on: string;
+          status: string;
         }[];
       };
       due_segment_days: {
