@@ -185,6 +185,34 @@ impl Account {
         Ok(())
     }
 
+    /// AGT-04: acknowledges the notice, then fetches the config again: the server now
+    /// lets this person collect what that version describes (`take_config`).
+    pub fn acknowledge_notice(&self, notice_id: Uuid) -> Result<(), SyncError> {
+        let config = {
+            let syncer = self.syncer.lock().unwrap();
+            let Some(syncer) = syncer.as_ref() else {
+                return Err(SyncError::Retry("not connected yet".into()));
+            };
+            syncer.api().acknowledge_notice(notice_id)?;
+            syncer.config()?
+        };
+        self.keep_config(config);
+        Ok(())
+    }
+
+    /// Fetches the config now (the notice changed under the person's feet).
+    pub fn refresh_config(&self) -> Result<(), SyncError> {
+        let config = {
+            let syncer = self.syncer.lock().unwrap();
+            let Some(syncer) = syncer.as_ref() else {
+                return Err(SyncError::Retry("not connected yet".into()));
+            };
+            syncer.config()?
+        };
+        self.keep_config(config);
+        Ok(())
+    }
+
     /// CHK-23: sends what's queued first, so the server has the check-in.
     pub fn set_miss_reason(
         &self,

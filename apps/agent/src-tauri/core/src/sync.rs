@@ -133,6 +133,10 @@ impl Api {
             .text()
             .map_err(|e| SyncError::Retry(e.to_string()))?;
         if (200..300).contains(&status) {
+            // A function that returns void answers 204 with no body.
+            if text.trim().is_empty() {
+                return Ok(Value::Null);
+            }
             return serde_json::from_str(&text).map_err(|e| SyncError::Refused(e.to_string()));
         }
         Err(rpc_error(status, &text))
@@ -182,6 +186,12 @@ impl Api {
             &json!({ "p_checkin_id": checkin_id, "p_kind": kind, "p_note": note }),
         )
         .map(|_| ())
+    }
+
+    /// AGT-04: acknowledges `notice_id`, which must be the org's current version.
+    pub fn acknowledge_notice(&self, notice_id: Uuid) -> Result<(), SyncError> {
+        self.rpc("acknowledge_notice", &json!({ "p_notice_id": notice_id }))
+            .map(|_| ())
     }
 
     /// Org policy and this person's shifts (#29).

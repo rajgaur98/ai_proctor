@@ -19,6 +19,7 @@ const status: AgentStatus = {
   projects: [],
   last_checkin: null,
   missed_checkin: null,
+  notice: null,
 };
 
 // Every nullable and list field filled in, as the core sends it mid-shift.
@@ -40,6 +41,7 @@ const fullStatus: AgentStatus = {
   ],
   last_checkin: { at: "2026-10-07T05:12:00Z", outcome: "pass" },
   missed_checkin: { id: "c1", at: "2026-10-07T08:33:00Z" },
+  notice: { version: 2, acknowledged: false, required: false },
 };
 
 describe("invoke", () => {
@@ -107,6 +109,48 @@ describe("tray commands", () => {
       expect(a).toEqual(args);
       return { ok: true, error: null };
     });
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("notice", () => {
+  const content = {
+    version: 2,
+    acknowledged: false,
+    body: {
+      intro: "Acme uses AI Proctor.",
+      collected: "A screenshot when you pass a check-in.",
+      when: "Only while clocked in.",
+      who: "Your direct manager and admins.",
+      retention: "Images are deleted after 30 days.",
+      rights: "See and export everything from My data.",
+    },
+  };
+
+  it("reads the notice and accepts none yet", async () => {
+    expect(await invoke("get_notice", {}, async () => content)).toEqual(content);
+    expect(await invoke("get_notice", {}, async () => null)).toBeNull();
+  });
+
+  it("rejects a notice without a required section", async () => {
+    const { rights: _rights, ...partial } = content.body;
+    await expect(
+      invoke("get_notice", {}, async () => ({ ...content, body: partial })),
+    ).rejects.toThrow();
+  });
+
+  it("acknowledges the version on screen, with snake_case arguments", async () => {
+    const calls: unknown[] = [];
+    const result = await invoke("acknowledge_notice", { version: 2 }, async (cmd, args) => {
+      calls.push([cmd, args]);
+      return { ok: false, error: "The notice changed. Read the new version first." };
+    });
+    expect(result.ok).toBe(false);
+    expect(calls).toEqual([["acknowledge_notice", { version: 2 }]]);
+  });
+
+  it("opens the notice window", async () => {
+    const result = await invoke("show_notice", {}, async () => ({ ok: true, error: null }));
     expect(result.ok).toBe(true);
   });
 });

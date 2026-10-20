@@ -80,8 +80,11 @@ export function Tray({ status, receivedAt }: { status: AgentStatus; receivedAt: 
         {view.issues.map((issue) => (
           <PermissionBanner key={issue.kind} issue={issue} />
         ))}
+        {view.notice === "review" && <NoticeReview />}
         {view.missed && <MissedCard missed={view.missed} />}
-        {view.phase === "off_shift" && <OffShift status={status} chip={view.chip} />}
+        {view.phase === "off_shift" && (
+          <OffShift status={status} chip={view.chip} noticeRequired={view.notice === "required"} />
+        )}
         {view.phase === "working" && (
           <Working status={status} chip={view.chip} receivedAt={receivedAt} now={now} />
         )}
@@ -257,7 +260,60 @@ function MissedCard({ missed }: { missed: MissedCheckin }) {
   );
 }
 
-function OffShift({ status, chip }: { status: AgentStatus; chip: ChipKind }) {
+/** AGT-05: a newer notice version is waiting; work carries on under the one acknowledged. */
+function NoticeReview() {
+  const open = useCommand();
+  return (
+    <section className="t-card t-note" aria-labelledby="notice-review-title">
+      <strong id="notice-review-title">The monitoring notice changed</strong>
+      <span>Review it. Until you do, what is collected stays as you acknowledged it.</span>
+      <button
+        type="button"
+        className="btn btn-outline"
+        disabled={open.busy}
+        onClick={() => open.run(() => invoke("show_notice", {}))}
+      >
+        Review the notice
+      </button>
+      <InlineError message={open.error} />
+    </section>
+  );
+}
+
+/** AGT-04: nothing is collected, and nobody clocks in, before the first acknowledgement. */
+function NoticeRequired() {
+  const open = useCommand();
+  return (
+    <>
+      <div className="t-card t-note">
+        <strong>Review the monitoring notice</strong>
+        <span>
+          Read what AI Proctor collects and acknowledge it. Nothing is collected before that, and
+          you can't clock in yet.
+        </span>
+      </div>
+      <button
+        type="button"
+        className="btn btn-primary btn-big"
+        disabled={open.busy}
+        onClick={() => open.run(() => invoke("show_notice", {}))}
+      >
+        Review the monitoring notice
+      </button>
+      <InlineError message={open.error} />
+    </>
+  );
+}
+
+function OffShift({
+  status,
+  chip,
+  noticeRequired,
+}: {
+  status: AgentStatus;
+  chip: ChipKind;
+  noticeRequired: boolean;
+}) {
   const [projectId, setProjectId] = useState(status.project?.id ?? "");
   const clockIn = useCommand();
 
@@ -270,27 +326,33 @@ function OffShift({ status, chip }: { status: AgentStatus; chip: ChipKind }) {
         <div className="t-title">Not clocked in</div>
         <p className="t-sub">Nothing is collected while you're off shift.</p>
       </div>
-      <div className="t-field">
-        <label htmlFor="clock-in-project">
-          Project <span className="t-faint">(optional)</span>
-        </label>
-        <ProjectSelect
-          id="clock-in-project"
-          value={projectId}
-          projects={status.projects}
-          onChange={setProjectId}
-          disabled={clockIn.busy}
-        />
-      </div>
-      <button
-        type="button"
-        className="btn btn-primary btn-big"
-        disabled={clockIn.busy}
-        onClick={() => clockIn.run(() => invoke("clock_in", { project_id: projectId || null }))}
-      >
-        {clockIn.busy ? "Clocking in…" : "Clock in"}
-      </button>
-      <InlineError message={clockIn.error} />
+      {noticeRequired ? (
+        <NoticeRequired />
+      ) : (
+        <>
+          <div className="t-field">
+            <label htmlFor="clock-in-project">
+              Project <span className="t-faint">(optional)</span>
+            </label>
+            <ProjectSelect
+              id="clock-in-project"
+              value={projectId}
+              projects={status.projects}
+              onChange={setProjectId}
+              disabled={clockIn.busy}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-big"
+            disabled={clockIn.busy}
+            onClick={() => clockIn.run(() => invoke("clock_in", { project_id: projectId || null }))}
+          >
+            {clockIn.busy ? "Clocking in…" : "Clock in"}
+          </button>
+          <InlineError message={clockIn.error} />
+        </>
+      )}
     </>
   );
 }

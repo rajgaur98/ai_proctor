@@ -15,6 +15,8 @@ use std::sync::Mutex;
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use uuid::Uuid;
@@ -431,6 +433,46 @@ impl Outbox {
         Ok(Some(serde_json::from_slice(&plain)?))
     }
 
+    /// A small local value (the agent's last-alive time and the like), sealed with
+    /// the outbox key like event payloads, so it can't be edited without the key.
+    /// `key` is bound in as associated data, so a value can't be moved to another key.
+    pub fn set_state(&self, key: &str, value: &str) -> Result<(), OutboxError> {
+        let (nonce, sealed) = self.seal(value.as_bytes(), format!("state:{key}").as_bytes())?;
+        let mut blob = nonce;
+        blob.extend_from_slice(&sealed);
+        self.conn.lock().unwrap().execute(
+            "insert into meta (key, value) values (?1, ?2)
+             on conflict (key) do update set value = excluded.value",
+            params![format!("state:{key}"), BASE64.encode(blob)],
+        )?;
+        Ok(())
+    }
+
+    /// A value from `set_state`; `None` when never set or when it fails to open.
+    pub fn state(&self, key: &str) -> Result<Option<String>, OutboxError> {
+        let stored: Option<String> = self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "select value from meta where key = ?1",
+                params![format!("state:{key}")],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(blob) = stored.and_then(|s| BASE64.decode(s).ok()) else {
+            return Ok(None);
+        };
+        if blob.len() <= NONCE_LEN {
+            return Ok(None);
+        }
+        let (nonce, sealed) = blob.split_at(NONCE_LEN);
+        Ok(self
+            .open_sealed(nonce, sealed, format!("state:{key}").as_bytes())
+            .ok()
+            .and_then(|plain| String::from_utf8(plain).ok()))
+    }
+
     pub fn stats(&self) -> Result<OutboxStats, OutboxError> {
         let conn = self.conn.lock().unwrap();
         let count = |sql: &str| {
@@ -772,5 +814,44 @@ mod tests {
             1,
             "the event is still queued"
         );
+    }
+
+    #[test]
+    fn local_state_survives_a_reopen_and_is_sealed() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let outbox = open(dir.path());
+            assert_eq!(outbox.state("last_alive").unwrap(), None);
+            outbox
+                .set_state("last_alive", "2026-10-19T09:00:00Z")
+                .unwrap();
+            outbox
+                .set_state("last_alive", "2026-10-19T09:00:15Z")
+                .unwrap();
+        }
+        let outbox = open(dir.path());
+        assert_eq!(
+            outbox.state("last_alive").unwrap().as_deref(),
+            Some("2026-10-19T09:00:15Z")
+        );
+        let raw = rusqlite::Connection::open(dir.path().join("outbox.sqlite3")).unwrap();
+        let stored: String = raw
+            .query_row(
+                "select value from meta where key = 'state:last_alive'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!stored.contains("2026"), "not stored in the clear");
+        // Moved under another key, the value no longer opens.
+        raw.execute(
+            "insert into meta (key, value) values ('state:other', ?1)",
+            [stored],
+        )
+        .unwrap();
+        assert_eq!(outbox.state("other").unwrap(), None);
+        // A different key can't read it either.
+        let other_key = Outbox::open(dir.path(), &[9u8; 32]).unwrap();
+        assert_eq!(other_key.state("last_alive").unwrap(), None);
     }
 }

@@ -2,7 +2,10 @@
 //! (LLD section 01). macOS and Windows implement it in `agent-platform`; tests use
 //! `FakePlatform`.
 
+use chrono::{DateTime, Utc};
+
 use crate::contracts::Permissions;
+use crate::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 
 /// Whether the user's session is usable right now.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -24,6 +27,16 @@ impl CallState {
     pub fn in_call(&self) -> bool {
         self.camera || self.mic
     }
+}
+
+/// Why the screen counts as shared (CHK-03). Recorded as the reason on a deferred
+/// check-in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScreenShare {
+    /// A screen share is running (Meet, Zoom, Teams).
+    Sharing,
+    /// A full-screen presentation (slideshow) is running.
+    Presenting,
 }
 
 /// The frontmost app, for activity sampling (#25). Title and domain may be withheld
@@ -109,8 +122,8 @@ pub trait Platform: Send + Sync {
     fn idle_seconds(&self) -> u64;
     fn session_state(&self) -> SessionState;
     fn call_state(&self) -> CallState;
-    /// Screen sharing or a full-screen presentation (CHK-04 deferral).
-    fn screen_shared(&self) -> bool;
+    /// Screen sharing or a full-screen presentation (CHK-03 deferral).
+    fn screen_share(&self) -> Option<ScreenShare>;
     fn foreground(&self) -> Option<Foreground>;
     fn capture_screens(&self, max_width: u32) -> Result<Vec<Frame>, CaptureError>;
     fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError>;
@@ -125,4 +138,14 @@ pub trait Platform: Send + Sync {
     fn stop_input_guard(&self) -> InjectedInput;
     /// OS notification (CHK-13 optional check-in notification).
     fn notify(&self, title: &str, body: &str);
+    /// ANT-01: registers the helper the OS runs to start the agent again if it is
+    /// killed (macOS LaunchAgent, Windows scheduled task). Safe to call at every
+    /// launch: an existing registration with the same content is left alone.
+    fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError>;
+    /// Removes the helper (uninstall, or a dev build trying the agent without one).
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError>;
+    fn watchdog_installed(&self) -> bool;
+    /// When the device last started up, to tell a reboot from a kill (ANT-01).
+    /// `None` when the OS can't say.
+    fn boot_time(&self) -> Option<DateTime<Utc>>;
 }

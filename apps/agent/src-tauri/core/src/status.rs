@@ -1,7 +1,9 @@
 //! Builds the `AgentStatus` the tray popover shows. Raw state only: the dashboard's
 //! status (Active, Idle, Away…) is computed on the server, not here.
 
-use crate::contracts::{AgentStatus, LastCheckin, MissedCheckin, ProjectRef, ShiftState};
+use crate::contracts::{
+    AgentStatus, LastCheckin, MissedCheckin, NoticeStatus, Permissions, ProjectRef, ShiftState,
+};
 use crate::platform::Platform;
 
 /// Everything the tray shows beyond the platform's permissions (EMP-01).
@@ -19,6 +21,10 @@ pub struct Tray {
     pub projects: Vec<ProjectRef>,
     pub last_checkin: Option<LastCheckin>,
     pub missed_checkin: Option<MissedCheckin>,
+    pub notice: Option<NoticeStatus>,
+    /// The permissions to show instead of the platform's own answer, when captures
+    /// have shown it to be wrong (CAP-08).
+    pub permissions: Option<Permissions>,
 }
 
 pub fn agent_status(
@@ -33,7 +39,7 @@ pub fn agent_status(
         signed_in,
         account_email: tray.account_email,
         agent_version: agent_version.to_owned(),
-        permissions: platform.permissions(),
+        permissions: tray.permissions.unwrap_or_else(|| platform.permissions()),
         clocked_in_at: tray.clocked_in_at,
         phase_started_at: tray.phase_started_at,
         pause_ends_at: tray.pause_ends_at,
@@ -45,6 +51,7 @@ pub fn agent_status(
         projects: tray.projects,
         last_checkin: tray.last_checkin,
         missed_checkin: tray.missed_checkin,
+        notice: tray.notice,
     }
 }
 
@@ -65,6 +72,25 @@ mod tests {
         assert_eq!(status.permissions.camera, PermissionState::Granted);
         assert_eq!(status.shift, ShiftState::OffShift);
         assert_eq!(status.agent_version, "0.1.0");
+    }
+
+    #[test]
+    fn a_corrected_reading_replaces_the_platforms() {
+        let fake = FakePlatform::default();
+        let status = agent_status(
+            &fake,
+            ShiftState::Working,
+            true,
+            "0.1.0",
+            Tray {
+                permissions: Some(Permissions {
+                    screen: PermissionState::Denied,
+                    camera: PermissionState::Granted,
+                }),
+                ..Tray::default()
+            },
+        );
+        assert_eq!(status.permissions.screen, PermissionState::Denied);
     }
 
     #[test]

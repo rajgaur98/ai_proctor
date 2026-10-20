@@ -7,8 +7,11 @@
 
 use std::sync::Arc;
 
+use agent_core::checkin::deferred_payload;
 use agent_core::clock::{Clock, SystemClock};
+use agent_core::liveness::{PreviousRun, RestartReport};
 use agent_core::outbox::Outbox;
+use agent_core::scheduler::{Deferral, DeferralReason};
 use agent_core::sync::{
     Api, ApiConfig, DeviceIdentity, Heartbeat, SyncError, Syncer, TokenProvider,
 };
@@ -62,11 +65,33 @@ fn queued_events_and_captures_reach_supabase() {
     outbox
         .append("clock_in", now, 1, json!({ "reason": "manual" }), now)
         .unwrap();
+    // A due check-in held for a call (CHK-03): the real payload must pass the
+    // server's schema and projection.
+    let deferral = Deferral {
+        due_at: now,
+        reason: DeferralReason::Call,
+    };
+    outbox
+        .append("checkin", now, 2, deferred_payload(&deferral, None), now)
+        .unwrap();
+    // A screen share, then a presentation switched to while it runs (STS rule 8): the
+    // call events the presence tracker sends for them must pass the server's schema
+    // and projection.
+    for (event_type, source) in [
+        ("call_start", "screen_share"),
+        ("call_start", "presenting"),
+        ("call_end", "screen_share"),
+        ("call_end", "presenting"),
+    ] {
+        outbox
+            .append(event_type, now, 2, json!({ "source": source }), now)
+            .unwrap();
+    }
     let checkin = outbox
         .append(
             "checkin",
             now,
-            2,
+            3,
             json!({
                 "scheduled_at": now.to_rfc3339_opts(SecondsFormat::Millis, true),
                 "outcome": "pass",
@@ -85,8 +110,29 @@ fn queued_events_and_captures_reach_supabase() {
             now,
         )
         .unwrap();
+    // The watchdog's restart report and a permission report (ANT-01, AGT-07): the
+    // real payloads must pass the server's schema and projection.
+    let restart = RestartReport::new(
+        &PreviousRun {
+            last_alive_at: now - chrono::Duration::seconds(90),
+            clean_exit: false,
+        },
+        None,
+    );
     outbox
-        .append("clock_out", now, 3, json!({ "reason": "manual" }), now)
+        .append("agent_restart", now, 4, restart.payload(), now)
+        .unwrap();
+    outbox
+        .append(
+            "permission_change",
+            now,
+            5,
+            json!({ "screen": "granted", "camera": "granted" }),
+            now,
+        )
+        .unwrap();
+    outbox
+        .append("clock_out", now, 6, json!({ "reason": "manual" }), now)
         .unwrap();
 
     let syncer = Syncer::new(
@@ -103,7 +149,7 @@ fn queued_events_and_captures_reach_supabase() {
     let stats = syncer.sync_once().unwrap();
     assert_eq!(
         (stats.accepted, stats.rejected, stats.uploaded),
-        (3, 0, 1),
+        (10, 0, 1),
         "{stats:?}"
     );
     assert_eq!(outbox.stats().unwrap().pending_events, 0);
@@ -130,4 +176,17 @@ fn queued_events_and_captures_reach_supabase() {
         syncer.clock_offset().num_seconds().abs() < 5,
         "local stack shares this clock"
     );
+
+    // AGT-04/05: the config carries the notice; acknowledging the current version
+    // (a no-op if the seed already did) leaves this person acknowledged.
+    let notice = syncer
+        .config()
+        .unwrap()
+        .notice
+        .expect("the org has a notice");
+    syncer.api().acknowledge_notice(notice.id).unwrap();
+    syncer.api().acknowledge_notice(notice.id).unwrap();
+    let after = syncer.config().unwrap().notice.unwrap();
+    assert!(after.acknowledged, "{after:?}");
+    assert_eq!(after.acknowledged_version, Some(after.version));
 }

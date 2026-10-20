@@ -20,6 +20,13 @@ export interface PermissionIssue {
 /** Which status chip to draw; "blocked" is the design's "Capture blocked". */
 export type ChipKind = "off" | "active" | "paused" | "break" | "blocked";
 
+/**
+ * What the tray says about the monitoring notice (#48): "required" while nothing has been
+ * acknowledged (clocking in is blocked), "review" when a newer version is waiting (work
+ * carries on under the old one), null otherwise.
+ */
+export type NoticePrompt = "required" | "review" | null;
+
 export interface TrayView {
   phase: ShiftState;
   chip: ChipKind;
@@ -27,6 +34,13 @@ export interface TrayView {
   issues: PermissionIssue[];
   /** A miss today without a reason yet; the reason card sits above the phase content. */
   missed: MissedCheckin | null;
+  notice: NoticePrompt;
+}
+
+export function noticePrompt(notice: AgentStatus["notice"]): NoticePrompt {
+  if (!notice) return null;
+  if (notice.required) return "required";
+  return notice.acknowledged ? null : "review";
 }
 
 /** Quick picks for a missed check-in (CHK-23), in the order the design shows them. */
@@ -78,7 +92,13 @@ export function trayView(status: AgentStatus): TrayView {
           : issues.length > 0
             ? "blocked"
             : "active";
-  return { phase: status.shift, chip, issues, missed: status.missed_checkin };
+  return {
+    phase: status.shift,
+    chip,
+    issues,
+    missed: status.missed_checkin,
+    notice: noticePrompt(status.notice),
+  };
 }
 
 export const chipLabel: Record<ChipKind, string> = {

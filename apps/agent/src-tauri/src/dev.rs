@@ -60,8 +60,8 @@ impl Platform for ActiveSession {
     fn call_state(&self) -> CallState {
         self.0.call_state()
     }
-    fn screen_shared(&self) -> bool {
-        self.0.screen_shared()
+    fn screen_share(&self) -> Option<agent_core::platform::ScreenShare> {
+        self.0.screen_share()
     }
     fn foreground(&self) -> Option<Foreground> {
         self.0.foreground()
@@ -83,6 +83,21 @@ impl Platform for ActiveSession {
     }
     fn notify(&self, title: &str, body: &str) {
         self.0.notify(title, body)
+    }
+    fn install_watchdog(
+        &self,
+        spec: &agent_core::watchdog::WatchdogSpec,
+    ) -> Result<agent_core::watchdog::WatchdogState, agent_core::watchdog::WatchdogError> {
+        self.0.install_watchdog(spec)
+    }
+    fn uninstall_watchdog(&self) -> Result<(), agent_core::watchdog::WatchdogError> {
+        self.0.uninstall_watchdog()
+    }
+    fn watchdog_installed(&self) -> bool {
+        self.0.watchdog_installed()
+    }
+    fn boot_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.0.boot_time()
     }
 }
 

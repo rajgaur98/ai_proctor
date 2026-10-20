@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::platform::{InjectedInput, Platform, SessionState};
-use crate::scheduler::{Outcome, Random};
+use crate::scheduler::{Deferral, Outcome, Random};
 
 /// CHK-20: 90 s by default, 30–300 s per org.
 pub const DEFAULT_COUNTDOWN: Duration = Duration::seconds(90);
@@ -223,6 +223,25 @@ impl Card {
     }
 }
 
+/// The `checkin` event for a due check-in that was held for a call, a share or a
+/// presentation (CHK-03): nothing was shown, so no response and no capture.
+pub fn deferred_payload(deferral: &Deferral, project_id: Option<Uuid>) -> Value {
+    json!({
+        "scheduled_at": deferral.due_at,
+        "shown_at": null,
+        "responded_at": null,
+        "outcome": "deferred",
+        "deferral_reason": deferral.reason.as_str(),
+        "response_ms": null,
+        "wrong_clicks": 0,
+        "idle_s_at_show": null,
+        "device_state": null,
+        "object_keys": [],
+        "project_id": project_id,
+        "flags": [],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,5 +416,24 @@ mod tests {
         assert!(done.payload["responded_at"].is_null());
         assert!(done.payload["response_ms"].is_null());
         assert_eq!(done.payload["object_keys"], json!([]));
+    }
+
+    #[test]
+    fn a_deferral_records_the_due_time_and_reason_with_no_response_or_capture() {
+        use crate::scheduler::DeferralReason;
+        let payload = deferred_payload(
+            &Deferral {
+                due_at: t("2026-10-20T10:00:00Z"),
+                reason: DeferralReason::ScreenShare,
+            },
+            None,
+        );
+        assert_eq!(payload["outcome"], "deferred");
+        assert_eq!(payload["deferral_reason"], "screen_share");
+        assert_eq!(payload["scheduled_at"], "2026-10-20T10:00:00Z");
+        assert!(payload["shown_at"].is_null());
+        assert!(payload["responded_at"].is_null());
+        assert!(payload["response_ms"].is_null());
+        assert_eq!(payload["object_keys"], json!([]));
     }
 }
