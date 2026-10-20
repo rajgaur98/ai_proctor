@@ -190,7 +190,7 @@ function PermissionBanner({ issue }: { issue: PermissionIssue }) {
         type="button"
         className="btn btn-warn"
         disabled={open.busy}
-        onClick={() => open.run(() => invoke("open_link", { target: issue.target }))}
+        onClick={() => open.run(() => invoke("show_onboarding", { step: 2 }))}
       >
         Fix
       </button>

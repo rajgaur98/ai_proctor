@@ -17,10 +17,15 @@ import {
   NoticeBody,
   NoticeContent,
   NoticeStatus,
+  OnboardingPlatform,
+  OnboardingState,
+  PermissionKind,
   PermissionState,
   Permissions,
   ProjectRef,
   ShiftState,
+  TestCaptureFailure,
+  TestCaptureResult,
 } from "../src/ipc.ts";
 
 const registry = z.registry<{ id: string }>();
@@ -39,6 +44,11 @@ for (const schema of [
   CommandResult,
   CardChallenge,
   CardClickResult,
+  PermissionKind,
+  OnboardingPlatform,
+  OnboardingState,
+  TestCaptureFailure,
+  TestCaptureResult,
 ]) {
   const id = schema.meta()?.id;
   if (typeof id !== "string") throw new Error("every IPC schema needs a meta id");

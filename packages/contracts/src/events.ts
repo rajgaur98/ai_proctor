@@ -64,6 +64,8 @@ const payloads = {
       .strictObject({ screen: CaptureFailure.optional(), webcam: CaptureFailure.optional() })
       .optional(),
     project_id: uuid.nullable().optional(),
+    // Raw anti-cheat state; the server decides what it means (ANT-08). The Windows
+    // agent adds `injected_click:<n>` when it blocked n injected clicks on the card.
     flags: z.array(z.string().max(40)).max(10),
   }),
   idle_start: z.strictObject({ since: timestamp }),

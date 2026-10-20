@@ -21,14 +21,18 @@ use agent_core::clock::{Clock, SystemClock};
 use agent_core::config::ProjectConfig;
 use agent_core::contracts::{
     AgentStatus, CardChallenge, CardClickResult, CheckinOutcome, CommandResult, LastCheckin,
-    MissedCheckin, NoticeContent, Permissions, ProjectRef, ShiftState,
+    MissedCheckin, NoticeContent, OnboardingPlatform, OnboardingState, PermissionKind, Permissions,
+    ProjectRef, ShiftState, TestCaptureResult,
 };
 use agent_core::keystore::KeyStore;
 use agent_core::liveness::{Liveness, PreviousRun, RestartReport};
 use agent_core::notice::NoticeState;
+use agent_core::onboarding::{
+    self, FileOnboardingStore, MemoryOnboardingStore, Onboarding, OnboardingStore,
+};
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
 use agent_core::permissions::{PermissionMonitor, Required};
-use agent_core::platform::{Platform, SessionState};
+use agent_core::platform::{Platform, ScreenRect, SessionState};
 use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{
     Decision, FileScheduleStore, Outcome, Random, SchedulePolicy, Scheduler, ThreadRandom,
@@ -47,6 +51,8 @@ const POPOVER: &str = "popover";
 
 /// Event names; must match `ipcEvents` in packages/contracts/src/ipc.ts.
 pub const EVENT_STATUS_CHANGED: &str = "status_changed";
+pub const EVENT_ONBOARDING_OPEN: &str = "onboarding_open";
+pub const EVENT_ONBOARDING_CLOSED: &str = "onboarding_closed";
 
 /// How often the session's time-driven rules run (auto clock-in, pause end,
 /// forgotten clock-out).
@@ -101,14 +107,17 @@ pub struct AgentState {
     outbox: Option<Arc<Outbox>>,
     /// The card on screen, if any.
     card: Mutex<Option<Card>>,
-    card_policy: CardPolicy,
-    capture_policy: CapturePolicy,
+    /// Org card settings (response window) from the server's config (CHK-13).
+    card_policy: Mutex<CardPolicy>,
+    /// Org capture settings from the server's config: what this person has
+    /// acknowledged (#144, CAP-01..05).
+    capture_policy: Mutex<CapturePolicy>,
     /// Capture permissions: reported on change, asked about while missing (AGT-07).
     permissions: Mutex<PermissionMonitor>,
     /// Last-alive evidence for the watchdog's restart report (ANT-01); `None` when
     /// the keychain is unavailable.
     liveness: Option<Liveness>,
-    /// Activity sampling (#25); org settings arrive with the policy work.
+    /// Activity sampling (#25); sampling and titles follow the server's config.
     activity: Mutex<Sampler>,
     /// Idle, lock, sleep and call changes sent as events (STS-01).
     presence: Mutex<PresenceTracker>,
@@ -128,6 +137,8 @@ pub struct AgentState {
     /// The monitoring notice from the server's config (#48); nothing is collected
     /// until it has been acknowledged.
     notice: Mutex<NoticeState>,
+    /// Guided permission onboarding on this device (#59; AGT-03).
+    onboarding: Mutex<Onboarding>,
 }
 
 impl AgentState {
@@ -142,9 +153,14 @@ impl AgentState {
         // AGT-04: with a server, nobody clocks in until its config says they have
         // acknowledged a notice (a build without a server has nothing to show).
         let mut session = session;
-        if account.is_some() {
+        // The same until the config says what they acknowledged: nothing is captured
+        // or sampled (#144).
+        let (capture_policy, activity_policy) = if account.is_some() {
             session.set_collection_allowed(false);
-        }
+            (CapturePolicy::off(), ActivityPolicy::off())
+        } else {
+            (CapturePolicy::default(), ActivityPolicy::default())
+        };
         let (liveness, previous_run) = match &outbox {
             Some(outbox) => {
                 let (liveness, previous) = Liveness::start(outbox.clone(), clock.now());
@@ -159,12 +175,12 @@ impl AgentState {
             scheduler,
             outbox,
             card: Mutex::new(None),
-            // Org card settings arrive with the policy work; defaults until then.
-            card_policy: CardPolicy::default(),
-            capture_policy: CapturePolicy::default(),
+            // Org card settings arrive with the server's config; defaults until then.
+            card_policy: Mutex::new(CardPolicy::default()),
+            capture_policy: Mutex::new(capture_policy),
             permissions: Mutex::new(PermissionMonitor::default()),
             liveness,
-            activity: Mutex::new(Sampler::new(ActivityPolicy::default())),
+            activity: Mutex::new(Sampler::new(activity_policy)),
             presence: Mutex::new(PresenceTracker::default()),
             sync_thread: Mutex::new(None),
             random: Arc::new(ThreadRandom),
@@ -175,12 +191,19 @@ impl AgentState {
             account,
             last_redirect: Mutex::new(None),
             notice: Mutex::new(NoticeState::default()),
+            onboarding: Mutex::new(Onboarding::new(Arc::new(MemoryOnboardingStore::default()))),
         };
         state.sync_schedule();
         if let Some(previous) = previous_run {
             state.report_restart(&previous);
         }
         state
+    }
+
+    /// Where "onboarding finished on this device" is kept (the app's data directory).
+    pub fn with_onboarding_store(self, store: Arc<dyn OnboardingStore>) -> Self {
+        *self.onboarding.lock().unwrap() = Onboarding::new(store);
+        self
     }
 
     /// ANT-01: this run follows one that ended during a shift. Says how it ended
@@ -308,13 +331,16 @@ impl AgentState {
     fn card_tick(&self) -> CardAction {
         let now = self.clock.now();
         let mut card = self.card.lock().unwrap();
-        if let Some(current) = card.as_ref() {
+        if let Some(current) = card.as_mut() {
             if self.session.lock().unwrap().shift() != ShiftState::Working {
                 tracing::info!("check-in cancelled by a shift change");
+                // Nothing is reported for a card that was cancelled.
+                self.platform.stop_input_guard();
                 *card = None;
                 return CardAction::Hide;
             }
             if current.expired(now) {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Miss, now);
                 *card = None;
                 self.record(finished);
@@ -335,22 +361,41 @@ impl AgentState {
             }
             _ => return CardAction::Nothing,
         };
+        let card_policy = self.card_policy.lock().unwrap().clone();
         let shown = Card::show(
             scheduled_at,
             now,
-            &self.card_policy,
+            &card_policy,
             self.platform.as_ref(),
             self.random.as_ref(),
             self.session.lock().unwrap().project_id(),
         );
         tracing::info!(card = %shown.id, "check-in shown");
-        if self.card_policy.notify {
+        if card_policy.notify {
             self.platform
                 .notify("Check-in", "Click the number shown on the card.");
         }
         let challenge = self.challenge(&shown);
         *card = Some(shown);
         CardAction::Show(challenge)
+    }
+
+    /// ANT-02: while the card is up, injected clicks inside it are swallowed and
+    /// counted by the platform. Only starts if the card is still current (it may
+    /// have ended while its window was being placed); `area` is the card window.
+    fn start_input_guard(&self, area: ScreenRect) {
+        if self.card.lock().unwrap().is_some() {
+            self.platform.start_input_guard(area);
+        }
+    }
+
+    /// Stops the guard and notes what it swallowed on the card, for its flags.
+    fn end_input_guard(&self, card: &mut Card) {
+        let injected = self.platform.stop_input_guard();
+        if injected.count > 0 {
+            tracing::warn!(count = injected.count, "injected clicks on the card");
+        }
+        card.record_injected(injected);
     }
 
     /// The card on screen, as the card window shows it.
@@ -391,6 +436,7 @@ impl AgentState {
                 ..ClickReply::just(CardClickResult::Wrong)
             },
             ClickResult::Pass => {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Pass, now);
                 *card = None;
                 self.scheduler.finished(Outcome::Pass);
@@ -400,6 +446,7 @@ impl AgentState {
                 }
             }
             ClickResult::Failed => {
+                self.end_input_guard(current);
                 let finished = current.finish(Outcome::Failed, now);
                 *card = None;
                 self.record(finished);
@@ -412,7 +459,8 @@ impl AgentState {
     /// check-in with the file names; the files upload once the server has
     /// accepted it. Takes ~2 s (camera warm-up): never on the UI thread.
     fn finish_pass(&self, mut finished: Finished) {
-        let captured = capture::capture(self.platform.as_ref(), &self.capture_policy);
+        let policy = self.capture_policy.lock().unwrap().clone();
+        let captured = capture::capture(self.platform.as_ref(), &policy);
         tracing::info!(
             files = captured.files.len(),
             screen_error = ?captured.screen_error,
@@ -420,9 +468,8 @@ impl AgentState {
             "captured"
         );
         self.permissions.lock().unwrap().capture_finished(
-            (self.capture_policy.screenshots != capture::ScreenshotMode::Off)
-                .then_some(&captured.screen_error),
-            self.capture_policy.webcam.then_some(&captured.webcam_error),
+            (policy.screenshots != capture::ScreenshotMode::Off).then_some(&captured.screen_error),
+            policy.webcam.then_some(&captured.webcam_error),
         );
         self.permission_tick();
         captured.attach(&mut finished.payload);
@@ -458,7 +505,7 @@ impl AgentState {
         let poll = self.permissions.lock().unwrap().poll(
             self.platform.as_ref(),
             Required {
-                camera: self.capture_policy.webcam,
+                camera: self.webcam_on(),
             },
             signed_in,
             shift,
@@ -471,6 +518,76 @@ impl AgentState {
             tracing::warn!(title = %prompt.title, "asking the person to fix a permission");
             self.platform.notify(&prompt.title, &prompt.body);
         }
+    }
+
+    /// The org's effective webcam setting: whether Camera is asked for at all.
+    fn webcam_on(&self) -> bool {
+        self.capture_policy.lock().unwrap().webcam
+    }
+
+    // --- Guided onboarding (#59; AGT-03) ---------------------------------------------
+
+    /// What the onboarding window's permission and finish steps show.
+    fn onboarding_state(&self) -> OnboardingState {
+        onboarding::state(
+            current_os(),
+            self.effective_permissions(),
+            self.webcam_on(),
+            &self.onboarding.lock().unwrap(),
+        )
+    }
+
+    /// "Open System Settings": asks the OS (macOS shows its prompt the first time).
+    fn ask_permission(&self, kind: PermissionKind) {
+        tracing::info!(?kind, "asking the OS for a permission");
+        self.platform.request_permission(kind);
+    }
+
+    /// One real capture through the same pipeline as a check-in, returned for the
+    /// window to show. Nothing is queued, uploaded or written: the images exist only
+    /// in this reply. Blocks about 2 s (camera warm-up): never on the UI thread.
+    fn test_capture(&self) -> TestCaptureResult {
+        let policy = self.capture_policy.lock().unwrap().clone();
+        let captured = capture::capture(self.platform.as_ref(), &policy);
+        let os = self.platform.permissions();
+        tracing::info!(
+            files = captured.files.len(),
+            screen_error = ?captured.screen_error,
+            webcam_error = ?captured.webcam_error,
+            "test capture"
+        );
+        self.onboarding
+            .lock()
+            .unwrap()
+            .capture_tested(&captured, &os);
+        onboarding::test_result(&captured, &os)
+    }
+
+    /// "Looks good": remembers on this device that onboarding is done, as long as
+    /// what the flow asks for is on.
+    fn finish_onboarding(&self) -> Result<(), String> {
+        let state = self.onboarding_state();
+        if !state.ready {
+            return Err("Turn on the permissions first.".into());
+        }
+        self.onboarding.lock().unwrap().complete(self.clock.now());
+        tracing::info!("onboarding finished");
+        Ok(())
+    }
+
+    /// True once per run: someone who acknowledged a notice but hasn't onboarded on
+    /// this device gets the permission step.
+    fn take_onboarding_prompt(&self) -> bool {
+        let signed_in = self.session.lock().unwrap().signed_in();
+        let acknowledged = self.notice.lock().unwrap().collection_allowed();
+        self.onboarding
+            .lock()
+            .unwrap()
+            .take_prompt(signed_in, acknowledged)
+    }
+
+    fn onboarding_opened(&self, step: u8) {
+        self.onboarding.lock().unwrap().opened_at(step);
     }
 
     fn report_permissions(&self, permissions: &Permissions) {
@@ -494,7 +611,11 @@ impl AgentState {
     /// else ends the current buckets. Finished minutes go to the outbox.
     fn activity_tick(&self) {
         let collecting = self.session.lock().unwrap().collecting();
-        let foreground = collecting.then(|| self.platform.foreground()).flatten();
+        let sampling = self.activity.lock().unwrap().sampling();
+        // With sampling off the frontmost app isn't even read.
+        let foreground = (collecting && sampling)
+            .then(|| self.platform.foreground())
+            .flatten();
         let now = self.clock.now();
         let sessions = {
             let mut sampler = self.activity.lock().unwrap();
@@ -580,7 +701,7 @@ impl AgentState {
             options: card.challenge.options.map(i64::from),
             remaining_s: card.remaining_s(self.clock.now()).into(),
             wrong_clicks: card.wrong_clicks.into(),
-            sound: self.card_policy.sound,
+            sound: self.card_policy.lock().unwrap().sound,
             project: self.session.lock().unwrap().project_id().and_then(|id| {
                 self.projects
                     .lock()
@@ -720,6 +841,14 @@ impl AgentState {
         self.notice.lock().unwrap().clear();
         if self.account.is_some() {
             self.session.lock().unwrap().set_collection_allowed(false);
+            // Whatever the last person was allowed to collect stops with them.
+            *self.capture_policy.lock().unwrap() = CapturePolicy::off();
+            let sessions = self
+                .activity
+                .lock()
+                .unwrap()
+                .set_policy(ActivityPolicy::off());
+            self.queue_activity(sessions);
         }
     }
 
@@ -839,16 +968,42 @@ impl AgentState {
         }
         *self.projects.lock().unwrap() = config.projects.clone();
         *self.pause_daily_cap_s.lock().unwrap() = config.pause_daily_cap_s();
-        // Same setting the server uses for Idle (minutes; default 10).
-        if let Some(min) = config.policy["idle_threshold_min"]
-            .as_i64()
-            .filter(|m| (1..=240).contains(m))
-        {
-            self.presence
-                .lock()
-                .unwrap()
-                .set_idle_threshold(chrono::Duration::minutes(min));
+        self.apply_collection_policy(config);
+        // CHK-01, CHK-13: the next draw and the next card use these; a check-in
+        // already armed or on screen keeps what it was drawn or shown with.
+        if dev_schedule_policy().is_none() {
+            self.scheduler.set_policy(config.schedule_policy());
         }
+        self.card_policy.lock().unwrap().countdown = config.card_policy().countdown;
+        // Same setting the server uses for Idle (minutes; default 10).
+        self.presence
+            .lock()
+            .unwrap()
+            .set_idle_threshold(config.idle_threshold());
+    }
+
+    /// CAP-01..05, ACT-02/03, AGT-05: what is captured and sampled. The collection
+    /// keys in the config are what this person acknowledged, so a newer policy that
+    /// widens collection changes nothing here until they acknowledge it. Without
+    /// any acknowledged notice nothing runs, whatever the keys say.
+    fn apply_collection_policy(&self, config: &agent_core::config::AgentConfig) {
+        let allowed = self.notice.lock().unwrap().collection_allowed();
+        let (capture, activity) = if allowed {
+            (config.capture_policy(), config.activity_policy())
+        } else {
+            (CapturePolicy::off(), ActivityPolicy::off())
+        };
+        tracing::info!(
+            screenshots = ?capture.screenshots,
+            webcam = capture.webcam,
+            excluded_apps = capture.excluded_apps.len(),
+            sampling = activity.sampling,
+            window_titles = activity.window_titles,
+            "collection policy updated"
+        );
+        *self.capture_policy.lock().unwrap() = capture;
+        let sessions = self.activity.lock().unwrap().set_policy(activity);
+        self.queue_activity(sessions);
     }
 
     /// Runs a transition; failures are logged and shown as a notification.
@@ -956,26 +1111,22 @@ fn get_notice(state: tauri::State<'_, AgentState>) -> Option<NoticeContent> {
     state.notice_content()
 }
 
-/// `show_notice`: opens the notice window (the tray's "Review the monitoring notice").
+/// `show_notice`: opens the onboarding window at its first step, the notice (the tray's
+/// "Review the monitoring notice").
 #[tauri::command(rename_all = "snake_case")]
 fn show_notice(app: AppHandle) -> CommandResult {
-    notice_window::show(&app);
-    CommandResult {
-        ok: true,
-        error: None,
-    }
+    open_onboarding(&app, onboarding::FIRST_STEP);
+    result_of(Ok(()))
 }
 
-/// `acknowledge_notice`: network call, so off the UI thread. Closes the window on success.
+/// `acknowledge_notice`: network call, so off the UI thread. The window stays open: it
+/// carries on to the permissions, or closes itself when onboarding is already done.
 #[tauri::command(rename_all = "snake_case")]
 async fn acknowledge_notice(app: AppHandle, version: i64) -> CommandResult {
     off_main_thread(move || {
         let state = app.state::<AgentState>();
         let result = state.acknowledge_notice(version);
         emit_status(&app);
-        if result.is_ok() {
-            notice_window::hide(&app);
-        }
         result
     })
     .await
@@ -1131,43 +1282,154 @@ async fn set_miss_reason(
     .await
 }
 
-/// My data and the notice live on the dashboard (#48, #49); the privacy panes
-/// are where a missing permission is fixed (#58, #59).
+/// The OS settings page to fix a permission, or `None` for a target with none on this
+/// OS (Windows needs no Screen Recording permission).
+fn settings_url(target: &str, windows: bool) -> Option<&'static str> {
+    match (target, windows) {
+        ("screen_settings", false) => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        }
+        ("camera_settings", false) => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")
+        }
+        ("camera_settings", true) => Some("ms-settings:privacy-webcam"),
+        _ => None,
+    }
+}
+
+fn open_url(url: &str) -> Result<(), String> {
+    let opened = if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+    } else {
+        std::process::Command::new("open").arg(url).spawn()
+    };
+    opened.map(|_| ()).map_err(|error| error.to_string())
+}
+
+fn result_of(result: Result<(), String>) -> CommandResult {
+    CommandResult {
+        ok: result.is_ok(),
+        error: result.err(),
+    }
+}
+
+/// My data and the notice live on the dashboard (#48, #49); the privacy pages are
+/// where a missing permission is fixed (#58, #59).
 #[tauri::command(rename_all = "snake_case")]
 fn open_link(target: String) -> CommandResult {
     let dashboard = account::dashboard_url();
     let url = match target.as_str() {
         "my_data" => format!("{dashboard}/me"),
         "notice" => format!("{dashboard}/notice"),
-        "screen_settings" => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture".into()
-        }
-        "camera_settings" => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera".into()
-        }
-        _ => {
-            return CommandResult {
-                ok: false,
-                error: Some("Unknown link.".into()),
-            }
-        }
+        other => match settings_url(other, cfg!(target_os = "windows")) {
+            Some(url) => url.to_owned(),
+            None => return result_of(Err("Unknown link.".into())),
+        },
     };
-    let opened = if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &url])
-            .spawn()
+    result_of(open_url(&url))
+}
+
+/// `onboarding_state`: the permissions and what the flow may let through.
+#[tauri::command(rename_all = "snake_case")]
+fn onboarding_state(state: tauri::State<'_, AgentState>) -> OnboardingState {
+    state.onboarding_state()
+}
+
+/// `request_permission`: asks the OS, then opens the matching privacy page. Off the UI
+/// thread: the OS calls can block for a moment.
+#[tauri::command(rename_all = "snake_case")]
+async fn request_permission(app: AppHandle, kind: PermissionKind) -> CommandResult {
+    off_main_thread(move || {
+        app.state::<AgentState>().ask_permission(kind);
+        let target = match kind {
+            PermissionKind::Screen => "screen_settings",
+            PermissionKind::Camera => "camera_settings",
+        };
+        match settings_url(target, cfg!(target_os = "windows")) {
+            Some(url) => open_url(url),
+            // Nothing to open (Windows Screen Recording): the OS asks for nothing.
+            None => Ok(()),
+        }
+    })
+    .await
+}
+
+/// `test_capture`: takes ~2 s, so off the UI thread. The reply is the only copy.
+#[tauri::command(rename_all = "snake_case")]
+async fn test_capture(app: AppHandle) -> Result<TestCaptureResult, String> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<AgentState>().test_capture())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// `finish_onboarding`: "Looks good".
+#[tauri::command(rename_all = "snake_case")]
+fn finish_onboarding(app: AppHandle) -> CommandResult {
+    result_of(app.state::<AgentState>().finish_onboarding())
+}
+
+/// `show_onboarding`: opens the flow at `step` (the permission warning's Fix opens step 2).
+#[tauri::command(rename_all = "snake_case")]
+fn show_onboarding(app: AppHandle, step: i64) -> CommandResult {
+    let step = u8::try_from(step)
+        .ok()
+        .filter(|s| (onboarding::FIRST_STEP..=onboarding::LAST_STEP).contains(s));
+    match step {
+        Some(step) => {
+            open_onboarding(&app, step);
+            result_of(Ok(()))
+        }
+        None => result_of(Err("Unknown step.".into())),
+    }
+}
+
+/// `close_onboarding`: hides the window; the test images go with it.
+#[tauri::command(rename_all = "snake_case")]
+fn close_onboarding(app: AppHandle) -> CommandResult {
+    notice_window::hide(&app);
+    result_of(Ok(()))
+}
+
+/// Exit code of a restart that the watchdog answers (any non-zero one).
+const RESTART_EXIT_CODE: i32 = 75;
+
+/// How `restart_app` brings the app back.
+#[derive(Debug, PartialEq, Eq)]
+enum Restart {
+    /// No watchdog: start a new process, then exit.
+    Respawn,
+    /// The watchdog restarts the agent after an exit that isn't a plain success; a
+    /// process this one started would be taken down with its job, or find the job
+    /// still running and hand over to it.
+    LetTheWatchdog,
+}
+
+fn restart_plan(platform: &dyn Platform) -> Restart {
+    if platform.watchdog_installed() {
+        Restart::LetTheWatchdog
     } else {
-        std::process::Command::new("open").arg(&url).spawn()
-    };
-    match opened {
-        Ok(_) => CommandResult {
-            ok: true,
-            error: None,
-        },
-        Err(error) => CommandResult {
-            ok: false,
-            error: Some(error.to_string()),
-        },
+        Restart::Respawn
+    }
+}
+
+/// `restart_app`: macOS applies a new Screen Recording grant to a fresh process.
+#[tauri::command(rename_all = "snake_case")]
+fn restart_app(app: AppHandle) -> CommandResult {
+    let state = app.state::<AgentState>();
+    // A deliberate exit: the next run reads it as `exited`, not `killed` (ANT-01).
+    state.exited();
+    match restart_plan(state.platform.as_ref()) {
+        Restart::Respawn => {
+            tracing::info!("restart: starting a new process");
+            app.restart()
+        }
+        Restart::LetTheWatchdog => {
+            tracing::info!("restart: exiting for the watchdog to start the agent again");
+            app.exit(RESTART_EXIT_CODE);
+            result_of(Ok(()))
+        }
     }
 }
 
@@ -1197,11 +1459,39 @@ fn emit_status(app: &AppHandle) {
     let _ = app.emit_to(notice_window::LABEL, EVENT_STATUS_CHANGED, status);
 }
 
-/// Opens the notice window when the server's config brought a version this person
-/// hasn't acknowledged (AGT-04 first time, AGT-05 later), once per version.
-fn prompt_notice_if_due(app: &AppHandle) {
-    if app.state::<AgentState>().take_notice_prompt() {
-        notice_window::show(app);
+/// Brings the onboarding window up at `step` (1 notice, 2 permissions, 3 test capture,
+/// 4 done). The window may already be open: the event starts it from there.
+fn open_onboarding(app: &AppHandle, step: u8) {
+    app.state::<AgentState>().onboarding_opened(step);
+    let _ = app.emit_to(
+        notice_window::LABEL,
+        EVENT_ONBOARDING_OPEN,
+        serde_json::json!({ "step": step }),
+    );
+    emit_status(app);
+    notice_window::show(app);
+}
+
+/// Opens the window when the server's config brought a notice version this person
+/// hasn't acknowledged (AGT-04 first time, AGT-05 later), once per version; or, for
+/// someone who has acknowledged but not yet onboarded on this device, at the
+/// permissions (AGT-03), once per run.
+fn prompt_if_due(app: &AppHandle) {
+    let state = app.state::<AgentState>();
+    if state.take_notice_prompt() {
+        open_onboarding(app, onboarding::FIRST_STEP);
+    } else if state.take_onboarding_prompt() {
+        open_onboarding(app, onboarding::PERMISSIONS_STEP);
+    }
+}
+
+fn current_os() -> OnboardingPlatform {
+    if cfg!(target_os = "macos") {
+        OnboardingPlatform::Macos
+    } else if cfg!(target_os = "windows") {
+        OnboardingPlatform::Windows
+    } else {
+        OnboardingPlatform::Other
     }
 }
 
@@ -1227,15 +1517,14 @@ fn handle_deep_links(app: &AppHandle, urls: Vec<tauri::Url>) {
             let state = app.state::<AgentState>();
             state.complete_sign_in(&url);
             emit_status(&app);
-            prompt_notice_if_due(&app);
+            prompt_if_due(&app);
         });
     }
 }
 
-/// Org intervals arrive with the policy work; defaults until then. Debug builds
-/// accept `AI_PROCTOR_DEV_CHECKIN_S` (one fixed interval, in seconds) so the card
-/// can be tried by hand.
-fn schedule_policy() -> SchedulePolicy {
+/// Debug builds accept `AI_PROCTOR_DEV_CHECKIN_S` (one fixed interval, in seconds)
+/// so the card can be tried by hand. It wins over the org's intervals.
+fn dev_schedule_policy() -> Option<SchedulePolicy> {
     #[cfg(debug_assertions)]
     if let Some(s) = std::env::var("AI_PROCTOR_DEV_CHECKIN_S")
         .ok()
@@ -1243,12 +1532,17 @@ fn schedule_policy() -> SchedulePolicy {
     {
         tracing::warn!(seconds = s, "dev check-in interval");
         let every = chrono::Duration::seconds(s.max(5));
-        return SchedulePolicy {
+        return Some(SchedulePolicy {
             min: every,
             max: every,
-        };
+        });
     }
-    SchedulePolicy::default()
+    None
+}
+
+/// The intervals until the server's config arrives: the defaults (20-90 min).
+fn schedule_policy() -> SchedulePolicy {
+    dev_schedule_policy().unwrap_or_default()
 }
 
 fn open_account(
@@ -1297,7 +1591,14 @@ pub fn run() {
             open_link,
             get_notice,
             show_notice,
-            acknowledge_notice
+            acknowledge_notice,
+            onboarding_state,
+            request_permission,
+            test_capture,
+            finish_onboarding,
+            show_onboarding,
+            close_onboarding,
+            restart_app
         ])
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
@@ -1328,10 +1629,11 @@ pub fn run() {
                 }
             };
             let clock: Arc<dyn Clock> = Arc::new(SystemClock::default());
-            // Debug builds only, until guided onboarding (#59) asks properly.
+            // Debug builds only. Screen Recording and Camera come from the onboarding
+            // flow; Accessibility (browser domains, #25) isn't part of it.
             #[cfg(debug_assertions)]
             if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
-                agent_platform::request_permissions();
+                agent_platform::request_accessibility();
                 agent_platform::request_notification_permission();
             }
             #[cfg(debug_assertions)]
@@ -1358,14 +1660,17 @@ pub fn run() {
                 Arc::new(ThreadRandom),
                 Arc::new(FileScheduleStore::new(&data_dir)),
             );
-            app.manage(AgentState::new(
-                platform,
-                clock.clone(),
-                session,
-                scheduler,
-                outbox.clone(),
-                account,
-            ));
+            app.manage(
+                AgentState::new(
+                    platform,
+                    clock.clone(),
+                    session,
+                    scheduler,
+                    outbox.clone(),
+                    account,
+                )
+                .with_onboarding_store(Arc::new(FileOnboardingStore::new(&data_dir))),
+            );
             app.manage(OutboxState(outbox));
             spawn_ticker(app.handle().clone());
             spawn_sync(app.handle().clone());
@@ -1524,7 +1829,7 @@ fn spawn_sync(app: AppHandle) {
                         last_heartbeat = Some(Instant::now());
                     }
                     backoff.success();
-                    prompt_notice_if_due(&app);
+                    prompt_if_due(&app);
                     SYNC_EVERY
                 }
                 Err(error @ (SyncError::SignedOut(_) | SyncError::Revoked)) => {
@@ -1555,8 +1860,15 @@ fn spawn_sync(app: AppHandle) {
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let clock_in = MenuItem::with_id(app, "clock_in", "Clock in", true, None::<&str>)?;
     let clock_out = MenuItem::with_id(app, "clock_out", "Clock out", true, None::<&str>)?;
+    let permissions = MenuItem::with_id(
+        app,
+        "setup_permissions",
+        "Set up permissions…",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quit AI Proctor", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&clock_in, &clock_out, &quit])?;
+    let menu = Menu::with_items(app, &[&clock_in, &clock_out, &permissions, &quit])?;
     TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().cloned().expect("bundle icon"))
         .tooltip("AI Proctor")
@@ -1567,6 +1879,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             match event.id.as_ref() {
                 "clock_in" => state.act("clock in", |s| s.clock_in(None)),
                 "clock_out" => state.act("clock out", |s| s.clock_out()),
+                // AGT-03: the guided flow can be run again from the tray.
+                "setup_permissions" => open_onboarding(app, onboarding::PERMISSIONS_STEP),
                 "quit" if state.quit_allowed() => {
                     tracing::info!("quit from tray menu");
                     app.exit(0);
@@ -1786,16 +2100,75 @@ mod tests {
     }
 
     #[test]
-    fn the_notice_commands_are_registered() {
+    fn the_notice_and_onboarding_commands_are_registered() {
         let source = include_str!("lib.rs");
         let handler = source
             .split("generate_handler![")
             .nth(1)
             .and_then(|rest| rest.split(']').next())
             .unwrap();
-        for command in ["get_notice", "show_notice", "acknowledge_notice"] {
+        for command in [
+            "get_notice",
+            "show_notice",
+            "acknowledge_notice",
+            "onboarding_state",
+            "request_permission",
+            "test_capture",
+            "finish_onboarding",
+            "show_onboarding",
+            "close_onboarding",
+            "restart_app",
+        ] {
             assert!(handler.contains(command), "{command} is not registered");
         }
+    }
+
+    #[test]
+    fn the_onboarding_commands_and_events_match_the_contracts() {
+        let ipc = include_str!("../../../../packages/contracts/src/ipc.ts");
+        for command in [
+            "onboarding_state",
+            "request_permission",
+            "test_capture",
+            "finish_onboarding",
+            "show_onboarding",
+            "close_onboarding",
+            "restart_app",
+        ] {
+            assert!(
+                ipc.contains(&format!("  {command}: {{")),
+                "{command} is not in ipc.ts"
+            );
+        }
+        for event in [EVENT_ONBOARDING_OPEN, EVENT_ONBOARDING_CLOSED] {
+            assert!(
+                ipc.contains(&format!("  {event}: ")),
+                "event {event} is not in ipc.ts"
+            );
+        }
+    }
+
+    #[test]
+    fn the_test_capture_images_may_load_from_data_urls() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().unwrap();
+        let img = csp
+            .split(';')
+            .map(str::trim)
+            .find(|d| d.starts_with("img-src"))
+            .expect("an img-src directive: default-src 'self' blocks data: images");
+        assert!(img.split_whitespace().any(|s| s == "data:"), "{img}");
+    }
+
+    #[test]
+    fn the_tray_menu_reruns_the_permission_flow() {
+        let source = include_str!("lib.rs");
+        let tray = source.split("fn build_tray").nth(1).unwrap();
+        assert!(tray.contains(
+            "\"setup_permissions\" => open_onboarding(app, onboarding::PERMISSIONS_STEP)"
+        ));
+        assert!(tray.contains("Set up permissions"));
     }
 
     #[test]
@@ -1933,6 +2306,256 @@ mod tests {
         );
         assert!(checkins[0].get("capture_errors").is_none());
         assert_eq!(w.outbox.stats().unwrap().uploads, 2);
+    }
+
+    // --- The server's collection policy (#144; CAP-01..05, ACT-03, CHK-01/13, AGT-05) ---
+
+    /// What the server sends for someone who acknowledged version 1.
+    fn apply_policy(w: &Working, policy: serde_json::Value) {
+        w.state.apply_config(&config_with(
+            policy,
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+    }
+
+    fn collection(overrides: serde_json::Value) -> serde_json::Value {
+        let mut policy = serde_json::json!({
+            "screenshots": "full", "webcam": true, "window_titles": true,
+            "excluded_apps": [], "activity_sampling": true
+        });
+        for (k, v) in overrides.as_object().unwrap() {
+            policy[k] = v.clone();
+        }
+        policy
+    }
+
+    fn keys_of_first_checkin(w: &Working) -> serde_json::Value {
+        w.checkins()[0]["object_keys"].clone()
+    }
+
+    #[test]
+    fn screenshots_follow_the_org_setting() {
+        let off = working();
+        apply_policy(
+            &off,
+            collection(serde_json::json!({ "screenshots": "off" })),
+        );
+        off.pass();
+        assert_eq!(
+            keys_of_first_checkin(&off),
+            serde_json::json!(["webcam.webp"])
+        );
+        assert!(off.checkins()[0].get("capture_errors").is_none());
+
+        let size_of = |mode: &str| {
+            let w = working();
+            apply_policy(&w, collection(serde_json::json!({ "screenshots": mode })));
+            w.pass();
+            assert_eq!(
+                keys_of_first_checkin(&w),
+                serde_json::json!(["screen-1.webp", "webcam.webp"])
+            );
+            w.outbox.stats().unwrap().upload_bytes
+        };
+        let (full, blurred) = (size_of("full"), size_of("blurred"));
+        assert!(blurred < full, "blurred {blurred} vs full {full}");
+    }
+
+    #[test]
+    fn the_webcam_follows_the_org_setting() {
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({ "webcam": false })));
+        w.pass();
+        assert_eq!(
+            keys_of_first_checkin(&w),
+            serde_json::json!(["screen-1.webp"])
+        );
+        assert!(
+            w.checkins()[0].get("capture_errors").is_none(),
+            "off is not a failure"
+        );
+    }
+
+    #[test]
+    fn the_excluded_apps_in_the_config_replace_the_built_in_list() {
+        let in_front = |w: &Working, app: &str| {
+            w.platform.update(|s| {
+                s.foreground = Some(agent_core::platform::Foreground {
+                    app: app.into(),
+                    title: None,
+                    domain: None,
+                    display: None,
+                })
+            })
+        };
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "excluded_apps": ["signal"] })),
+        );
+        in_front(&w, "Signal");
+        w.pass();
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!(["excluded_app"])
+        );
+
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "excluded_apps": ["signal"] })),
+        );
+        in_front(&w, "1Password");
+        w.pass();
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!([]),
+            "the admin's list is the list"
+        );
+    }
+
+    #[test]
+    fn a_newer_unacknowledged_policy_with_the_webcam_on_captures_no_webcam() {
+        let w = working();
+        // Version 1 was acknowledged with the webcam off. The org has since turned it
+        // on (version 2), but the server still sends what version 1 allows.
+        w.state.apply_config(&config_with(
+            collection(serde_json::json!({ "webcam": false })),
+            serde_json::json!([]),
+            notice_json(2, false, Some(1)),
+        ));
+        w.pass();
+        assert_eq!(
+            keys_of_first_checkin(&w),
+            serde_json::json!(["screen-1.webp"])
+        );
+
+        // Acknowledged: the webcam comes on from the next check-in.
+        apply_policy(&w, collection(serde_json::json!({ "webcam": true })));
+        w.pass();
+        assert_eq!(
+            w.checkins()[1]["object_keys"],
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+    }
+
+    #[test]
+    fn nothing_is_captured_or_sampled_without_an_acknowledged_notice() {
+        let w = working();
+        w.platform.update(|s| {
+            s.foreground = Some(agent_core::platform::Foreground {
+                app: "Mail".into(),
+                title: Some("t".into()),
+                domain: None,
+                display: None,
+            })
+        });
+        // Even a config that says everything is on.
+        w.state.apply_config(&config_with(
+            collection(serde_json::json!({})),
+            serde_json::json!([]),
+            notice_json(1, false, None),
+        ));
+        w.pass();
+        assert_eq!(keys_of_first_checkin(&w), serde_json::json!([]));
+        for _ in 0..20 {
+            w.state.activity_tick();
+            w.clock.advance(chrono::Duration::seconds(5));
+        }
+        w.state.flush_activity();
+        assert!(w.events("app_session").is_empty());
+    }
+
+    #[test]
+    fn activity_sampling_and_titles_follow_the_org_setting() {
+        let sample = |w: &Working| {
+            w.platform.update(|s| {
+                s.foreground = Some(agent_core::platform::Foreground {
+                    app: "Mail".into(),
+                    title: Some("Re: salary".into()),
+                    domain: Some("mail.example.com".into()),
+                    display: None,
+                })
+            });
+            for _ in 0..8 {
+                w.state.activity_tick();
+                w.clock.advance(chrono::Duration::seconds(5));
+            }
+            w.state.flush_activity();
+            w.events("app_session")
+        };
+
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "activity_sampling": false })),
+        );
+        assert!(
+            sample(&w).is_empty(),
+            "sampling off: nothing, not even apps"
+        );
+
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "window_titles": false })),
+        );
+        let sessions = sample(&w);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0]["title"], serde_json::Value::Null);
+        assert_eq!(sessions[0]["app"], "Mail");
+        assert_eq!(sessions[0]["domain"], "mail.example.com");
+
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({})));
+        assert_eq!(sample(&w)[0]["title"], "Re: salary");
+    }
+
+    #[test]
+    fn a_policy_change_applies_from_the_next_config() {
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({})));
+        w.pass();
+        assert_eq!(
+            keys_of_first_checkin(&w),
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+        // The heartbeat saw a new policy_version: the refetched config applies.
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "screenshots": "off", "webcam": false })),
+        );
+        w.pass();
+        assert_eq!(w.checkins()[1]["object_keys"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn the_org_intervals_and_response_window_apply_to_the_next_draw_and_card() {
+        let w = working();
+        apply_policy(
+            &w,
+            serde_json::json!({
+                "checkin_min_interval_min": 10, "checkin_max_interval_min": 10,
+                "checkin_response_s": 45
+            }),
+        );
+        // Already armed with 20-90 min: this card still comes.
+        let card = w.card_due();
+        assert_eq!(card.remaining_s, 45, "the new response window");
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+
+        // The draw after it is exactly 10 minutes.
+        w.clock.advance(chrono::Duration::seconds(9 * 60 + 59));
+        assert_eq!(w.state.card_tick(), CardAction::Nothing);
+        w.clock.advance(chrono::Duration::seconds(1));
+        assert!(matches!(w.state.card_tick(), CardAction::Show(_)));
+
+        // The UI never learns when it is: no field in the status carries it.
+        let json = serde_json::to_string(&w.state.status()).unwrap();
+        assert!(!json.contains("next"), "never the next check-in time");
+        assert!(!json.contains("checkin_"), "nor the intervals");
     }
 
     fn permission_reports(w: &Working) -> Vec<serde_json::Value> {
@@ -2226,6 +2849,106 @@ mod tests {
         assert_eq!(w.state.scheduler.wake_in(), None);
     }
 
+    // ANT-02: the input guard watches the card's area while it is up.
+
+    const CARD_AREA: ScreenRect = ScreenRect {
+        x: 100,
+        y: 50,
+        width: 360,
+        height: 220,
+    };
+
+    #[test]
+    fn the_input_guard_only_starts_for_a_card_that_is_up() {
+        let w = working();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(w.platform.snapshot().input_guard, None, "no card, no guard");
+
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(w.platform.snapshot().input_guard, Some(CARD_AREA));
+    }
+
+    #[test]
+    fn a_pass_with_injected_clicks_is_flagged_and_still_a_pass() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 3);
+
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        assert_eq!(reply.result, CardClickResult::Pass);
+        assert_eq!(w.platform.snapshot().input_guard, None, "guard stopped");
+        w.state.finish_pass(reply.pass.unwrap());
+
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "pass");
+        assert_eq!(checkin["wrong_clicks"], 0);
+        assert_eq!(checkin["flags"], serde_json::json!(["injected_click:3"]));
+    }
+
+    #[test]
+    fn a_pass_without_injected_clicks_has_no_flag() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+        assert_eq!(w.checkins()[0]["flags"], serde_json::json!([]));
+        assert_eq!(w.platform.snapshot().input_guard, None);
+    }
+
+    #[test]
+    fn a_wrong_click_keeps_the_guard_running() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        assert_eq!(reply.result, CardClickResult::Wrong);
+        assert_eq!(w.platform.snapshot().input_guard, Some(CARD_AREA));
+    }
+
+    #[test]
+    fn a_failed_check_in_and_a_miss_carry_the_flag_too() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 2);
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        let reply = w
+            .state
+            .card_click(&card.card_id, wrong(&reply.next.unwrap()), true);
+        assert_eq!(reply.result, CardClickResult::Failed);
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!(["injected_click:2"])
+        );
+
+        let w = working();
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 5);
+        w.clock.advance(chrono::Duration::seconds(95));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "miss");
+        assert_eq!(checkin["flags"], serde_json::json!(["injected_click:5"]));
+        assert_eq!(w.platform.snapshot().input_guard, None);
+    }
+
+    #[test]
+    fn a_cancelled_card_stops_the_guard_and_reports_nothing() {
+        let w = working();
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.injected_clicks = 2);
+        w.state.act("start a break", |s| s.start_break(None));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        assert_eq!(w.platform.snapshot().input_guard, None);
+        assert!(w.checkins().is_empty());
+    }
+
     #[test]
     fn config_from_the_server_sets_shifts_and_auto_clock_in() {
         let dir = tempfile::tempdir().unwrap();
@@ -2303,7 +3026,7 @@ mod tests {
     fn the_org_idle_threshold_comes_with_the_config() {
         let w = working();
         let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
-            "policy": { "idle_threshold_min": 2 },
+            "policy": { "idle_threshold_min": 3 },
             "policy_version": 2,
             "timezone": "UTC",
             "shifts": []
@@ -2311,6 +3034,9 @@ mod tests {
         .unwrap();
         w.state.apply_config(&config);
         w.platform.update(|s| s.idle_seconds = 130);
+        w.state.presence_tick();
+        assert!(w.events("idle_start").is_empty(), "under 3 minutes");
+        w.platform.update(|s| s.idle_seconds = 190);
         w.state.presence_tick();
         assert_eq!(w.events("idle_start").len(), 1);
     }
@@ -2808,5 +3534,228 @@ mod tests {
         assert!(!w.state.quit_allowed());
         w.state.act("clock out", |s| s.clock_out());
         assert!(w.state.quit_allowed());
+    }
+
+    // --- Guided permission onboarding (#59; AGT-03) ---------------------------------
+
+    fn webcam_config(on: bool) -> agent_core::config::AgentConfig {
+        config_with(
+            serde_json::json!({ "webcam": on }),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        )
+    }
+
+    #[test]
+    fn the_permission_step_lets_through_only_what_the_org_needs() {
+        let w = working();
+        let state = &w.state;
+        assert!(state.onboarding_state().ready);
+
+        w.platform
+            .update(|s| s.permissions.screen = PermissionState::NotDetermined);
+        assert!(!state.onboarding_state().ready, "Screen Recording is off");
+        assert_eq!(
+            state.finish_onboarding().unwrap_err(),
+            "Turn on the permissions first."
+        );
+        assert!(!state.onboarding_state().completed);
+
+        w.platform.update(|s| {
+            s.permissions.screen = PermissionState::Granted;
+            s.permissions.camera = PermissionState::Denied;
+        });
+        let blocked = state.onboarding_state();
+        assert!(blocked.webcam && !blocked.ready, "the camera is needed too");
+
+        // The org turns the webcam off: the Camera card goes away and the step passes.
+        state.apply_config(&webcam_config(false));
+        let onboarding = state.onboarding_state();
+        assert!(!onboarding.webcam && onboarding.ready);
+        state.finish_onboarding().unwrap();
+        assert!(state.onboarding_state().completed);
+    }
+
+    #[test]
+    fn the_flow_says_which_os_it_runs_on() {
+        let w = working();
+        let expected = if cfg!(target_os = "macos") {
+            OnboardingPlatform::Macos
+        } else if cfg!(target_os = "windows") {
+            OnboardingPlatform::Windows
+        } else {
+            OnboardingPlatform::Other
+        };
+        assert_eq!(w.state.onboarding_state().platform, expected);
+    }
+
+    #[test]
+    fn asking_for_a_permission_goes_to_the_os() {
+        let w = working();
+        w.state.ask_permission(PermissionKind::Screen);
+        w.state.ask_permission(PermissionKind::Camera);
+        assert_eq!(
+            w.platform.snapshot().permission_requests,
+            [PermissionKind::Screen, PermissionKind::Camera]
+        );
+    }
+
+    #[test]
+    fn a_test_capture_uses_the_pipeline_and_keeps_nothing() {
+        let w = working();
+        let before = (
+            w.outbox.pending(100).unwrap().len(),
+            w.outbox.stats().unwrap(),
+        );
+        let result = w.state.test_capture();
+        assert!(result.ok);
+        assert_eq!(result.screens.len(), 1);
+        assert!(result.webcam.is_some());
+        assert!(
+            result.screens[0].starts_with("data:image/webp;base64,"),
+            "the encoded WebP the pipeline makes"
+        );
+        let after = (
+            w.outbox.pending(100).unwrap().len(),
+            w.outbox.stats().unwrap(),
+        );
+        assert_eq!(before.0, after.0, "no event queued");
+        assert_eq!(after.1.uploads, 0, "nothing queued for upload");
+        assert!(w.checkins().is_empty());
+        assert!(
+            w.state.scheduler.wake_in().is_some(),
+            "the schedule is untouched"
+        );
+    }
+
+    #[test]
+    fn a_test_capture_skips_the_webcam_when_the_org_has_it_off() {
+        let w = working();
+        w.state.apply_config(&webcam_config(false));
+        w.platform
+            .update(|s| s.permissions.camera = PermissionState::Denied);
+        let result = w.state.test_capture();
+        assert!(result.ok, "the camera isn't tested when it isn't used");
+        assert_eq!((result.webcam, result.webcam_error), (None, None));
+        assert_eq!(result.screens.len(), 1);
+    }
+
+    #[test]
+    fn a_failed_test_capture_reports_why() {
+        use agent_core::contracts::TestCaptureFailure;
+        let w = working();
+        w.platform
+            .update(|s| s.permissions.screen = PermissionState::Denied);
+        let result = w.state.test_capture();
+        assert!(!result.ok && !result.restart_needed);
+        assert!(result.screens.is_empty());
+        assert_eq!(
+            result.screen_error,
+            Some(TestCaptureFailure::PermissionMissing)
+        );
+        assert!(result.webcam.is_some(), "the webcam still shows");
+    }
+
+    #[test]
+    fn granted_but_refused_asks_for_a_restart_until_a_capture_works() {
+        let w = working();
+        w.platform
+            .update(|s| s.screen = Err(agent_core::platform::CaptureError::PermissionMissing));
+        assert!(w.state.test_capture().restart_needed);
+        assert!(
+            w.state.onboarding_state().restart_needed,
+            "the permission step shows the guidance"
+        );
+        w.platform.update(|s| s.screen = Ok(()));
+        assert!(!w.state.test_capture().restart_needed);
+        assert!(!w.state.onboarding_state().restart_needed);
+    }
+
+    #[test]
+    fn finishing_is_kept_on_this_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = || Arc::new(FileOnboardingStore::new(dir.path()));
+        let first = state(dir.path(), Arc::new(UnavailableSink)).with_onboarding_store(store());
+        assert!(!first.onboarding_state().completed);
+        first.finish_onboarding().unwrap();
+
+        let second = state(dir.path(), Arc::new(UnavailableSink)).with_onboarding_store(store());
+        assert!(
+            second.onboarding_state().completed,
+            "still done after a restart"
+        );
+        second.session.lock().unwrap().sign_in();
+        second.apply_config(&webcam_config(true));
+        assert!(!second.take_onboarding_prompt(), "nothing more to ask");
+    }
+
+    #[test]
+    fn an_acknowledged_person_who_has_not_onboarded_gets_the_permissions_once() {
+        let (state, _outbox, _dir) = signed_in_off_shift();
+        assert!(!state.take_onboarding_prompt(), "no notice yet");
+        state.apply_config(&config_with(
+            serde_json::json!({}),
+            serde_json::json!([]),
+            notice_json(1, false, None),
+        ));
+        assert!(
+            !state.take_onboarding_prompt(),
+            "the notice window comes first"
+        );
+
+        state.apply_config(&webcam_config(true));
+        assert!(state.take_onboarding_prompt());
+        assert_eq!(state.onboarding_state().start_step, 2);
+        assert!(!state.take_onboarding_prompt(), "once per run");
+    }
+
+    #[test]
+    fn a_flow_the_person_opened_is_not_reopened_by_the_core() {
+        let (state, _outbox, _dir) = signed_in_off_shift();
+        state.apply_config(&webcam_config(true));
+        state.onboarding_opened(1);
+        assert!(!state.take_onboarding_prompt());
+        assert_eq!(state.onboarding_state().start_step, 1);
+    }
+
+    #[test]
+    fn the_flow_can_be_run_again_after_it_was_finished() {
+        let w = working();
+        w.state.finish_onboarding().unwrap();
+        // The tray's "Set up permissions…" and the warning's Fix open it at step 2.
+        w.state.onboarding_opened(onboarding::PERMISSIONS_STEP);
+        let state = w.state.onboarding_state();
+        assert_eq!(state.start_step, 2);
+        assert!(state.completed, "finishing again just keeps it done");
+    }
+
+    #[test]
+    fn settings_pages_per_os() {
+        assert_eq!(
+            settings_url("screen_settings", false),
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        );
+        assert_eq!(
+            settings_url("camera_settings", false),
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")
+        );
+        assert_eq!(
+            settings_url("camera_settings", true),
+            Some("ms-settings:privacy-webcam")
+        );
+        assert_eq!(
+            settings_url("screen_settings", true),
+            None,
+            "Windows needs no Screen Recording permission"
+        );
+        assert_eq!(settings_url("my_data", false), None);
+    }
+
+    #[test]
+    fn a_restart_leaves_it_to_the_watchdog_when_there_is_one() {
+        let platform = FakePlatform::default();
+        assert_eq!(restart_plan(&platform), Restart::Respawn);
+        ensure_watchdog_with(&platform, Some(bundled_spec()), false);
+        assert_eq!(restart_plan(&platform), Restart::LetTheWatchdog);
     }
 }

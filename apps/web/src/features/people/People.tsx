@@ -9,7 +9,14 @@ import { initials } from "../../lib/nav";
 import { DataRequests } from "./DataRequests";
 import { InviteDialog } from "./InviteDialog";
 import { MemberFields } from "./MemberFields";
-import { type Member, managersOf, membersQuery, setActive, updateMember } from "./members";
+import {
+  type Member,
+  managersOf,
+  membersQuery,
+  setActive,
+  setApprovalRequired,
+  updateMember,
+} from "./members";
 import { ShiftEditor } from "./ShiftEditor";
 
 export const roleLabel: Record<Enums<"user_role">, string> = {
@@ -121,7 +128,7 @@ export function People() {
           </table>
         )}
         <p className="px-5 py-3 text-xs text-ink3">
-          Role, manager and location changes are recorded in the audit log.
+          Role, manager, location and approval changes are recorded in the audit log.
         </p>
       </div>
 
@@ -155,7 +162,15 @@ function EditDialog({
     queryClient.invalidateQueries({ queryKey: membersQuery.queryKey });
     onClose();
   };
-  const save = useMutation({ mutationFn: () => updateMember(draft), onSuccess: done });
+  const save = useMutation({
+    mutationFn: async () => {
+      await updateMember(draft);
+      if (draft.approvalRequired !== member.approvalRequired) {
+        await setApprovalRequired(member.id, draft.approvalRequired);
+      }
+    },
+    onSuccess: done,
+  });
   const toggle = useMutation({
     mutationFn: () => setActive(member.id, !member.active),
     onSuccess: done,
@@ -188,6 +203,23 @@ function EditDialog({
           managers={managersOf(members).filter((m) => m.id !== member.id)}
           roleLocked={isSelf || member.role === "owner"}
         />
+        {member.role !== "owner" && (
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={!draft.approvalRequired}
+              onChange={(e) => setDraft({ ...draft, approvalRequired: !e.target.checked })}
+              className="mt-0.5 h-5 w-5 flex-none accent-acc"
+            />
+            <span>
+              <span className="font-medium">Approval not required</span>
+              <span className="block text-[12.5px] text-ink2">
+                Their weekly timesheet is approved as soon as they submit it. The change is recorded
+                in the audit log.
+              </span>
+            </span>
+          </label>
+        )}
         {error && (
           <p role="alert" className="text-sm text-warnink">
             {error.message}

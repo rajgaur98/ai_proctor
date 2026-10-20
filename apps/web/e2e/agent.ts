@@ -22,11 +22,11 @@ export async function acknowledgeLatestNotice(client: SupabaseClient<Database>) 
   if (ackError) throw ackError;
 }
 
-/** A client signed in as a seed user, for setting up or checking state outside the page. */
-export async function clientFor(email: string) {
+/** A client signed in as a seed user (or `password`), for setting up or checking state outside the page. */
+export async function clientFor(email: string, password = "password123") {
   const { url, anonKey } = env();
   const client = createClient(url, anonKey, { auth: { persistSession: false } });
-  const { error } = await client.auth.signInWithPassword({ email, password: "password123" });
+  const { error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return client;
 }

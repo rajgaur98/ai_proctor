@@ -134,6 +134,8 @@ begin
   values ('00000000-0000-4000-8000-000000000001', u, now() - interval '8 hours', now() - interval '7 hours', 'offline work');
   insert into public.notifications (org_id, user_id, kind)
   values ('00000000-0000-4000-8000-000000000001', u, 'timesheet.returned');
+  insert into public.anticheat_flags (org_id, user_id, day, kind)
+  values ('00000000-0000-4000-8000-000000000001', u, current_date, 'fast_response');
   insert into public.alerts (org_id, user_id, recipient_id, kind, episode)
   values ('00000000-0000-4000-8000-000000000001', u, '00000000-0000-4000-8000-0000000000b1', 'offline', slug);
   insert into public.reminders_sent (org_id, kind, user_id, period_start, recipient_id)

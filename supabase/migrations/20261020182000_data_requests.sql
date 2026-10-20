@@ -458,6 +458,10 @@ begin
   get diagnostics v_n = row_count; v_counts := v_counts || jsonb_build_object('status_periods', v_n);
   delete from public.time_segments where user_id = p_user_id;
   get diagnostics v_n = row_count; v_counts := v_counts || jsonb_build_object('time_segments', v_n);
+  delete from internal.segment_rebuilds where user_id = p_user_id;
+  get diagnostics v_n = row_count; v_counts := v_counts || jsonb_build_object('segment_rebuilds', v_n);
+  delete from public.anticheat_flags where user_id = p_user_id;
+  get diagnostics v_n = row_count; v_counts := v_counts || jsonb_build_object('anticheat_flags', v_n);
 
   -- Clock sessions and what hangs off them.
   delete from public.pauses where user_id = p_user_id;
