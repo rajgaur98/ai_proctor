@@ -13,6 +13,7 @@ import { NoticePage } from "./features/notice/Notice";
 import { People } from "./features/people/People";
 import { PolicyPage } from "./features/policy/PolicyPage";
 import { Projects } from "./features/projects/Projects";
+import { Reports } from "./features/reports/Reports";
 import { LiveTeam } from "./features/team/LiveTeam";
 import { TimesheetPage } from "./features/timesheets/TimesheetPage";
 import { MyTimesheets, Timesheets } from "./features/timesheets/Timesheets";
@@ -178,6 +179,7 @@ const routeTree = rootRoute.addChildren([
     myDayRoute,
     page("/timesheets", "Timesheets", 43, Timesheets),
     timesheetRoute,
+    page("/reports", "Reports", 47, Reports),
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
     page("/policy", "Policy", 52, PolicyPage),

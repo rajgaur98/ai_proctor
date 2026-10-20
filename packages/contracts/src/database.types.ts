@@ -2368,6 +2368,10 @@ export type Database = {
         Args: { p_day: string; p_loaded_at?: string; p_segments: Json; p_user_id: string };
         Returns: number;
       };
+      report_rows: {
+        Args: { p_from: string; p_manager_id?: string; p_to: string; p_user_ids?: string[] };
+        Returns: Json;
+      };
       request_manual_entry: {
         Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };
         Returns: string;
