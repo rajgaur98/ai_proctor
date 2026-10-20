@@ -91,6 +91,20 @@ const KIND_TITLES: Record<string, string> = {
   pause_over_cap: "Pauses over the daily cap",
 };
 
+/** Why a Tamper alert was raised (its details carry a reason; older ones don't). */
+function tamperCause(reason: unknown): string {
+  switch (reason) {
+    case "capture_blocked":
+      return "capture was blocked";
+    case "agent_stopped":
+      return "the agent was stopped and restarted";
+    case "no_heartbeat":
+      return "the agent stopped reporting";
+    default:
+      return "capture was blocked or the agent stopped reporting";
+  }
+}
+
 /** One line saying what happened for one alert. */
 function describe(kind: string, a: AlertItem, name: string, zone: string): string {
   const d = a.details;
@@ -100,7 +114,7 @@ function describe(kind: string, a: AlertItem, name: string, zone: string): strin
     case "offline":
       return `${name} has been offline since ${when(d.since, zone)} (alert after ${d.threshold_min} min) while clocked in.`;
     case "tamper":
-      return `${name} has been in Tamper status since ${when(d.since, zone)}: capture was blocked or the agent stopped reporting. This needs review; it is not a penalty.`;
+      return `${name} has been in Tamper status since ${when(d.since, zone)}: ${tamperCause(d.reason)}. This needs review; it is not a penalty.`;
     case "late_clock_in":
       return `${name} had not clocked in ${d.grace_min} min after the shift started at ${when(d.shift_start, zone)}.`;
     case "pause_over_cap": {

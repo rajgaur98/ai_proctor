@@ -25,6 +25,19 @@ describe("alertText", () => {
     expect(alertText("consecutive_misses", null)).toBe("Several missed check-ins in a row");
     expect(alertText("tamper", {})).toContain("Tamper");
   });
+
+  it("says why a Tamper alert was raised", () => {
+    expect(alertText("tamper", { reason: "capture_blocked" })).toBe(
+      "Tamper: capture blocked, needs review",
+    );
+    expect(alertText("tamper", { reason: "agent_stopped" })).toBe(
+      "Tamper: agent stopped, needs review",
+    );
+    expect(alertText("tamper", { reason: "no_heartbeat" })).toBe(
+      "Tamper: no heartbeat, needs review",
+    );
+    expect(alertText("tamper", { reason: "something_new" })).toContain("Tamper");
+  });
 });
 
 describe("dayLabel", () => {
