@@ -97,6 +97,38 @@ const CASES: Case[] = [
     target: { page: "timesheets" },
   },
   {
+    kind: "delegation.ended",
+    payload: {
+      delegation_id: "d1",
+      manager_id: "m",
+      delegate_id: "g",
+      starts_on: "2026-10-20",
+      ends_on: "2026-10-27",
+      reason: "deactivated",
+      for: "delegate",
+      name: "Max Manager",
+    },
+    text: "Max Manager was deactivated, so their delegation to you ended, 20 Oct to 27 Oct",
+    note: null,
+    target: { page: "timesheets" },
+  },
+  {
+    kind: "delegation.ended",
+    payload: {
+      delegation_id: "d1",
+      manager_id: "m",
+      delegate_id: "g",
+      starts_on: "2026-10-20",
+      ends_on: "2026-10-27",
+      reason: "demoted",
+      for: "manager",
+      name: "Mia Manager",
+    },
+    text: "Mia Manager was made an employee, so your delegation to them ended, 20 Oct to 27 Oct",
+    note: null,
+    target: { page: "timesheets" },
+  },
+  {
     kind: "timesheet.submit_reminder",
     payload: {
       timesheet_id: null,
@@ -174,6 +206,9 @@ describe("notifications", () => {
       "After a reassignment, you have work to decide on",
     );
     expect(notificationText("delegation.assigned", null)).toBe("You are a delegate approver");
+    expect(notificationText("delegation.ended", { reason: "demoted" })).toBe(
+      "Someone was made an employee, so their delegation to you ended",
+    );
     expect(notificationTarget("timesheet.returned", {}, ME)).toEqual({ page: "timesheets" });
   });
 

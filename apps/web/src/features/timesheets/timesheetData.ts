@@ -5,11 +5,12 @@ import type { ManualEntryRequest } from "@ai-proctor/contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { supabase } from "../../lib/supabase";
+import type { TimeSegment } from "./reassign";
 import type { BreakdownRow } from "./summary";
 import { weekDays, weekStartDay } from "./weeks";
 
 export type SheetStatus = "draft" | "submitted" | "approved" | "returned";
-export type EditKind = "keep" | "exclude" | "include" | "project" | "adjust";
+export type EditKind = "keep" | "exclude" | "include" | "project" | "adjust" | "employee_project";
 
 export interface Timesheet {
   id: string;
@@ -159,7 +160,37 @@ export const flaggedQuery = (userId: string, weekStart: string) =>
     },
   });
 
-/** Edits the manager made, oldest first. 'keep' decisions never reach the employee. */
+/**
+ * Counted, not excluded time of a week as stored, for the employee's Unassigned list
+ * (PRJ-03/04). Time segments are visible to the person they belong to.
+ */
+export const segmentsQuery = (userId: string, weekStart: string) =>
+  queryOptions({
+    queryKey: ["timesheet-segments", userId, weekStart],
+    queryFn: async (): Promise<TimeSegment[]> => {
+      const days = weekDays(weekStart);
+      const { data, error } = await supabase
+        .from("time_segments")
+        .select("start_at, end_at, project_id, counted, excluded, flagged")
+        .eq("user_id", userId)
+        .gte("day", days[0] ?? weekStart)
+        .lte("day", days[6] ?? weekStart)
+        .eq("counted", true)
+        .eq("excluded", false)
+        .order("start_at");
+      if (error) throw error;
+      return data.map((r) => ({
+        startAt: r.start_at,
+        endAt: r.end_at,
+        projectId: r.project_id,
+        counted: r.counted,
+        excluded: r.excluded,
+        flagged: r.flagged,
+      }));
+    },
+  });
+
+/** Edits to the week (the manager's and the employee's), oldest first. 'keep' decisions never reach the employee. */
 export const editsQuery = (timesheetId: string) =>
   queryOptions({
     queryKey: ["timesheet-edits", timesheetId],
@@ -332,6 +363,23 @@ export async function editSegment(e: SegmentEdit): Promise<void> {
   if (error) throw new Error(explain(error.message));
 }
 
+/** PRJ-04: the employee moves their own time to a project they're on (null: Unassigned). */
+export async function reassignMyTime(r: {
+  startAt: string;
+  endAt: string;
+  projectId: string | null;
+  reason?: string;
+}): Promise<void> {
+  const { error } = await supabase.rpc("reassign_my_time", {
+    p_start: r.startAt,
+    p_end: r.endAt,
+    // Generated types don't mark function arguments nullable.
+    p_project_id: r.projectId as string,
+    p_reason: (r.reason?.trim() || null) as string,
+  });
+  if (error) throw new Error(explain(error.message));
+}
+
 /** Adds time on the employee's behalf, or (with entryId) changes one of their entries. */
 export async function adjustTime(
   timesheetId: string,
@@ -361,6 +409,9 @@ const messages: Record<string, string> = {
   not_submitted: "This week isn't waiting for approval.",
   not_approved: "Only an approved week can be reopened.",
   timesheet_locked: "This week is approved. Reopen it to make changes.",
+  timesheet_submitted:
+    "This week is with your manager. You can change projects again if they return it.",
+  no_counted_time: "There's no counted time there to move.",
   pending_entries: "Decide on the manual entry requests first.",
   undecided_flagged: "Decide on every flagged segment first.",
   invalid_comment: "Add a comment of up to 500 characters.",
