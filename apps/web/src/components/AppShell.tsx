@@ -2,6 +2,7 @@
 // initials. Collapses to a menu button below 768 px.
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
+import { AlertsMenu } from "../features/alerts/AlertsMenu";
 import { initials, navFor } from "../lib/nav";
 import type { Profile } from "../lib/session";
 import { supabase } from "../lib/supabase";
@@ -45,6 +46,7 @@ export function AppShell({ profile, children }: { profile: Profile; children: Re
         </nav>
         <span className="flex-1" />
         <span className="hidden text-[13px] text-ink3 md:inline">{profile.orgName}</span>
+        {profile.role !== "employee" && <AlertsMenu userId={profile.id} />}
         <details className="relative">
           <summary
             aria-label={`Account menu for ${profile.fullName}`}
