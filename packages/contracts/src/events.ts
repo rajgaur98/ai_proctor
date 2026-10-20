@@ -13,6 +13,13 @@ const nonNegativeInt = z.int().min(0);
 /** Why a due check-in was held back: a call, a screen share or a presentation (CHK-03). */
 export const DeferralReason = z.enum(["call", "screen_share", "presenting"]);
 
+/**
+ * What is making the device count as in a call (STS rule 8): the camera or mic in use
+ * by another app, a screen share, or a full-screen presentation. Raw state only; the
+ * server decides In meeting while any source is on.
+ */
+export const CallSource = z.enum(["camera", "mic", "screen_share", "presenting"]);
+
 /** Why a capture failed; the check-in still passes (CAP-08). */
 export const CaptureFailure = z.enum(["permission_missing", "camera_busy", "no_camera", "failed"]);
 
@@ -65,8 +72,8 @@ const payloads = {
   unlock: z.strictObject({}),
   sleep: z.strictObject({}),
   wake: z.strictObject({}),
-  call_start: z.strictObject({ source: z.enum(["camera", "mic"]) }),
-  call_end: z.strictObject({ source: z.enum(["camera", "mic"]) }),
+  call_start: z.strictObject({ source: CallSource }),
+  call_end: z.strictObject({ source: CallSource }),
   app_session: z.strictObject({
     app: z.string().min(1).max(200),
     title: z.string().max(500).nullable().optional(),

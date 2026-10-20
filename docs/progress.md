@@ -9,10 +9,23 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now:** —
-- **Next (in order):** #98 runtime fixes from the device test → #99 agent e2e harness → #101 state-change events → M1 follow-ups (#100, #102, #104, #105, #106, #103 default) → M3 (#35, #36, #38, #39, #37) → M4 (#40 → #41 → #42, #43, #44, #45, #46, #47) → M5 (#48, #49, #50, #51, #52, #53, #54) → M6 not blocked (#58, #59, #107) → #26.
+- **Now (20 Oct, evening):** implementers on #167 Windows platform (`ai_proctor-w167`, on #165) and #145 notice acknowledgement report (`ai_proctor-n145`, on main). Merging green PRs into main one at a time (CLAUDE.md, merging).
+- **Merged on 20 Oct:** #120, #116, #117, #122, #123, #119, #151, #115, #121, #152, #157, #153, #127, #134, #131, #162, #141, #125, #163.
+- **In review:** #128 (#42) → #137 (#43) → #142 (#44), #143 (#45) → #154 (#47); #158 (#58) → #165 (#59); #129 (#51); #133 (#53); #164 (#136); #166 (#26); #170 (#132). Migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture`, `capture_view` or `agent_config` must start from the latest version. #158 and #170 both add a contract migration: the second to merge regenerates it (`pnpm contracts:migration`).
+- **Next (in order):** #46 reminders (after #137) → #52 policy settings (after #129, #137 merge) → #49 My data → #54 data requests → #124 day view design → #144 agent applies the policy → follow-ups (#126, #130, #135, #138–#140, #145–#149, #155, #156, #159–#161, #168, #169).
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
-- **Device checks for Raj:** batched at the bottom of this block as they come up.
+- **Device checks for Raj (one session, bundled `.app` from main):**
+  1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
+  2. Notifications: permission prompt and banners (#123).
+  3. Two displays: an excluded app on one display blanks only that display (#123).
+  4. Screen share or Keynote while a card is due: card held, deferred marker on the day page (#102); status In meeting while sharing (#170).
+  5. Invite flow: invite email → join → agent sign-in.
+  6. Tray popover (#127): clock in with a project, break, pause with a note, extend, switch project, miss a card and give a reason.
+  7. Monitoring notice (#141): unacknowledged user sees the notice and can't clock in; acknowledge; publish a new version while clocked in.
+  8. Watchdog (#158): first launch from /Applications installs the LaunchAgent; `kill -9` comes back in ~10 s with a short Tamper; Quit refused while clocked in; revoke Screen Recording → Tamper; reboot → no Tamper.
+  9. Onboarding (#165): permissions step, restart banner, test capture, re-run from the tray; webcam off hides the camera.
+  10. macOS 13 screenshots (#162): on a macOS 13 machine or VM; on 14+ with `AI_PROCTOR_DEV_FORCE_SCSTREAM=1`.
+  - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals. Each PR has its checklist.
 
 ## Build order
 
@@ -127,7 +140,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 ## Environment notes
 
 - Development machine: Raj's Mac, local Claude desktop session. Keep it awake during long runs (`caffeinate -dims`).
-- CI budget: private repo, 2,000 free Actions minutes/month; macOS counts 10×, Windows 2×. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
+- CI budget: the repo is public since 20 Oct, so standard runners are free (it was private with 2,000 minutes/month; macOS counts 10×, Windows 2×, which ran out). Going private again brings the limit back. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
 - Homebrew refuses formula builds because the Command Line Tools are outdated (it wants the Xcode 27 version; fixing needs `sudo`). Full Xcode 26.6 works for Rust builds. The Supabase CLI comes from the `supabase` npm devDependency instead of Homebrew (#9).
 - Local Supabase runs with analytics (Logflare + Vector) off: they failed health checks on Docker Desktop and aren't needed.
 - Rust comes from Homebrew's `rustup` (proxies in `/opt/homebrew/opt/rustup/bin`, not on the default PATH); Node 22 from asdf. See the Commands section of `CLAUDE.md`.

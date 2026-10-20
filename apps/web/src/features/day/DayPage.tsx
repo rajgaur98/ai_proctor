@@ -9,7 +9,9 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
 import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
+import { canDecideQuery } from "../timesheets/timesheetData";
 import { CaptureViewer } from "./CaptureViewer";
+import { ManualEntries } from "./ManualEntries";
 import {
   barSpan,
   type Checkin,
@@ -73,7 +75,7 @@ export function DayPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, timezone, manager_id, presence(status)")
+        .select("id, full_name, timezone, presence(status)")
         .eq("id", userId)
         .maybeSingle();
       if (error) throw error;
@@ -147,8 +149,10 @@ export function DayPage() {
   const segs = segments(span, periods, now);
   const viewer = viewerZone();
   const chosen = checkins.find((c) => c.id === selected) ?? null;
-  const canSchedule =
-    profile.role === "owner" || profile.role === "admin" || person.data?.manager_id === profile.id;
+  // The server decides who is the person's manager or active delegate (TS-12, TS-14).
+  const canDecide = useQuery(canDecideQuery(userId)).data === true;
+  const canSchedule = profile.role === "owner" || profile.role === "admin" || canDecide;
+  const isSelf = userId === profile.id;
 
   const go = (d: string) =>
     navigate({ to: "/team/$userId", params: { userId }, search: { date: d } });
@@ -171,9 +175,11 @@ export function DayPage() {
     <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <Link to={teamPath} className="text-[13px] text-acctext">
-            Live team
-          </Link>
+          {profile.role !== "employee" && (
+            <Link to={teamPath} className="text-[13px] text-acctext">
+              Live team
+            </Link>
+          )}
           <h1 className="mt-1 text-2xl font-semibold tracking-[-0.025em]">
             {person.data.full_name}
           </h1>
@@ -331,6 +337,16 @@ export function DayPage() {
           </ul>
         )}
       </div>
+
+      <ManualEntries
+        userId={userId}
+        zone={zone}
+        date={date}
+        dayStart={day.start}
+        dayEnd={day.end}
+        isSelf={isSelf}
+        canDecide={canDecide}
+      />
 
       {canSchedule && (
         <dialog
