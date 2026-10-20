@@ -675,7 +675,7 @@ pub trait Platform: Send + Sync {
         <thead><tr><th>Function</th><th>Input</th><th>Server checks</th><th>Returns</th></tr></thead>
         <tbody>
           <tr><td><code>register_device</code></td><td>platform, os_version, agent_version, hardware_hash</td><td>Caller signed in and active</td><td>device_id, policy, policy_version</td></tr>
-          <tr><td><code>agent_heartbeat</code></td><td>device_id, sent_at, idle_s, locked, in_call, agent_version, permissions</td><td>Device belongs to caller and is not revoked</td><td>server_time, policy_version, commands[]: <code>refresh_policy</code>, <code>reack_notice</code>, <code>revoke</code>, <code>update</code></td></tr>
+          <tr><td><code>agent_heartbeat</code></td><td>device_id, sent_at, idle_s, locked, in_call, agent_version, permissions</td><td>Device belongs to caller and is not revoked</td><td>server_time, policy_version, config_version (org + this user: agents refetch config when it moves), commands[]: <code>refresh_policy</code>, <code>reack_notice</code>, <code>revoke</code>, <code>update</code></td></tr>
           <tr><td><code>agent_events</code></td><td>device_id, events[] (≤ 100)</td><td>Per event: schema, allowed in current server-side state, <code>at</code> in range</td><td>accepted[], duplicates[], rejected[{id, reason}], server_time</td></tr>
           <tr><td><code>ack_notice</code></td><td>notice_id</td><td>Notice is the current version for the org and region</td><td>ok</td></tr>
         </tbody>
@@ -772,7 +772,7 @@ pub trait Platform: Send + Sync {
           <li><span class="badge">FK</span>team_id → teams</li>
           <li>role (owner, admin, manager, employee)</li>
           <li>work_country · work_state · timezone</li>
-          <li>approval_required · active</li>
+          <li>approval_required · active · config_version int</li>
         </ul></div>
         <div class="t-card"><div class="name">delegations</div><ul>
           <li><span class="badge pk">PK</span><b>id</b></li>
