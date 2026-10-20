@@ -326,6 +326,14 @@ impl AgentState {
         let email = self.account.as_ref().and_then(|a| a.email());
         let projects = self.projects.lock().unwrap().clone();
         let notice = self.notice.lock().unwrap().status();
+        // The tray warns about what this person's collection needs and the capture
+        // failures show (taken before the session lock: other locks follow here).
+        let required = self.required_permissions();
+        let permissions = self
+            .permissions
+            .lock()
+            .unwrap()
+            .for_tray(self.platform.permissions(), required);
         let session = self.session.lock().unwrap();
         let snap = session.snapshot();
         let today = session.today();
@@ -373,7 +381,7 @@ impl AgentState {
                     at: iso(at),
                 }),
             notice,
-            permissions: Some(self.effective_permissions()),
+            permissions: Some(permissions),
             accessibility_missing: self.accessibility_missing(),
         };
         agent_core::status::agent_status(
@@ -526,10 +534,7 @@ impl AgentState {
             webcam_error = ?captured.webcam_error,
             "captured"
         );
-        self.permissions.lock().unwrap().capture_finished(
-            (policy.screenshots != capture::ScreenshotMode::Off).then_some(&captured.screen_error),
-            policy.webcam.then_some(&captured.webcam_error),
-        );
+        self.note_capture(&policy, &captured);
         self.permission_tick();
         captured.attach(&mut finished.payload);
         let Some(id) = self.queue(finished) else {
@@ -542,6 +547,17 @@ impl AgentState {
                 }
             }
         }
+    }
+
+    /// Tells the permission monitor how a capture went (a check-in's or the Fix
+    /// flow's test capture): failures count towards a permission being missing, a
+    /// success clears the count, so a re-granted permission stops warning as soon as
+    /// something works. Only what the policy attempted counts.
+    fn note_capture(&self, policy: &CapturePolicy, captured: &capture::Captured) {
+        self.permissions.lock().unwrap().capture_finished(
+            (policy.screenshots != capture::ScreenshotMode::Off).then_some(&captured.screen_error),
+            policy.webcam.then_some(&captured.webcam_error),
+        );
     }
 
     /// The permissions as far as the agent can tell: the OS's answer, corrected by
@@ -561,11 +577,10 @@ impl AgentState {
             let session = self.session.lock().unwrap();
             (session.shift(), session.signed_in())
         };
+        let required = self.required_permissions();
         let poll = self.permissions.lock().unwrap().poll(
             self.platform.as_ref(),
-            Required {
-                camera: self.webcam_on(),
-            },
+            required,
             signed_in,
             shift,
             self.clock.now(),
@@ -582,6 +597,14 @@ impl AgentState {
     /// The org's effective webcam setting: whether Camera is asked for at all.
     fn webcam_on(&self) -> bool {
         self.capture_policy.lock().unwrap().webcam
+    }
+
+    /// What this person's collection needs from the OS: the same rule as the
+    /// server's, over the same effective policies (AGT-07).
+    fn required_permissions(&self) -> Required {
+        let capture = self.capture_policy.lock().unwrap().clone();
+        let activity = self.activity.lock().unwrap().policy().clone();
+        Required::for_collection(&capture, &activity)
     }
 
     /// Whether browser domains are collected: activity sampling is on (ACT-01/03), which
@@ -603,9 +626,12 @@ impl AgentState {
 
     /// What the onboarding window's permission and finish steps show.
     fn onboarding_state(&self) -> OnboardingState {
+        // The OS's own answer: the permission step guides what the person can switch
+        // on, and "granted but refused" is its restart case. The failure override
+        // would hide that and stop a re-granted person reaching the test capture.
         onboarding::state(
             current_os(),
-            self.effective_permissions(),
+            self.platform.permissions(),
             self.webcam_on(),
             self.platform.accessibility_permission(),
             self.domains_collected(),
@@ -636,6 +662,10 @@ impl AgentState {
             .lock()
             .unwrap()
             .capture_tested(&captured, &os);
+        // Evidence for the warning too: one that works clears it, one that fails
+        // for lack of permission counts like a check-in's. Nothing is queued here:
+        // the next permission look (every few seconds) reports the change.
+        self.note_capture(&policy, &captured);
         onboarding::test_result(&captured, &os)
     }
 
@@ -2739,6 +2769,77 @@ mod tests {
         let reports = permission_reports(&w);
         assert_eq!(reports.len(), 3);
         assert_eq!(reports[2]["screen"], "granted", "reported back");
+    }
+
+    fn collection_config(
+        screenshots: &str,
+        window_titles: bool,
+        webcam: bool,
+    ) -> agent_core::config::AgentConfig {
+        config_with(
+            serde_json::json!({
+                "screenshots": screenshots, "window_titles": window_titles, "webcam": webcam
+            }),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        )
+    }
+
+    #[test]
+    fn a_permission_the_collection_does_not_use_is_no_banner_prompt_or_chip() {
+        let w = working();
+        w.state
+            .apply_config(&collection_config("off", false, false));
+        w.platform.update(|s| {
+            s.permissions.screen = PermissionState::Denied;
+            s.permissions.camera = PermissionState::Denied;
+        });
+        w.state.permission_tick();
+        let status = w.state.status();
+        assert_eq!(status.permissions.screen, PermissionState::Unsupported);
+        assert_eq!(status.permissions.camera, PermissionState::Unsupported);
+        assert!(w.platform.snapshot().notifications.is_empty(), "no prompt");
+        assert_eq!(
+            permission_reports(&w),
+            [serde_json::json!({ "screen": "denied", "camera": "denied" })],
+            "the report stays raw; the server applies the same rule"
+        );
+
+        // Window titles are read again: they need Screen Recording, the camera still not.
+        w.state.apply_config(&collection_config("off", true, false));
+        w.state.permission_tick();
+        let status = w.state.status();
+        assert_eq!(status.permissions.screen, PermissionState::Denied);
+        assert_eq!(status.permissions.camera, PermissionState::Unsupported);
+        assert_eq!(w.platform.snapshot().notifications.len(), 1);
+        assert_eq!(
+            w.platform.snapshot().notifications[0].0,
+            "Screen Recording is off"
+        );
+    }
+
+    #[test]
+    fn a_working_test_capture_clears_a_stale_warning_the_os_never_changed() {
+        let w = working();
+        // The OS keeps saying "granted"; captures failed twice, so the warning is up.
+        w.platform
+            .update(|s| s.screen = Err(agent_core::platform::CaptureError::PermissionMissing));
+        w.pass();
+        w.pass();
+        assert_eq!(w.state.status().permissions.screen, PermissionState::Denied);
+
+        // Re-granted. The permission step follows the OS, so the person reaches the
+        // test capture; the one that works clears the warning and reports it back.
+        w.platform.update(|s| s.screen = Ok(()));
+        assert!(w.state.onboarding_state().ready);
+        assert!(w.state.test_capture().ok);
+        assert_eq!(
+            w.state.status().permissions.screen,
+            PermissionState::Granted
+        );
+        w.state.permission_tick();
+        let reports = permission_reports(&w);
+        assert_eq!(reports.last().unwrap()["screen"], "granted");
     }
 
     #[test]
