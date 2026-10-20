@@ -785,6 +785,40 @@ export type Database = {
           },
         ];
       };
+      dirty_days: {
+        Row: {
+          day: string;
+          marked_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          day: string;
+          marked_at?: string;
+          user_id: string;
+        };
+        Update: {
+          day?: string;
+          marked_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dirty_days_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "dirty_days_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       email_outbox: {
         Row: {
           attempts: number;
@@ -1359,6 +1393,94 @@ export type Database = {
           },
         ];
       };
+      time_segments: {
+        Row: {
+          counted: boolean;
+          day: string;
+          end_at: string;
+          excluded: boolean;
+          excluded_by: string | null;
+          excluded_reason: string | null;
+          flagged: boolean;
+          id: string;
+          org_id: string;
+          project_id: string | null;
+          source: string;
+          start_at: string;
+          type: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          counted: boolean;
+          day: string;
+          end_at: string;
+          excluded?: boolean;
+          excluded_by?: string | null;
+          excluded_reason?: string | null;
+          flagged: boolean;
+          id?: string;
+          org_id: string;
+          project_id?: string | null;
+          source?: string;
+          start_at: string;
+          type: string;
+          user_id: string;
+        };
+        Update: {
+          counted?: boolean;
+          day?: string;
+          end_at?: string;
+          excluded?: boolean;
+          excluded_by?: string | null;
+          excluded_reason?: string | null;
+          flagged?: boolean;
+          id?: string;
+          org_id?: string;
+          project_id?: string | null;
+          source?: string;
+          start_at?: string;
+          type?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "time_segments_excluded_by_fkey";
+            columns: ["excluded_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "time_segments_excluded_by_fkey";
+            columns: ["excluded_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_segments_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_segments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "time_segments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       users: {
         Row: {
           active: boolean;
@@ -1623,6 +1745,10 @@ export type Database = {
         };
         Returns: Record<string, unknown>;
       };
+      replace_day_segments: {
+        Args: { p_day: string; p_loaded_at?: string; p_segments: Json; p_user_id: string };
+        Returns: number;
+      };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       save_client: {
         Args: { p_archived?: boolean; p_id: string; p_name: string };
@@ -1638,6 +1764,7 @@ export type Database = {
         };
         Returns: string;
       };
+      segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
       set_miss_reason: {
         Args: { p_checkin_id: string; p_kind: string; p_note?: string };
         Returns: undefined;

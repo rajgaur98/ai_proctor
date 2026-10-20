@@ -20,7 +20,9 @@
     "contracts:gen": "pnpm --filter @ai-proctor/contracts gen",
     "contracts:migration": "pnpm --filter @ai-proctor/contracts migration",
     "contracts:check-db": "pnpm --filter @ai-proctor/contracts check-db",
-    "core:gen": "pnpm --filter @ai-proctor/core gen"
+    "core:gen": "pnpm --filter @ai-proctor/core gen",
+    "core:fn": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sync-fn-core.ts",
+    "it:rebuild-segments": "bash scripts/it-rebuild-segments.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
