@@ -6,10 +6,15 @@ export function viewerZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-/** "14:03" in `zone`, plus the zone abbreviation when it isn't the viewer's. */
-export function formatTime(iso: string, zone: string, viewer = viewerZone()): string {
+/** "14:03" in `zone` ("14:03:12" with seconds), plus the zone abbreviation when it isn't the viewer's. */
+export function formatTime(
+  iso: string,
+  zone: string,
+  viewer = viewerZone(),
+  withSeconds = false,
+): string {
   const t = DateTime.fromISO(iso, { zone });
-  const text = t.toFormat("HH:mm");
+  const text = t.toFormat(withSeconds ? "HH:mm:ss" : "HH:mm");
   return zone === viewer ? text : `${text} ${t.toFormat("ZZZZ")}`;
 }
 
@@ -19,7 +24,15 @@ export function employeeZoneTitle(iso: string, employeeZone: string): string {
   return `${t.toFormat("ccc d LLL, HH:mm")} ${t.toFormat("ZZZZ")} (employee's time, ${employeeZone})`;
 }
 
-export function Time({ iso, employeeZone }: { iso: string; employeeZone?: string | undefined }) {
+export function Time({
+  iso,
+  employeeZone,
+  seconds = false,
+}: {
+  iso: string;
+  employeeZone?: string | undefined;
+  seconds?: boolean;
+}) {
   const viewer = viewerZone();
   return (
     <time
@@ -27,7 +40,7 @@ export function Time({ iso, employeeZone }: { iso: string; employeeZone?: string
       className="font-mono text-[12.5px]"
       title={employeeZone ? employeeZoneTitle(iso, employeeZone) : undefined}
     >
-      {formatTime(iso, viewer, viewer)}
+      {formatTime(iso, viewer, viewer, seconds)}
     </time>
   );
 }

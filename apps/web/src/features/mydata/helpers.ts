@@ -2,7 +2,7 @@
 // segments, who viewed which check-in, and wording. Tested without a browser.
 import type { SegmentType } from "@ai-proctor/core";
 import { DateTime } from "luxon";
-import type { Period, Span } from "../day/timeline";
+import type { Span, DaySegment as TimelineSegment } from "../day/timeline";
 
 export interface DaySegment {
   type: SegmentType;
@@ -69,12 +69,16 @@ export function placeSegments(span: Span, segs: DaySegment[]): PlacedSegment[] {
     }));
 }
 
-/**
- * The time segments as the periods barSpan() sizes the bar from. barSpan() only reads
- * their times (status is ignored apart from 'off_shift'), so 'active' stands in.
- */
-export function asPeriods(segs: DaySegment[]): Period[] {
-  return segs.map((s) => ({ status: "active", start: s.start, end: s.end }));
+/** The time segments as the day page's bar sizes itself from them (barSpan() reads their times). */
+export function asTimelineSegments(segs: DaySegment[]): TimelineSegment[] {
+  return segs.map((s) => ({
+    type: s.type,
+    start: Date.parse(s.start),
+    end: Date.parse(s.end),
+    flagged: false,
+    excluded: s.excluded,
+    counted: s.counted,
+  }));
 }
 
 /** Seconds per type within the span, in legend order; types with no time are left out. */
