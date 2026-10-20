@@ -26,5 +26,5 @@ playwright-report/
 .claude/autonomy/
 .claude/settings.local.json
 
-# Per-worktree local Supabase stack (scripts/stack.sh)
+# Per-worktree Supabase stack (scripts/stack.sh)
 .stack/
