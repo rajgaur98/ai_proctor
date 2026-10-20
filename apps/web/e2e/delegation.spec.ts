@@ -143,6 +143,15 @@ test("a manager sets a delegate, the delegate decides and approves, then the man
     const r = await owner.rpc("decide_manual_entry", { p_id: e.id, p_approve: false });
     if (r.error) throw r.error;
   }
+  // The timesheet page rebuilds the week when it opens, which can add flagged time
+  // other specs left behind; rebuild first so every flagged segment is settled here.
+  for (let d = 0; d < 7; d++) {
+    const day = DateTime.fromISO(erinWeek).plus({ days: d }).toISODate() ?? erinWeek;
+    const rebuilt = await owner.functions.invoke("rebuild-segments", {
+      body: { user_id: ERIN, day },
+    });
+    if (rebuilt.error) throw rebuilt.error;
+  }
   const flagged = await owner.rpc("timesheet_flagged_segments", {
     p_user_id: ERIN,
     p_from: erinWeek,
