@@ -2,7 +2,8 @@
 # Integration check for the retention-purge Edge Function (#51): an expired capture
 # is deleted from Storage through the function and its check-in is marked; a recent
 # one is left alone; callers other than the service role are refused. Expired
-# timesheet rows (#130) go the same way and are counted in the reply.
+# timesheet rows (#130) go the same way and are counted in the reply. So do old alerts
+# and sent email (#185); an old email still waiting to go out is kept.
 # Needs a stack that serves the function (stack.sh down, then up, after adding it).
 #
 #   eval "$(scripts/stack.sh env | grep -E '^(API_URL|SERVICE_ROLE_KEY|ANON_KEY|DB_URL)=')"
@@ -21,6 +22,9 @@ OLD=00000000-0000-4000-8000-00000000f901
 NEW=00000000-0000-4000-8000-00000000f902
 OLD_ENTRY=00000000-0000-4000-8000-00000000f903
 NEW_ENTRY=00000000-0000-4000-8000-00000000f904
+OLD_ALERT=00000000-0000-4000-8000-00000000f905
+OLD_MAIL=00000000-0000-4000-8000-00000000f906
+PENDING_MAIL=00000000-0000-4000-8000-00000000f907
 OLD_PATH="$ORG/$USER/$(date -u -v-35d +%F 2>/dev/null || date -u -d '35 days ago' +%F)/$OLD/screen-1.webp"
 NEW_PATH="$ORG/$USER/$(date -u +%F)/$NEW/screen-1.webp"
 
@@ -34,6 +38,8 @@ cleanup() {
     -H 'Content-Type: application/json' -d "{\"prefixes\": [\"$OLD_PATH\", \"$NEW_PATH\"]}" > /dev/null || true
   sql "delete from public.checkin_events where id in ('$OLD', '$NEW');
        delete from public.manual_entries where id in ('$OLD_ENTRY', '$NEW_ENTRY');
+       delete from public.alerts where id = '$OLD_ALERT';
+       delete from public.email_outbox where id in ('$OLD_MAIL', '$PENDING_MAIL');
        delete from public.dirty_days where user_id = '$USER' and day < current_date - interval '1 year';
        delete from public.devices where id = '$DEVICE';
        delete from public.retention_runs where at > now() - interval '1 hour';" > /dev/null || true
@@ -61,6 +67,12 @@ sql "insert into public.devices (id, org_id, user_id, platform, os_version, agen
 sql "insert into public.manual_entries (id, org_id, user_id, start_at, end_at, reason, status, decided_at) values
        ('$OLD_ENTRY', '$ORG', '$USER', now() - interval '4 years 1 hour', now() - interval '4 years', 'retention check', 'approved', now()),
        ('$NEW_ENTRY', '$ORG', '$USER', now() - interval '2 years 1 hour', now() - interval '2 years', 'retention check', 'approved', now());" > /dev/null
+# An alert and a sent email 13 months old (12-month default), and an unsent one that old.
+sql "insert into public.email_outbox (id, org_id, to_email, template, created_at, sent_at, attempts) values
+       ('$OLD_MAIL', '$ORG', 'retention@example.test', 'alert', now() - interval '13 months', now() - interval '13 months', 1),
+       ('$PENDING_MAIL', '$ORG', 'retention@example.test', 'alert', now() - interval '13 months', null, 0);
+     insert into public.alerts (id, org_id, user_id, recipient_id, kind, episode, triggered_at, email_id)
+     values ('$OLD_ALERT', '$ORG', '$USER', '$USER', 'offline', 'retention-check', now() - interval '13 months', '$OLD_MAIL');" > /dev/null
 check "old capture uploaded" "$(upload "$OLD_PATH")" 200
 check "recent capture uploaded" "$(upload "$NEW_PATH")" 200
 
@@ -83,6 +95,10 @@ check "expired manual entry deleted" "$(sql "select count(*) from public.manual_
 check "recent manual entry kept" "$(sql "select count(*) from public.manual_entries where id = '$NEW_ENTRY'")" 1
 check "reply counts the entry" "$(echo "$RESULT" | sed -n 's/.*"manual_entries":\([0-9]*\).*/\1/p')" 1
 check "entry counted in the org's log" "$(sql "select sum(deleted) from public.retention_runs where org_id = '$ORG' and category = 'manual_entries' and at > now() - interval '1 hour'")" 1
+check "old alert deleted" "$(sql "select count(*) from public.alerts where id = '$OLD_ALERT'")" 0
+check "old sent email deleted" "$(sql "select count(*) from public.email_outbox where id = '$OLD_MAIL'")" 0
+check "old unsent email kept" "$(sql "select count(*) from public.email_outbox where id = '$PENDING_MAIL'")" 1
+check "reply counts the alert" "$(echo "$RESULT" | sed -n 's/.*"alerts":\([0-9]*\).*/\1/p')" 1
 
 # A second run finds nothing for these.
 SECOND=$(purge)
