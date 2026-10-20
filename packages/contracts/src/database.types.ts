@@ -1352,14 +1352,15 @@ export type Database = {
       presence: {
         Row: {
           call_sources: string[];
+          camera_permission: string | null;
           idle: boolean;
           last_checkin_at: string | null;
           last_checkin_outcome: Database["public"]["Enums"]["checkin_outcome"] | null;
           last_contact_at: string | null;
           locked: boolean;
           org_id: string;
-          permission_missing: boolean;
           project_id: string | null;
+          screen_permission: string | null;
           since: string;
           status: Database["public"]["Enums"]["presence_status"];
           tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
@@ -1368,14 +1369,15 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           call_sources?: string[];
+          camera_permission?: string | null;
           idle?: boolean;
           last_checkin_at?: string | null;
           last_checkin_outcome?: Database["public"]["Enums"]["checkin_outcome"] | null;
           last_contact_at?: string | null;
           locked?: boolean;
           org_id: string;
-          permission_missing?: boolean;
           project_id?: string | null;
+          screen_permission?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
           tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;
@@ -1383,14 +1385,15 @@ export type Database = {
         };
         Update: {
           call_sources?: string[];
+          camera_permission?: string | null;
           idle?: boolean;
           last_checkin_at?: string | null;
           last_checkin_outcome?: Database["public"]["Enums"]["checkin_outcome"] | null;
           last_contact_at?: string | null;
           locked?: boolean;
           org_id?: string;
-          permission_missing?: boolean;
           project_id?: string | null;
+          screen_permission?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
           tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;

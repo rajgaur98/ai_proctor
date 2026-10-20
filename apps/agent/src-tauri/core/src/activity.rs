@@ -97,6 +97,11 @@ impl Sampler {
         }
     }
 
+    /// The policy now in force.
+    pub fn policy(&self) -> &ActivityPolicy {
+        &self.policy
+    }
+
     /// Whether the org lets activity be sampled at all; the caller doesn't even read
     /// the frontmost app when it doesn't.
     pub fn sampling(&self) -> bool {
