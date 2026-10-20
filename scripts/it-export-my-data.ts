@@ -321,10 +321,11 @@ try {
   console.log("ok  the manager's export has only the manager's data");
 
   // Audit: both exports are logged with their counts.
-  const audit = await call(
-    `/rest/v1/audit_log?action=eq.my_data.exported&actor_id=eq.${ERIN}&order=id.desc&limit=1`,
-    service,
-  );
+  // The log is append-only and closed to the service role (#53): an admin reads it.
+  const adminToken = await signIn("admin@acme.test");
+  const audit = await call("/rest/v1/rpc/search_audit_log", adminToken, {
+    body: { p_actions: ["my_data.exported"], p_actor_id: ERIN, p_limit: 1 },
+  });
   assert.equal(audit.json.length, 1, "Erin's export is in the audit log");
   assert.equal(audit.json[0].target_user_id, ERIN);
   assert.equal(audit.json[0].metadata.counts.check_ins, checkIns.length);

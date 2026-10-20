@@ -21,6 +21,7 @@ const admin: NavLink[] = [
   { to: "/projects", label: "Projects" },
   { to: "/policy", label: "Policy" },
   { to: "/notice", label: "Monitoring notice" },
+  { to: "/audit", label: "Audit log" },
 ];
 
 const employee: NavLink[] = [

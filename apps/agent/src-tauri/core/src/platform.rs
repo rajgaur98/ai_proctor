@@ -89,11 +89,33 @@ pub enum CaptureError {
     Failed(String),
 }
 
-/// A click on the check-in card, checked for synthetic input (anti-cheat, #26).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Click {
-    pub x: f64,
-    pub y: f64,
+/// A rectangle on the virtual screen in physical pixels (origin top-left; the
+/// position can be negative on a monitor left of or above the primary one).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScreenRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl ScreenRect {
+    /// Whether the point is inside (left and top edges in, right and bottom edges out).
+    pub fn contains(&self, x: i32, y: i32) -> bool {
+        let (x, y) = (i64::from(x), i64::from(y));
+        let (left, top) = (i64::from(self.x), i64::from(self.y));
+        x >= left
+            && y >= top
+            && x < left + i64::from(self.width)
+            && y < top + i64::from(self.height)
+    }
+}
+
+/// What the input guard swallowed while the card was up (ANT-02, #26).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InjectedInput {
+    /// Injected mouse clicks inside the card, none of which reached it.
+    pub count: u32,
 }
 
 pub trait Platform: Send + Sync {
@@ -111,7 +133,13 @@ pub trait Platform: Send + Sync {
     /// Screen Recording and Camera, onboarding #59). Returns without waiting for the
     /// answer; `permissions()` reports it. A no-op where there is nothing to ask.
     fn request_permission(&self, kind: PermissionKind);
-    fn is_injected(&self, click: &Click) -> bool;
+    /// Starts watching for injected mouse clicks inside `area` (the card window)
+    /// and swallowing them, so they never reach the card (ANT-02). Called when the
+    /// card is shown; a second call replaces the first.
+    fn start_input_guard(&self, area: ScreenRect);
+    /// Stops the guard and returns what it swallowed since `start_input_guard`
+    /// (zero when none was running or the OS can't tell).
+    fn stop_input_guard(&self) -> InjectedInput;
     /// OS notification (CHK-13 optional check-in notification).
     fn notify(&self, title: &str, body: &str);
     /// ANT-01: registers the helper the OS runs to start the agent again if it is

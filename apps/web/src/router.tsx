@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
+import { AuditLog } from "./features/audit/AuditLog";
 import { DayPage } from "./features/day/DayPage";
 import { MyData } from "./features/mydata/MyData";
 import { NoticePage } from "./features/notice/Notice";
@@ -194,6 +195,7 @@ const routeTree = rootRoute.addChildren([
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
     page("/policy", "Policy", 52, PolicyPage),
+    page("/audit", "Audit log", 53, AuditLog),
     myDataRoute,
     page("/my-timesheet", "My timesheet", 43, MyTimesheets),
     noticeRoute,

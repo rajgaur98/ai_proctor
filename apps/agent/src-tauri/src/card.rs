@@ -7,6 +7,9 @@
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
 
 use agent_core::contracts::CardChallenge;
+use agent_core::platform::ScreenRect;
+
+use crate::AgentState;
 
 pub const LABEL: &str = "card";
 /// Must match `ipcEvents` in packages/contracts/src/ipc.ts.
@@ -108,6 +111,18 @@ pub fn show(app: &AppHandle, challenge: CardChallenge) {
         {
             // Windows behaviour (no activation) is spike #12's job.
             let _ = window.show();
+        }
+        // ANT-02: watch the card's area for injected clicks while it is up.
+        match (window.outer_position(), window.outer_size()) {
+            (Ok(position), Ok(size)) => {
+                handle.state::<AgentState>().start_input_guard(ScreenRect {
+                    x: position.x,
+                    y: position.y,
+                    width: size.width,
+                    height: size.height,
+                })
+            }
+            _ => tracing::warn!("card window area unknown: input guard not started"),
         }
     });
 }

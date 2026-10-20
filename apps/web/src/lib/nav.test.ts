@@ -15,6 +15,12 @@ describe("navFor", () => {
     expect(navFor("admin").map((l) => l.label)).toContain("Monitoring notice");
   });
 
+  it("keeps the audit log to owners and admins", () => {
+    expect(navFor("owner").map((l) => l.to)).toContain("/audit");
+    expect(navFor("manager").map((l) => l.to)).not.toContain("/audit");
+    expect(navFor("employee").map((l) => l.to)).not.toContain("/audit");
+  });
+
   it("gives employees only their own pages", () => {
     expect(navFor("employee").map((l) => l.to)).toEqual([
       "/me",

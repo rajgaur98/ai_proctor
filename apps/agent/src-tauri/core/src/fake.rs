@@ -7,7 +7,8 @@ use chrono::{DateTime, Utc};
 
 use crate::contracts::{PermissionKind, PermissionState, Permissions};
 use crate::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
+    SessionState,
 };
 use crate::watchdog::{WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState};
 
@@ -32,7 +33,10 @@ pub struct FakeState {
     /// a capture after revoking while still saying "granted").
     pub screen: Result<(), CaptureError>,
     pub camera: Result<(), CaptureError>,
-    pub injected: bool,
+    /// Injected clicks the guard will report when it stops (ANT-02).
+    pub injected_clicks: u32,
+    /// The area the input guard is watching; `None` when it isn't running.
+    pub input_guard: Option<ScreenRect>,
     pub notifications: Vec<(String, String)>,
     /// The registered watchdog, if any.
     pub watchdog: Option<WatchdogSpec>,
@@ -61,7 +65,8 @@ impl Default for FakeState {
             displays: 1,
             screen: Ok(()),
             camera: Ok(()),
-            injected: false,
+            injected_clicks: 0,
+            input_guard: None,
             notifications: Vec::new(),
             watchdog: None,
             supervised: false,
@@ -170,8 +175,19 @@ impl Platform for FakePlatform {
         self.state.lock().unwrap().permission_requests.push(kind);
     }
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        self.state.lock().unwrap().injected
+    fn start_input_guard(&self, area: ScreenRect) {
+        self.state.lock().unwrap().input_guard = Some(area);
+    }
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        let mut state = self.state.lock().unwrap();
+        // Like the real guard: what it counted is reported once, then it's clear.
+        let count = if state.input_guard.take().is_some() {
+            std::mem::take(&mut state.injected_clicks)
+        } else {
+            0
+        };
+        InjectedInput { count }
     }
 
     fn notify(&self, title: &str, body: &str) {
