@@ -36,6 +36,33 @@ export const MissedCheckin = z
   .object({ id: z.string(), at: z.string() })
   .meta({ id: "MissedCheckin" });
 
+/**
+ * Where the monitoring notice stands for this person (AGT-04/05). `required` is true
+ * while they have never acknowledged one: nothing is collected and clocking in is
+ * blocked. A newer version after that only asks for a review (`acknowledged` false).
+ */
+export const NoticeStatus = z
+  .object({ version: z.int().nonnegative(), acknowledged: z.boolean(), required: z.boolean() })
+  .meta({ id: "NoticeStatus" });
+
+/** The notice text, in the sections of the Onboarding design's first step (plain text). */
+export const NoticeBody = z
+  .object({
+    intro: z.string().optional(),
+    collected: z.string(),
+    when: z.string(),
+    who: z.string(),
+    retention: z.string(),
+    rights: z.string(),
+    grievance: z.string().optional(),
+  })
+  .meta({ id: "NoticeBody" });
+
+/** The current notice for the notice window. */
+export const NoticeContent = z
+  .object({ version: z.int().nonnegative(), acknowledged: z.boolean(), body: NoticeBody })
+  .meta({ id: "NoticeContent" });
+
 // What the tray popover shows (EMP-01). Never includes the next check-in time.
 export const AgentStatus = z
   .object({
@@ -58,6 +85,8 @@ export const AgentStatus = z
     projects: z.array(ProjectRef),
     last_checkin: LastCheckin.nullable(),
     missed_checkin: MissedCheckin.nullable(),
+    /** The monitoring notice; null before the first config from the server. */
+    notice: NoticeStatus.nullable(),
   })
   .meta({ id: "AgentStatus" });
 
@@ -129,6 +158,12 @@ export const ipcCommands = {
     args: z.object({ target: z.enum(["my_data", "notice", "screen_settings", "camera_settings"]) }),
     result: CommandResult,
   },
+  /** The notice window's content: the current notice, or null before the server has sent one. */
+  get_notice: { args: z.object({}), result: NoticeContent.nullable() },
+  /** Opens (or focuses) the notice window; the tray's "Review the monitoring notice". */
+  show_notice: { args: z.object({}), result: CommandResult },
+  /** AGT-04: "I've read this". `version` is the one on screen; the core refuses a stale one. */
+  acknowledge_notice: { args: z.object({ version: z.int().nonnegative() }), result: CommandResult },
   /** "Switch project" on the card: opens the popover; never blocks the card. */
   card_switch_project: { args: z.object({}), result: CommandResult },
 } as const;
@@ -146,6 +181,9 @@ export type AgentStatus = z.infer<typeof AgentStatus>;
 export type CommandResult = z.infer<typeof CommandResult>;
 export type CardChallenge = z.infer<typeof CardChallenge>;
 export type ProjectRef = z.infer<typeof ProjectRef>;
+export type NoticeStatus = z.infer<typeof NoticeStatus>;
+export type NoticeBody = z.infer<typeof NoticeBody>;
+export type NoticeContent = z.infer<typeof NoticeContent>;
 export type LastCheckin = z.infer<typeof LastCheckin>;
 export type MissedCheckin = z.infer<typeof MissedCheckin>;
 export type CardClickResult = z.infer<typeof CardClickResult>;

@@ -10,6 +10,7 @@ import {
   formatDay,
   formatDuration,
   liveWorkedSeconds,
+  noticePrompt,
   pauseAllowance,
   permissionIssues,
   projectLabel,
@@ -35,6 +36,7 @@ const base: AgentStatus = {
   projects: [],
   last_checkin: null,
   missed_checkin: null,
+  notice: null,
 };
 
 describe("formatDuration", () => {
@@ -209,5 +211,23 @@ describe("small helpers", () => {
     expect(canSaveMissReason(null, "  ")).toBe(false);
     expect(canSaveMissReason("meeting", "")).toBe(true);
     expect(canSaveMissReason(null, "ran late")).toBe(true);
+  });
+});
+
+describe("noticePrompt", () => {
+  it("is quiet without a notice or once it is acknowledged", () => {
+    expect(noticePrompt(null)).toBeNull();
+    expect(noticePrompt({ version: 1, acknowledged: true, required: false })).toBeNull();
+  });
+  it("blocks until the first acknowledgement", () => {
+    expect(noticePrompt({ version: 1, acknowledged: false, required: true })).toBe("required");
+  });
+  it("asks for a review of a newer version without blocking", () => {
+    expect(noticePrompt({ version: 2, acknowledged: false, required: false })).toBe("review");
+  });
+  it("reaches the tray view", () => {
+    const status = { ...base, notice: { version: 2, acknowledged: false, required: false } };
+    expect(trayView(status).notice).toBe("review");
+    expect(trayView(base).notice).toBeNull();
   });
 });
