@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { statusStyle } from "./StatusChip";
+import { asTamperReason, statusLabel, statusStyle, tamperLabel } from "./StatusChip";
 
 describe("statusStyle", () => {
   it("has a label for every status (never colour alone, NFR-UX-01)", () => {
@@ -13,5 +13,30 @@ describe("statusStyle", () => {
     expect(statusStyle.tamper.shape).toBe("diamond");
     expect(statusStyle.paused.shape).toBe("square");
     expect(statusStyle.off_shift.shape).toBe("dash");
+  });
+});
+
+describe("tamper reasons", () => {
+  it("labels each reason, neutrally", () => {
+    expect(tamperLabel).toEqual({
+      capture_blocked: "Capture blocked",
+      agent_stopped: "Agent stopped",
+      no_heartbeat: "No heartbeat",
+    });
+  });
+
+  it("shows the reason only on Tamper", () => {
+    expect(statusLabel("tamper", "agent_stopped")).toBe("Agent stopped");
+    expect(statusLabel("tamper", "no_heartbeat")).toBe("No heartbeat");
+    expect(statusLabel("tamper", null)).toBe("Capture blocked");
+    expect(statusLabel("tamper")).toBe("Capture blocked");
+    expect(statusLabel("active", "agent_stopped")).toBe("Active");
+  });
+
+  it("reads a reason from untyped data", () => {
+    expect(asTamperReason("no_heartbeat")).toBe("no_heartbeat");
+    expect(asTamperReason("toString")).toBeNull();
+    expect(asTamperReason(3)).toBeNull();
+    expect(asTamperReason(null)).toBeNull();
   });
 });

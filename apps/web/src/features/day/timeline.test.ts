@@ -55,8 +55,36 @@ describe("segments", () => {
       ["on_break", 37.5, 12.5],
     ]);
     expect(totals(segs)).toEqual([
-      { status: "active", minutes: 120 },
-      { status: "on_break", minutes: 60 },
+      { status: "active", reason: null, minutes: 120 },
+      { status: "on_break", reason: null, minutes: 60 },
+    ]);
+  });
+});
+
+describe("tamper reasons on the bar", () => {
+  const span = { start: ms("09:00"), end: ms("17:00") };
+
+  it("keeps the reason on a segment and totals each reason apart", () => {
+    const segs = segments(
+      span,
+      [
+        { status: "tamper", reason: "agent_stopped", start: iso("09:00"), end: iso("09:10") },
+        { status: "active", start: iso("09:10"), end: iso("10:00") },
+        { status: "tamper", reason: "no_heartbeat", start: iso("10:00"), end: iso("10:05") },
+        { status: "tamper", reason: "agent_stopped", start: iso("10:05"), end: iso("10:10") },
+      ],
+      ms("13:00"),
+    );
+    expect(segs.map((s) => s.reason)).toEqual([
+      "agent_stopped",
+      null,
+      "no_heartbeat",
+      "agent_stopped",
+    ]);
+    expect(totals(segs)).toEqual([
+      { status: "active", reason: null, minutes: 50 },
+      { status: "tamper", reason: "agent_stopped", minutes: 15 },
+      { status: "tamper", reason: "no_heartbeat", minutes: 5 },
     ]);
   });
 });
