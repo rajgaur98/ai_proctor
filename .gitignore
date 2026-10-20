@@ -16,6 +16,9 @@ spikes/**/target/
 supabase/.branches/
 supabase/.temp/
 
+# Per-worktree Supabase stack (scripts/stack.sh)
+.stack/
+
 .DS_Store
 
 # Playwright
