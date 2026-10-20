@@ -1429,6 +1429,86 @@ export type Database = {
           },
         ];
       };
+      reminders_sent: {
+        Row: {
+          episode: string;
+          id: string;
+          kind: string;
+          org_id: string;
+          period_start: string;
+          recipient_id: string;
+          sent_at: string;
+          timesheet_id: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          episode?: string;
+          id?: string;
+          kind: string;
+          org_id: string;
+          period_start: string;
+          recipient_id: string;
+          sent_at?: string;
+          timesheet_id?: string | null;
+          user_id: string;
+        };
+        Update: {
+          episode?: string;
+          id?: string;
+          kind?: string;
+          org_id?: string;
+          period_start?: string;
+          recipient_id?: string;
+          sent_at?: string;
+          timesheet_id?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reminders_sent_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_timesheet_id_fkey";
+            columns: ["timesheet_id"];
+            isOneToOne: false;
+            referencedRelation: "timesheets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       shifts: {
         Row: {
           created_at: string;
