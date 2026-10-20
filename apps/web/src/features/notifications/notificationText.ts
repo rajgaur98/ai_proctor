@@ -1,8 +1,9 @@
 // What a notification says in the list and where it leads (TS-13, TS-18). Kinds and
 // payloads are the ones the migrations write: timesheet.returned / reopened / edited
 // (weekly_timesheets, delegation), timesheet.reassigned, delegation.assigned / ended (also
-// when a manager or delegate is deactivated or demoted, #147), and the reminders
-// (timesheet.submit_reminder / approval_reminder / escalation).
+// when a manager or delegate is deactivated or demoted, #147), the reminders
+// (timesheet.submit_reminder / approval_reminder / escalation) and
+// timesheet.late_data (late_events).
 import type { Json } from "@ai-proctor/contracts";
 import { DateTime } from "luxon";
 
@@ -98,6 +99,8 @@ export function notificationText(kind: string, payload: Json): string {
       return `${weekOf(payload, `${str(payload, "employee_name") ?? "Someone"}'s`)} has waited 2 days for approval`;
     case "timesheet.escalation":
       return `${weekOf(payload, `${str(payload, "employee_name") ?? "Someone"}'s`)} has waited 5 days for approval`;
+    case "timesheet.late_data":
+      return `${weekOf(payload, `${str(payload, "employee_name") ?? "Someone"}'s`)} has new data after approval`;
     default:
       return "New notification";
   }
@@ -143,7 +146,8 @@ export function notificationTarget(
     case "timesheet.edited":
     case "timesheet.submit_reminder":
     case "timesheet.approval_reminder":
-    case "timesheet.escalation": {
+    case "timesheet.escalation":
+    case "timesheet.late_data": {
       const week = str(payload, "period_start");
       return week !== null && DateTime.fromISO(week).isValid
         ? { page: "week", userId: str(payload, "employee_id") ?? viewerId, week }

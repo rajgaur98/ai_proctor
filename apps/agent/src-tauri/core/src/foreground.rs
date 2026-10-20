@@ -91,23 +91,46 @@ pub fn domain_of(url: &str) -> Option<String> {
     Some(host.to_string())
 }
 
-/// A window title that suggests an active screen share (Meet/Chrome "... is sharing
-/// your screen", Zoom share toolbar, Teams sharing bar). Only the indicator wording:
-/// broad words ("presenting", "screen share") also match page and document titles
-/// and would hold check-ins back for as long as such a window is open. The Chrome
-/// wording is verified on macOS (spike #14); Zoom's and Teams' Windows titles are
-/// unverified (device checklist, #167).
+/// Lower-case wording of the windows that mean an active screen share: Meet/Chrome
+/// "... is sharing your screen", Zoom share toolbar, Teams sharing bar, Webex's
+/// "You're sharing your screen" banner (straight and curly apostrophe). Only the
+/// indicator wording: broad words ("presenting", "screen share") also match page and
+/// document titles and would hold check-ins back for as long as such a window is
+/// open. The Chrome wording is verified on macOS (spike #14); the Zoom, Teams and
+/// Webex Windows titles are unverified (device checklist, #167, #174).
+pub const SHARING_HINTS: [&str; 9] = [
+    "is sharing your screen",
+    "is sharing a window",
+    "is sharing a tab",
+    "is sharing this tab",
+    "zoom share toolbar",
+    "sharing control bar",
+    "you're sharing your screen",
+    "you\u{2019}re sharing your screen",
+    "you are sharing your screen",
+];
+
+/// A window title that suggests an active screen share (`SHARING_HINTS`).
 pub fn is_sharing_title(title: &str) -> bool {
-    const HINTS: [&str; 6] = [
-        "is sharing your screen",
-        "is sharing a window",
-        "is sharing a tab",
-        "is sharing this tab",
-        "zoom share toolbar",
-        "sharing control bar",
-    ];
     let title = title.to_lowercase();
-    HINTS.iter().any(|h| title.contains(h))
+    SHARING_HINTS.iter().any(|h| title.contains(h))
+}
+
+/// The executable (`app_name`) Windows runs every UWP / store app's window frame
+/// in. The window in front belongs to this host, not to the app inside it.
+pub const UWP_FRAME_HOST: &str = "ApplicationFrameHost";
+
+/// True if `app` is the UWP frame host (so the real app is in a child window).
+pub fn is_uwp_frame_host(app: &str) -> bool {
+    app.eq_ignore_ascii_case(UWP_FRAME_HOST)
+}
+
+/// The process of the app inside a UWP frame: the first child window of the frame
+/// whose process is not the frame host's own (the app's `CoreWindow`).
+pub fn uwp_app_pid(frame_pid: u32, child_pids: impl IntoIterator<Item = u32>) -> Option<u32> {
+    child_pids
+        .into_iter()
+        .find(|&pid| pid != 0 && pid != frame_pid)
 }
 
 /// A slideshow window (PowerPoint's is class `screenClass`, titled "PowerPoint
@@ -180,6 +203,14 @@ mod tests {
     }
 
     #[test]
+    fn address_bar_value_with_a_port_or_ip_is_a_host() {
+        let d = |v| domain_of_address(v).unwrap_or_default();
+        assert_eq!(d("docs.rs:8080/x?q=1"), "docs.rs");
+        assert_eq!(d("127.0.0.1:3000"), "127.0.0.1");
+        assert_eq!(d("  mail.google.com  "), "mail.google.com");
+    }
+
+    #[test]
     fn address_bar_value_with_a_scheme_follows_domain_of() {
         assert_eq!(
             domain_of_address("https://mail.google.com/mail/u/0/#inbox").as_deref(),
@@ -195,6 +226,14 @@ mod tests {
         assert_eq!(domain_of_address("about:blank"), None);
         assert_eq!(domain_of_address(""), None);
         assert_eq!(domain_of_address("  "), None);
+        for v in [
+            "hello",
+            "best pizza near me",
+            "how to fix a.b error",
+            "/path/only",
+        ] {
+            assert_eq!(domain_of_address(v), None, "{v}");
+        }
     }
 
     #[test]
@@ -209,6 +248,14 @@ mod tests {
         );
         assert_eq!(
             domain_of("HTTP://EXAMPLE.COM/path").as_deref(),
+            Some("example.com")
+        );
+        assert_eq!(
+            domain_of("https://example.com?x=1").as_deref(),
+            Some("example.com")
+        );
+        assert_eq!(
+            domain_of("https://www.example.com:443").as_deref(),
             Some("example.com")
         );
     }
@@ -228,6 +275,16 @@ mod tests {
         assert_eq!(domain_of("example.com"), None);
         assert_eq!(domain_of("https://"), None);
         assert_eq!(domain_of("https://exa mple.com"), None);
+        for url in [
+            "about:blank",
+            "chrome://settings",
+            "chrome-extension://abc/page.html",
+            "",
+            "https:///path",
+            "https://./",
+        ] {
+            assert_eq!(domain_of(url), None, "{url}");
+        }
     }
 
     #[test]
@@ -236,6 +293,51 @@ mod tests {
         assert!(is_sharing_title("Zoom Share Toolbar"));
         assert!(is_sharing_title("Microsoft Teams Sharing control bar"));
         assert!(is_sharing_title("Brave is SHARING A TAB"));
+    }
+
+    #[test]
+    fn webex_sharing_banner_is_sharing() {
+        assert!(is_sharing_title("You're sharing your screen"));
+        assert!(is_sharing_title(
+            "You\u{2019}re sharing your screen - Webex"
+        ));
+        assert!(is_sharing_title("YOU ARE SHARING YOUR SCREEN"));
+        assert!(!is_sharing_title("Webex Meetings"));
+        assert!(!is_sharing_title("Cisco Webex - Weekly sync"));
+    }
+
+    #[test]
+    fn every_sharing_hint_is_lower_case() {
+        for hint in SHARING_HINTS {
+            assert_eq!(hint, hint.to_lowercase(), "{hint}");
+        }
+    }
+
+    #[test]
+    fn the_uwp_frame_host_is_recognised_by_app_name() {
+        assert!(is_uwp_frame_host("ApplicationFrameHost"));
+        assert!(is_uwp_frame_host("applicationframehost"));
+        assert!(!is_uwp_frame_host("CalculatorApp"));
+        assert_eq!(
+            app_name(r"C:\Windows\System32\ApplicationFrameHost.exe").as_deref(),
+            Some(UWP_FRAME_HOST)
+        );
+    }
+
+    #[test]
+    fn the_uwp_app_is_the_child_in_another_process() {
+        assert_eq!(uwp_app_pid(100, [100, 100, 4242, 5000]), Some(4242));
+        assert_eq!(
+            uwp_app_pid(100, [0, 4242]),
+            Some(4242),
+            "pid 0 is no process"
+        );
+        assert_eq!(
+            uwp_app_pid(100, [100, 100]),
+            None,
+            "app not in the frame yet"
+        );
+        assert_eq!(uwp_app_pid(100, []), None);
     }
 
     #[test]

@@ -30,4 +30,5 @@ pub mod session_signals;
 pub mod shift;
 pub mod status;
 pub mod sync;
+pub mod toast;
 pub mod watchdog;
