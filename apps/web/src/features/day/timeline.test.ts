@@ -6,8 +6,10 @@ import {
   localDay,
   markerLeft,
   shiftText,
+  tamperTotals,
   ticks,
   typeTotals,
+  withTamperReasons,
 } from "./timeline";
 
 const zone = "America/Los_Angeles";
@@ -66,6 +68,41 @@ describe("barSegments", () => {
     expect(segs.map((s) => [s.type, s.left, s.width, s.flagged])).toEqual([
       ["verified", 0, 25, false],
       ["idle", 25, 12.5, true],
+    ]);
+  });
+});
+
+describe("tamper reasons on the bar", () => {
+  it("splits unverified time where the server had Tamper, and totals each reason apart", () => {
+    const segs = withTamperReasons(
+      [
+        seg("unverified", "09:00", "09:30", true),
+        seg("verified", "09:30", "10:00"),
+        seg("unverified", "10:00", "10:10", true),
+        // A break wins over Tamper on the timesheet; it stays a break.
+        seg("break", "10:10", "10:20"),
+      ],
+      [
+        { reason: "agent_stopped", start: ms("08:50"), end: ms("09:15") },
+        { reason: "no_heartbeat", start: ms("09:20"), end: ms("09:40") },
+        // Still in Tamper: runs to the end of the segment.
+        { reason: "capture_blocked", start: ms("10:05"), end: null },
+      ],
+    );
+    expect(segs.map((s) => [s.type, s.start, s.end, s.tamper])).toEqual([
+      ["unverified", ms("09:00"), ms("09:15"), "agent_stopped"],
+      ["unverified", ms("09:15"), ms("09:20"), undefined],
+      ["unverified", ms("09:20"), ms("09:30"), "no_heartbeat"],
+      ["verified", ms("09:30"), ms("10:00"), undefined],
+      ["unverified", ms("10:00"), ms("10:05"), undefined],
+      ["unverified", ms("10:05"), ms("10:10"), "capture_blocked"],
+      ["break", ms("10:10"), ms("10:20"), undefined],
+    ]);
+    expect(segs.every((s) => s.type !== "unverified" || s.flagged)).toBe(true);
+    expect(tamperTotals(segs)).toEqual([
+      { reason: "agent_stopped", seconds: 900 },
+      { reason: "no_heartbeat", seconds: 600 },
+      { reason: "capture_blocked", seconds: 300 },
     ]);
   });
 });

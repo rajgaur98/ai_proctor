@@ -42,17 +42,17 @@ export async function agentFor(email: string) {
   if (regError) throw regError;
   await acknowledgeLatestNotice(client as unknown as SupabaseClient<Database>);
   let seq = 0;
-  // `at` backdates an event, as an agent syncing after being offline would.
+  // `at` backdates the event (an agent that queued it, or a shift that began earlier).
   return async (
     type: string,
     payload: Record<string, unknown> = {},
     id = crypto.randomUUID(),
-    at = new Date(),
+    at = new Date().toISOString(),
   ) => {
     seq += 1;
     const { data: reply, error } = await client.rpc("agent_events", {
       device_id: data.device_id,
-      events: [{ id, seq, type, at: at.toISOString(), mono_ms: seq, payload }],
+      events: [{ id, seq, type, at, mono_ms: seq, payload }],
     });
     if (error) throw error;
     return reply;

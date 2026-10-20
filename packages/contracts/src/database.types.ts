@@ -686,6 +686,7 @@ export type Database = {
           created_at: string;
           created_by: string | null;
           delegate_id: string;
+          end_reason: string | null;
           ended_at: string | null;
           ends_on: string;
           id: string;
@@ -698,6 +699,7 @@ export type Database = {
           created_at?: string;
           created_by?: string | null;
           delegate_id: string;
+          end_reason?: string | null;
           ended_at?: string | null;
           ends_on: string;
           id?: string;
@@ -709,6 +711,7 @@ export type Database = {
           created_at?: string;
           created_by?: string | null;
           delegate_id?: string;
+          end_reason?: string | null;
           ended_at?: string | null;
           ends_on?: string;
           id?: string;
@@ -1381,6 +1384,7 @@ export type Database = {
           project_id: string | null;
           since: string;
           status: Database["public"]["Enums"]["presence_status"];
+          tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id: string;
         };
         ComputedFields: never;
@@ -1396,6 +1400,7 @@ export type Database = {
           project_id?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
+          tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id: string;
         };
         Update: {
@@ -1410,6 +1415,7 @@ export type Database = {
           project_id?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
+          tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id?: string;
         };
         Relationships: [
@@ -1711,6 +1717,7 @@ export type Database = {
           end_at: string | null;
           id: string;
           org_id: string;
+          reason: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at: string;
           status: Database["public"]["Enums"]["presence_status"];
           user_id: string;
@@ -1720,6 +1727,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id: string;
+          reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at: string;
           status: Database["public"]["Enums"]["presence_status"];
           user_id: string;
@@ -1728,6 +1736,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id?: string;
+          reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at?: string;
           status?: Database["public"]["Enums"]["presence_status"];
           user_id?: string;
@@ -2172,6 +2181,7 @@ export type Database = {
           scheduled_today: boolean | null;
           since: string | null;
           status: Database["public"]["Enums"]["presence_status"] | null;
+          tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
           timezone: string | null;
           user_id: string | null;
         };
@@ -2280,11 +2290,26 @@ export type Database = {
         Returns: undefined;
       };
       delegate_candidates: {
-        Args: Record<PropertyKey, never>;
+        Args: { p_manager_id?: string };
         Returns: {
           full_name: string;
           id: string;
           role: Database["public"]["Enums"]["user_role"];
+        }[];
+      };
+      delegation_history: {
+        Args: { p_manager_id?: string };
+        Returns: {
+          delegate_id: string;
+          delegate_name: string;
+          end_reason: string;
+          ended_at: string;
+          ends_on: string;
+          id: string;
+          manager_id: string;
+          manager_name: string;
+          starts_on: string;
+          status: string;
         }[];
       };
       due_segment_days: {
@@ -2399,6 +2424,10 @@ export type Database = {
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
+      reassign_my_time: {
+        Args: { p_end: string; p_project_id: string; p_reason?: string; p_start: string };
+        Returns: string;
+      };
       record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
       record_segment_failure: {
         Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
@@ -2594,6 +2623,7 @@ export type Database = {
         | "idle"
         | "active";
       region_preset: "us" | "eu" | "india";
+      tamper_reason: "capture_blocked" | "agent_stopped" | "no_heartbeat";
       user_role: "owner" | "admin" | "manager" | "employee";
     };
     CompositeTypes: {
@@ -2728,6 +2758,7 @@ export const Constants = {
         "active",
       ],
       region_preset: ["us", "eu", "india"],
+      tamper_reason: ["capture_blocked", "agent_stopped", "no_heartbeat"],
       user_role: ["owner", "admin", "manager", "employee"],
     },
   },

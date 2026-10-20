@@ -1,9 +1,9 @@
-// What the day page reads (#33, #124): the day's time_segments, its check-ins and the
-// org's response window.
+// What the day page reads (#33, #124): the day's time_segments, its Tamper periods (for
+// the reason, #160), its check-ins and the org's response window.
 import type { SegmentType } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
-import type { Checkin, DaySegment, Span } from "./timeline";
+import type { Checkin, DaySegment, Span, TamperPeriod } from "./timeline";
 
 export interface CheckinRow extends Checkin {
   respondedAt: string | null;
@@ -48,6 +48,30 @@ export const daySegmentsQuery = (userId: string, date: string) =>
         counted: s.counted,
         flagged: s.flagged,
         excluded: s.excluded,
+      }));
+    },
+  });
+
+/** The day's Tamper status periods with their reason; one recorded without a reason reads as capture blocked. */
+export const dayTamperQuery = (userId: string, day: Span, date: string) =>
+  queryOptions({
+    queryKey: ["day-tamper", userId, date],
+    queryFn: async (): Promise<TamperPeriod[]> => {
+      const from = new Date(day.start).toISOString();
+      const to = new Date(day.end).toISOString();
+      const { data, error } = await supabase
+        .from("status_periods")
+        .select("reason, start_at, end_at")
+        .eq("user_id", userId)
+        .eq("status", "tamper")
+        .lt("start_at", to)
+        .or(`end_at.is.null,end_at.gt.${from}`)
+        .order("start_at");
+      if (error) throw error;
+      return data.map((p) => ({
+        reason: p.reason ?? "capture_blocked",
+        start: Date.parse(p.start_at),
+        end: p.end_at === null ? null : Date.parse(p.end_at),
       }));
     },
   });

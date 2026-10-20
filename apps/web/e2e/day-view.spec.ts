@@ -40,13 +40,13 @@ async function freeDay(): Promise<DateTime> {
 async function seedDay() {
   const erin = await agentFor("lucas@acme.test");
   const send = (type: string, when: DateTime, payload: Record<string, unknown> = {}) =>
-    erin(type, payload, crypto.randomUUID(), when.toJSDate());
+    erin(type, payload, crypto.randomUUID(), when.toJSDate().toISOString());
   const checkin = (payload: Record<string, unknown>, shown: DateTime, id = crypto.randomUUID()) =>
     erin(
       "checkin",
       { wrong_clicks: 0, object_keys: [], flags: [], ...payload },
       id,
-      shown.toJSDate(),
+      shown.toJSDate().toISOString(),
     );
 
   await send("clock_in", at("09:00"), { reason: "manual" });

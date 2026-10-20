@@ -16,12 +16,18 @@ import { weekStartOf } from "../timesheets/weeks";
 import { CheckinDetails } from "./CheckinDetails";
 import { deferralText, outcomeWord } from "./checkinText";
 import { DayTimeline, Marker, StatsRow } from "./DayTimeline";
-import { dayCheckinsQuery, daySegmentsQuery, rebuildDay, responseWindowQuery } from "./dayData";
+import {
+  dayCheckinsQuery,
+  daySegmentsQuery,
+  dayTamperQuery,
+  rebuildDay,
+  responseWindowQuery,
+} from "./dayData";
 import { statCards } from "./dayStats";
 import { flagCheckinIds } from "./flagText";
 import { ManualEntries } from "./ManualEntries";
 import { dayFlagsQuery, NeedsReviewBadge, NeedsReviewPanel } from "./NeedsReview";
-import { barSegments, barSpan, localDay, shiftText, ticks } from "./timeline";
+import { barSegments, barSpan, localDay, shiftText, ticks, withTamperReasons } from "./timeline";
 
 // Pages made by router.tsx's page() aren't in the typed route tree (same as the nav).
 const teamPath: string = "/team";
@@ -56,7 +62,7 @@ export function DayPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, timezone, role, presence(status)")
+        .select("id, full_name, timezone, role, presence(status, tamper_reason)")
         .eq("id", userId)
         .maybeSingle();
       if (error) throw error;
@@ -90,6 +96,12 @@ export function DayPage() {
     enabled: !!person.data && rebuild.status !== "pending",
     refetchInterval: live,
   });
+  // time_segments don't keep why time was Tamper; the status periods do (#160).
+  const tamperQ = useQuery({
+    ...dayTamperQuery(userId, day, date),
+    enabled: !!person.data,
+    refetchInterval: live,
+  });
   const checkinsQ = useQuery({
     ...dayCheckinsQuery(userId, day, date, zone),
     enabled: !!person.data,
@@ -115,7 +127,7 @@ export function DayPage() {
   const segs = segments.data ?? [];
   const checkins = checkinsQ.data ?? [];
   const span = barSpan(day, zone, shifts.data ?? [], segs, checkins);
-  const bar = barSegments(span, segs);
+  const bar = barSegments(span, withTamperReasons(segs, tamperQ.data ?? []));
   const cards = statCards(segs, checkins, (ms) =>
     DateTime.fromMillis(ms, { zone: viewer }).toFormat("HH:mm"),
   );
@@ -183,7 +195,9 @@ export function DayPage() {
               {roleLabel[person.data.role] ?? person.data.role}
             </p>
           </div>
-          {status && isToday && <StatusChip status={status} />}
+          {status && isToday && (
+            <StatusChip status={status} reason={person.data.presence?.tamper_reason} />
+          )}
           {unreviewed > 0 && <NeedsReviewBadge />}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button

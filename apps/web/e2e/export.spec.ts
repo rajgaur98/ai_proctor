@@ -49,8 +49,8 @@ test("a manager exports the week as CSV from the Timesheets tab, and it is audit
   await expectNoA11yViolations(page);
 
   // The dialog opens on the week the tab shows.
-  const from = await dialog.getByLabel("From").inputValue();
-  const to = await dialog.getByLabel("To").inputValue();
+  const from = await dialog.getByLabel("From", { exact: true }).inputValue();
+  const to = await dialog.getByLabel("To", { exact: true }).inputValue();
   expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   await dialog.getByLabel("View").selectOption("project");
 
@@ -78,10 +78,33 @@ test("a range that ends before it starts is explained and nothing is exported", 
   await page.goto("/timesheets");
   await page.getByRole("button", { name: "Export CSV" }).click();
   const dialog = page.getByRole("dialog", { name: "Export CSV" });
-  await dialog.getByLabel("From").fill("2026-03-22");
-  await dialog.getByLabel("To").fill("2026-03-16");
+  await dialog.getByLabel("From", { exact: true }).fill("2026-03-22");
+  await dialog.getByLabel("To", { exact: true }).fill("2026-03-16");
   await dialog.getByRole("button", { name: "Download CSV" }).click();
   await expect(dialog.getByRole("alert")).toContainText("same or later");
   await expectNoA11yViolations(page);
   expect(await exportsLogged()).toBe(before);
+});
+
+test("an employee downloads a week of their own time as CSV from My timesheet", async ({
+  page,
+}) => {
+  const before = await exportsLogged();
+  await signIn(page, "erin@acme.test", /\/me$/);
+  await page.goto("/my-timesheet");
+  await expect(page.getByRole("heading", { name: "My timesheet" })).toBeVisible();
+  await expectNoA11yViolations(page);
+
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: /^Download .* as CSV$/ })
+    .first()
+    .click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/\.csv$/);
+  const csv = await readFile((await file.path()) ?? "", "utf8");
+  // The daily view's header; only her own rows (the week may have none on a fresh database).
+  expect(csv.replace(/^\uFEFF/, "").split("\r\n")[0]).toMatch(/^Employee,Email,Date,/);
+  expect(csv).not.toContain("Lucas Martin");
+  expect(await exportsLogged()).toBe(before + 1);
 });

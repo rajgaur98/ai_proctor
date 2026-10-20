@@ -24,3 +24,24 @@ export function rangeLabel(startsOn: string, endsOn: string): string {
   if (startsOn === endsOn) return end.toFormat("d LLL yyyy");
   return `${start.toFormat(start.year === end.year ? "d LLL" : "d LLL yyyy")} – ${end.toFormat("d LLL yyyy")}`;
 }
+
+/** What the history line says about where a delegation stands. */
+export function statusLabel(d: {
+  status: "upcoming" | "active" | "completed" | "ended";
+  endReason: "manual" | "deactivated" | "demoted" | null;
+}): string {
+  switch (d.status) {
+    case "upcoming":
+      return "Upcoming";
+    case "active":
+      return "Active";
+    case "completed":
+      return "Completed";
+    case "ended":
+      return d.endReason === "deactivated"
+        ? "Ended early (deactivated)"
+        : d.endReason === "demoted"
+          ? "Ended early (made an employee)"
+          : "Ended early";
+  }
+}

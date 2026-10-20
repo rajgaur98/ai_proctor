@@ -1,9 +1,11 @@
 // The top panel of a day (#124, DSH-03, from the Claude Design DayView screen): the
 // five totals, the bar of time_segments by type (flagged ones hatched) with hour ticks,
-// check-in markers under it and the selected check-in's line, and the legend.
+// check-in markers under it and the selected check-in's line, and the legend. Tamper
+// time says why (#160): needs review, never a penalty (ANT-08).
 import type { SegmentType } from "@ai-proctor/core";
 import { DateTime } from "luxon";
 import type { CSSProperties } from "react";
+import { tamperLabel } from "../../components/StatusChip";
 import { formatDuration } from "../timesheets/summary";
 import { markerLabel } from "./checkinText";
 import type { StatCard } from "./dayStats";
@@ -13,6 +15,7 @@ import {
   markerLeft,
   type Outcome,
   type Span,
+  tamperTotals,
   typeTotals,
 } from "./timeline";
 
@@ -205,7 +208,7 @@ export function DayTimeline({
             {segs.map((s) => (
               <span
                 key={`${s.type}-${s.start}`}
-                title={`${segmentStyle[s.type].label}${s.excluded ? ", excluded by a manager" : ""}, ${DateTime.fromMillis(s.start, { zone: viewer }).toFormat("HH:mm")}–${DateTime.fromMillis(s.end, { zone: viewer }).toFormat("HH:mm")}`}
+                title={`${s.tamper ? tamperLabel[s.tamper] : segmentStyle[s.type].label}${s.excluded ? ", excluded by a manager" : ""}, ${DateTime.fromMillis(s.start, { zone: viewer }).toFormat("HH:mm")}–${DateTime.fromMillis(s.end, { zone: viewer }).toFormat("HH:mm")}`}
                 className="absolute inset-y-0 block"
                 style={{
                   left: `${s.left}%`,
@@ -257,6 +260,12 @@ export function DayTimeline({
           <li key={t} className="flex items-center gap-[7px]">
             {swatch(t)}
             {segmentStyle[t].label}
+          </li>
+        ))}
+        {tamperTotals(segs).map((t) => (
+          <li key={t.reason} className="flex items-center gap-[7px]">
+            {swatch("unverified")}
+            {tamperLabel[t.reason]} · {formatDuration(t.seconds)}
           </li>
         ))}
         {markerLegend.map(([o, label]) => (
