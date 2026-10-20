@@ -4,7 +4,7 @@
 //! from spike #13 (`docs/spikes/capture.md`); they return raw RGBA pixels, encoding
 //! happens in `agent_core::capture`. The rest stays a stub until its feature lands.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -35,7 +35,9 @@ use objc2_core_audio::{
     kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject,
     AudioObjectGetPropertyData, AudioObjectPropertyAddress,
 };
-use objc2_core_foundation::{CFArray, CFDictionary, CFRetained, CFString, CFType, CFURL};
+use objc2_core_foundation::{
+    CFArray, CFBoolean, CFDictionary, CFRetained, CFString, CFType, CFURL,
+};
 use objc2_core_graphics::{
     CGDataProvider, CGDisplayBounds, CGEventSource, CGEventSourceStateID, CGEventType,
     CGGetActiveDisplayList, CGImage, CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess,
@@ -83,10 +85,12 @@ const AX_MESSAGE_TIMEOUT_SECS: f32 = 0.25;
 const AX_MAX_DEPTH: usize = 8;
 const AX_MAX_ELEMENTS: usize = 300;
 const AX_BUDGET: Duration = Duration::from_millis(750);
+/// Most browser pids remembered as already switched to accessibility mode.
+const AX_ENABLED_MAX_PIDS: usize = 64;
 
 /// Bundle identifiers of the browsers whose address we read (Chromium family,
 /// Safari, Firefox), including beta/dev/canary builds.
-const BROWSER_BUNDLES: [&str; 17] = [
+const BROWSER_BUNDLES: [&str; 19] = [
     "com.google.Chrome",
     "com.google.Chrome.beta",
     "com.google.Chrome.dev",
@@ -104,6 +108,8 @@ const BROWSER_BUNDLES: [&str; 17] = [
     "com.brave.Browser.beta",
     "com.brave.Browser.nightly",
     "company.thebrowser.Browser",
+    "com.vivaldi.Vivaldi",
+    "com.operasoftware.Opera",
 ];
 
 /// Moves an Objective-C object across threads; it is only read on the other side.
@@ -144,6 +150,8 @@ pub struct MacPlatform {
     asleep: Arc<AtomicBool>,
     observing: AtomicBool,
     observers: Mutex<Vec<Observer>>,
+    /// Chromium pids already asked to build their accessibility tree.
+    ax_enabled: Mutex<HashSet<i32>>,
 }
 
 impl MacPlatform {
@@ -237,11 +245,12 @@ impl Platform for MacPlatform {
         let app = front.localizedName()?.to_string();
         let pid = front.processIdentifier();
         let title = foreground_title(&window_list(), pid);
-        let is_browser = front
+        let bundle = front
             .bundleIdentifier()
-            .is_some_and(|id| is_browser_bundle(&id.to_string()));
-        let domain = if is_browser {
-            browser_domain(pid)
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+        let domain = if is_browser_bundle(&bundle) {
+            browser_domain(pid, is_chromium_bundle(&bundle), &self.ax_enabled)
         } else {
             None
         };
@@ -353,6 +362,30 @@ fn foreground_title(windows: &[WindowInfo], pid: i32) -> Option<String> {
 /// True for the browsers we read a domain from, by bundle identifier.
 fn is_browser_bundle(bundle_id: &str) -> bool {
     BROWSER_BUNDLES.contains(&bundle_id)
+}
+
+/// True for the Chromium-based browsers, which only build their web accessibility
+/// tree once an assistive client asks (`AXManualAccessibility`). Safari and Firefox
+/// are not.
+fn is_chromium_bundle(bundle_id: &str) -> bool {
+    is_browser_bundle(bundle_id)
+        && !bundle_id.starts_with("com.apple.Safari")
+        && !bundle_id.starts_with("org.mozilla.")
+}
+
+/// Domain from an address-bar value. Chromium hides the `https://` scheme, so a
+/// value without one is tried as a host: it must look like one (contain a dot, or
+/// be `localhost`), which drops typed search text and `about:blank`.
+fn domain_of_address(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.contains("://") {
+        return domain_of(value);
+    }
+    let host = value.split(['/', '?', '#', ':']).next().unwrap_or("");
+    if !(host.contains('.') || host.eq_ignore_ascii_case("localhost")) {
+        return None;
+    }
+    domain_of(&format!("https://{value}"))
 }
 
 /// Host of an http(s) URL, lower-case, without a leading "www.", port, userinfo,
@@ -981,22 +1014,23 @@ fn ax_url_string(value: &CFType) -> Option<String> {
     value.downcast_ref::<CFString>().map(|s| s.to_string())
 }
 
-/// Breadth-first search below `root` for the page's `AXWebArea`, bounded by depth,
-/// element count and time.
-fn find_web_area(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement>> {
+/// Breadth-first search below `root` for the first element `matches` accepts,
+/// bounded by depth, element count and time.
+fn find_element(
+    root: CFRetained<AXUIElement>,
+    what: &str,
+    matches: impl Fn(&AXUIElement) -> bool,
+) -> Option<CFRetained<AXUIElement>> {
     let deadline = Instant::now() + AX_BUDGET;
     let mut queue = VecDeque::from([(root, 0usize)]);
     let mut visited = 0;
     while let Some((element, depth)) = queue.pop_front() {
         if visited >= AX_MAX_ELEMENTS || Instant::now() >= deadline {
-            tracing::debug!(visited, "web area search budget spent");
+            tracing::debug!(visited, what, "accessibility search budget spent");
             return None;
         }
         visited += 1;
-        let is_web_area = ax_attribute(&element, "AXRole")
-            .and_then(|r| r.downcast_ref::<CFString>().map(|s| s.to_string()))
-            .is_some_and(|r| r == "AXWebArea");
-        if is_web_area {
+        if matches(&element) {
             return Some(element);
         }
         if depth >= AX_MAX_DEPTH {
@@ -1019,16 +1053,74 @@ fn find_web_area(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement
     None
 }
 
+/// A string attribute of `element`, `None` if missing or not a string.
+fn ax_string(element: &AXUIElement, name: &str) -> Option<String> {
+    ax_attribute(element, name)?
+        .downcast_ref::<CFString>()
+        .map(|s| s.to_string())
+}
+
+/// The page's `AXWebArea` below `root`.
+fn find_web_area(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement>> {
+    find_element(root, "web area", |e| {
+        ax_string(e, "AXRole").is_some_and(|r| r == "AXWebArea")
+    })
+}
+
+/// The Chromium address bar below `root`: an `AXTextField` whose description or
+/// title mentions "address" ("Address and search bar").
+fn find_address_bar(root: CFRetained<AXUIElement>) -> Option<CFRetained<AXUIElement>> {
+    let mentions_address = |e: &AXUIElement, name| {
+        ax_string(e, name).is_some_and(|s| s.to_lowercase().contains("address"))
+    };
+    find_element(root, "address bar", |e| {
+        ax_string(e, "AXRole").is_some_and(|r| r == "AXTextField")
+            && (mentions_address(e, "AXDescription") || mentions_address(e, "AXTitle"))
+    })
+}
+
+/// Asks a Chromium browser to build its accessibility tree, once per pid. Without
+/// this it exposes no `AXWebArea`. The tree is built asynchronously, so the first
+/// lookup after this may still find nothing.
+fn enable_chromium_accessibility(app: &AXUIElement, pid: i32, enabled: &Mutex<HashSet<i32>>) {
+    let Ok(mut enabled) = enabled.lock() else {
+        return;
+    };
+    if enabled.contains(&pid) {
+        return;
+    }
+    let status = unsafe {
+        app.set_attribute_value(
+            &CFString::from_str("AXManualAccessibility"),
+            CFBoolean::new(true).as_ref(),
+        )
+    };
+    if status != AXError::Success {
+        tracing::debug!(?status, "could not enable browser accessibility");
+        return;
+    }
+    if enabled.len() >= AX_ENABLED_MAX_PIDS {
+        enabled.clear();
+    }
+    enabled.insert(pid);
+    tracing::debug!("enabled browser accessibility");
+}
+
 /// Domain of the page in the browser's focused window, via Accessibility. `None`
 /// without the permission (checked without prompting), when the browser exposes no
-/// URL, or when the search runs out of budget. Needs Accessibility only.
-fn browser_domain(pid: i32) -> Option<String> {
+/// URL, or when the search runs out of budget. Needs Accessibility only. Chromium
+/// browsers are first asked to build their tree, and fall back to the address bar
+/// when the web area has no URL.
+fn browser_domain(pid: i32, chromium: bool, enabled: &Mutex<HashSet<i32>>) -> Option<String> {
     if !unsafe { AXIsProcessTrusted() } {
         tracing::debug!("accessibility not granted, no browser domain");
         return None;
     }
     let app = unsafe { AXUIElement::new_application(pid) };
     unsafe { app.set_messaging_timeout(AX_MESSAGE_TIMEOUT_SECS) };
+    if chromium {
+        enable_chromium_accessibility(&app, pid, enabled);
+    }
     let window = ax_attribute(&app, "AXFocusedWindow")?
         .downcast::<AXUIElement>()
         .ok()?;
@@ -1039,7 +1131,13 @@ fn browser_domain(pid: i32) -> Option<String> {
         .and_then(|v| ax_url_string(&v));
     let url = from_web_area
         .or_else(|| ax_attribute(&window, "AXDocument").and_then(|v| ax_url_string(&v)));
-    let domain = url.as_deref().and_then(domain_of);
+    let mut domain = url.as_deref().and_then(domain_of);
+    if domain.is_none() && chromium {
+        domain = find_address_bar(window)
+            .and_then(|field| ax_string(&field, "AXValue"))
+            .as_deref()
+            .and_then(domain_of_address);
+    }
     tracing::debug!(found = domain.is_some(), "browser domain read");
     domain
 }
@@ -1187,6 +1285,73 @@ mod tests {
         assert!(!is_browser_bundle("com.apple.finder"));
         assert!(!is_browser_bundle("com.google.Chrome.helper"));
         assert!(!is_browser_bundle(""));
+    }
+
+    #[test]
+    fn chromium_family_is_told_apart_from_safari_and_firefox() {
+        for id in [
+            "com.google.Chrome",
+            "com.google.Chrome.beta",
+            "com.google.Chrome.dev",
+            "com.google.Chrome.canary",
+            "com.microsoft.edgemac",
+            "com.microsoft.edgemac.Beta",
+            "com.microsoft.edgemac.Dev",
+            "com.microsoft.edgemac.Canary",
+            "com.brave.Browser",
+            "com.brave.Browser.beta",
+            "com.brave.Browser.nightly",
+            "company.thebrowser.Browser",
+            "com.vivaldi.Vivaldi",
+            "com.operasoftware.Opera",
+        ] {
+            assert!(is_chromium_bundle(id), "{id}");
+        }
+        for id in [
+            "com.apple.Safari",
+            "com.apple.SafariTechnologyPreview",
+            "org.mozilla.firefox",
+            "org.mozilla.nightly",
+            "com.apple.finder",
+            "",
+        ] {
+            assert!(!is_chromium_bundle(id), "{id}");
+        }
+    }
+
+    #[test]
+    fn address_bar_value_without_scheme_is_read_as_https_host() {
+        let d = |v| domain_of_address(v).unwrap_or_default();
+        assert_eq!(d("github.com/rajgaur98/ai_proctor"), "github.com");
+        assert_eq!(d("www.Example.com"), "example.com");
+        assert_eq!(d("docs.rs:8080/x?q=1"), "docs.rs");
+        assert_eq!(d("localhost:3000/app"), "localhost");
+        assert_eq!(d("127.0.0.1:3000"), "127.0.0.1");
+        assert_eq!(d("  mail.google.com  "), "mail.google.com");
+    }
+
+    #[test]
+    fn address_bar_value_with_a_scheme_follows_domain_of() {
+        assert_eq!(
+            domain_of_address("http://example.com/a").as_deref(),
+            Some("example.com")
+        );
+        assert_eq!(domain_of_address("chrome://settings"), None);
+        assert_eq!(domain_of_address("file:///Users/a/b.html"), None);
+    }
+
+    #[test]
+    fn address_bar_text_that_is_not_a_host_gives_no_domain() {
+        for v in [
+            "",
+            "about:blank",
+            "hello",
+            "best pizza near me",
+            "how to fix a.b error",
+            "/path/only",
+        ] {
+            assert_eq!(domain_of_address(v), None, "{v}");
+        }
     }
 
     #[test]
