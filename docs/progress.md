@@ -99,6 +99,7 @@ Format: `- #<issue>: <exact question or action needed>`
 - #168: Accessibility tools that inject clicks can't answer the check-in card on Windows (the injected-click guard swallows them, ANT-02). Should admins be able to mark a person as using assistive input (flag-only instead of block, audit-logged), or should we add a keyboard path to answer the card? Until you decide, injected clicks stay blocked.
 - #175: Webcam frames keep the camera's aspect (16:9 → 320×180). CAP-06 says 320×240. Crop to 4:3 (consistent thumbnails) or keep the aspect (no cropping of the face)? Until you decide, aspect is kept.
 - #54 (#196): after a data deletion the person's name stays as a snapshot in the deletion tombstone and in the audit rows about them, as the legal record (AUD-01/03). Is that the reading you want, or should names be removed too?
+- #189 (#209): the main-merge for #209 is resolved and verified (lint, typecheck, unit, full e2e 45/45) in `ai_proctor-td189`, but committing it was blocked by the permission system for the worker. Commit it yourself (`git add` the three timesheet files and `git commit --no-edit` there), or tell the session to commit it.
 
 - #108: create a stable code-signing identity for debug builds (free Apple Development certificate via Xcode → Settings → Accounts, or a self-signed code-signing certificate in Keychain Access), so rebuilt agents keep their Screen Recording, Camera and keychain grants.
 - #12, #13, #14 (Windows halves), #56: a Windows machine or VM, or a decision that the pilot is Mac-only.
