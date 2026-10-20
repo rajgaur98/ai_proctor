@@ -2399,6 +2399,10 @@ export type Database = {
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
+      reassign_my_time: {
+        Args: { p_end: string; p_project_id: string; p_reason?: string; p_start: string };
+        Returns: string;
+      };
       record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
       record_segment_failure: {
         Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
