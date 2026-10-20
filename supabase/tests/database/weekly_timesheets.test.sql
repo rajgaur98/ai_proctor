@@ -305,7 +305,7 @@ select throws_ok(format($$ select public.adjust_time(%L, '2026-03-19 14:00:00-07
 
 select pg_temp.act_as_postgres();
 insert into public.delegations (org_id, manager_id, delegate_id, starts_on, ends_on)
-values (:org, :max, :mia, current_date, current_date + 3);
+values (:org, :max, :mia, current_date - 1, current_date + 3);
 delete from public.dirty_days;
 select pg_temp.act_as(:mia);
 select is(public.can_decide_timesheet(:erin), true, 'can_decide: an active delegate can');

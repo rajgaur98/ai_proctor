@@ -75,6 +75,8 @@ impl Agent {
             .env("AI_PROCTOR_DEV_CONTROL", &socket)
             .env("AI_PROCTOR_DEV_CHECKIN_S", "5")
             .env("AI_PROCTOR_DEV_ACTIVE_SESSION", "1")
+            // No LaunchAgent from a throwaway bundle (#58).
+            .env("AI_PROCTOR_WATCHDOG", "off")
             .spawn()
             .expect("launch the bundle");
         let control = wait_for(30, "the control socket", || {

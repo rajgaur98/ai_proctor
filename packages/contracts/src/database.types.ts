@@ -608,7 +608,9 @@ export type Database = {
       delegations: {
         Row: {
           created_at: string;
+          created_by: string | null;
           delegate_id: string;
+          ended_at: string | null;
           ends_on: string;
           id: string;
           manager_id: string;
@@ -618,7 +620,9 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           created_at?: string;
+          created_by?: string | null;
           delegate_id: string;
+          ended_at?: string | null;
           ends_on: string;
           id?: string;
           manager_id: string;
@@ -627,7 +631,9 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          created_by?: string | null;
           delegate_id?: string;
+          ended_at?: string | null;
           ends_on?: string;
           id?: string;
           manager_id?: string;
@@ -635,6 +641,20 @@ export type Database = {
           starts_on?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "delegations_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "delegations_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "delegations_delegate_id_fkey";
             columns: ["delegate_id"];
@@ -1432,6 +1452,86 @@ export type Database = {
           },
         ];
       };
+      reminders_sent: {
+        Row: {
+          episode: string;
+          id: string;
+          kind: string;
+          org_id: string;
+          period_start: string;
+          recipient_id: string;
+          sent_at: string;
+          timesheet_id: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          episode?: string;
+          id?: string;
+          kind: string;
+          org_id: string;
+          period_start: string;
+          recipient_id: string;
+          sent_at?: string;
+          timesheet_id?: string | null;
+          user_id: string;
+        };
+        Update: {
+          episode?: string;
+          id?: string;
+          kind?: string;
+          org_id?: string;
+          period_start?: string;
+          recipient_id?: string;
+          sent_at?: string;
+          timesheet_id?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reminders_sent_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_timesheet_id_fkey";
+            columns: ["timesheet_id"];
+            isOneToOne: false;
+            referencedRelation: "timesheets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "reminders_sent_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       retention_runs: {
         Row: {
           at: string;
@@ -2067,6 +2167,7 @@ export type Database = {
       approve_timesheet: { Args: { p_id: string }; Returns: undefined };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_decide_timesheet: { Args: { target: string }; Returns: boolean };
+      can_reopen_timesheet: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
       cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
@@ -2082,6 +2183,14 @@ export type Database = {
       decide_manual_entry: {
         Args: { p_approve: boolean; p_id: string; p_note?: string };
         Returns: undefined;
+      };
+      delegate_candidates: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          full_name: string;
+          id: string;
+          role: Database["public"]["Enums"]["user_role"];
+        }[];
       };
       edit_segment: {
         Args: {
@@ -2118,9 +2227,22 @@ export type Database = {
       };
       email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
       email_mark_sent: { Args: { p_id: string }; Returns: undefined };
+      end_delegation: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
       mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
+      my_delegations: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          delegate_id: string;
+          delegate_name: string;
+          ends_on: string;
+          id: string;
+          manager_id: string;
+          manager_name: string;
+          starts_on: string;
+        }[];
+      };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
@@ -2167,6 +2289,15 @@ export type Database = {
         Returns: string;
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      set_delegation: {
+        Args: {
+          p_delegate_id: string;
+          p_ends_on: string;
+          p_manager_id?: string;
+          p_starts_on: string;
+        };
+        Returns: string;
+      };
       set_miss_reason: {
         Args: { p_checkin_id: string; p_kind: string; p_note?: string };
         Returns: undefined;

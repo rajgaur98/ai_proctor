@@ -1,6 +1,6 @@
 // Manual entries on the day page (#42, TS-07..09): time the employee asks to have
 // added. Pending entries are shown but not counted; the direct manager approves or
-// rejects them, and the employee can withdraw a pending one.
+// rejects them (or their active delegate does), and the employee can withdraw a pending one.
 import { ManualEntryRequest } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -50,7 +50,7 @@ export function ManualEntries({
   dayEnd: number;
   /** The viewer is the employee: they can request and withdraw. */
   isSelf: boolean;
-  /** The viewer is the employee's direct manager: they can decide. */
+  /** The viewer is the employee's direct manager or active delegate: they can decide. */
   canDecide: boolean;
 }) {
   const queryClient = useQueryClient();
