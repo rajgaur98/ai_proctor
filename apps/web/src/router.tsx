@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
+import { AlertsPage } from "./features/alerts/AlertsPage";
 import { AuditLog } from "./features/audit/AuditLog";
 import { DayPage } from "./features/day/DayPage";
 import { MyData } from "./features/mydata/MyData";
@@ -167,6 +168,16 @@ const noticeRoute = createRoute({
   component: NoticePage,
 });
 
+/** Alert history (#135, ALR-01), opened from the bell: everyone who gets alerts, so not employees. */
+const alertsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/alerts",
+  beforeLoad: ({ context }) => {
+    if (context.profile.role === "employee") throw redirect({ to: homeFor(context.profile.role) });
+  },
+  component: AlertsPage,
+});
+
 /** Everyone with an account sees their own data (#49, EMP-02): employees from the nav,
  * managers and admins from the account menu; the tray opens it too. Optional ?date= for
  * another day. */
@@ -201,6 +212,7 @@ const routeTree = rootRoute.addChildren([
     myDataRoute,
     page("/my-timesheet", "My timesheet", 43, MyTimesheets),
     noticeRoute,
+    alertsRoute,
   ]),
 ]);
 

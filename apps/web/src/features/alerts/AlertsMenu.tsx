@@ -1,12 +1,14 @@
 // ALR-01 in-app alerts: a bell in the top bar for managers and admins, with the
 // unread count and a list that links to the employee's day. Alerts are marked read
-// one by one or all at once.
+// one by one or all at once. New ones arrive over Realtime (useLiveAlerts); the full
+// history is on the alerts page.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Time } from "../../lib/time";
 import { type Alert, alertsQuery, markAlertsRead } from "./alertData";
 import { alertText, dayLabel } from "./alertText";
+import { useLiveAlerts } from "./useLiveAlerts";
 
 function Bell() {
   return (
@@ -31,6 +33,7 @@ export function AlertsMenu({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  useLiveAlerts(userId);
   const { data: alerts = [], isError } = useQuery(alertsQuery(userId));
   const unread = alerts.filter((a) => !a.read).length;
 
@@ -110,6 +113,15 @@ export function AlertsMenu({ userId }: { userId: string }) {
               ))}
             </ul>
           )}
+          <div className="border-t border-line px-4 py-2.5">
+            <Link
+              to="/alerts"
+              onClick={() => setOpen(false)}
+              className="text-[12.5px] font-medium text-acctext"
+            >
+              See all alerts
+            </Link>
+          </div>
         </section>
       )}
     </div>
