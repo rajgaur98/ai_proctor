@@ -9,18 +9,23 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (20 Oct, afternoon):** implementers on #47 reports (`ai_proctor-r47`, on #45) and #58 watchdog + tamper (`ai_proctor-w58`, on #48). Merging the green PRs into main one at a time (see CLAUDE.md on merging).
-- **Merged today:** #120 (#118), #116 (#105), #117 (#39), #122 (#40), #123 (#104/#106), #119 (#99), #151 (main fix).
-- **In review:** #115 (#38) → #121 (#35/#36) → #127 (#37) → #141 (#48, has #131 merged) and #131 (#102); #134 (#50, on #121); #125 (#41) → #128 (#42) → #137 (#43) → #142 (#44), #143 (#45); #129 (#51); #133 (#53). Later migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture`, `capture_view` or `agent_config` must start from the latest version.
-- **Next (in order):** #46 reminders (needs #43 + #50) → #52 policy settings (after the policy-key PRs merge) → #59 onboarding → #49 My data → #54 data requests → #124 → follow-ups (#126, #130, #132, #135, #136, #138–#150) → #107 → #26.
+- **Now (20 Oct, evening):** implementers on #167 Windows platform (`ai_proctor-w167`, on #165) and #145 notice acknowledgement report (`ai_proctor-n145`, on main). Merging green PRs into main one at a time (CLAUDE.md, merging).
+- **Merged on 20 Oct:** #120, #116, #117, #122, #123, #119, #151, #115, #121, #152, #157, #153, #127, #134, #131, #162, #141, #125, #163.
+- **In review:** #128 (#42) → #137 (#43) → #142 (#44), #143 (#45) → #154 (#47); #158 (#58) → #165 (#59); #129 (#51); #133 (#53); #164 (#136); #166 (#26); #170 (#132). Migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture`, `capture_view` or `agent_config` must start from the latest version. #158 and #170 both add a contract migration: the second to merge regenerates it (`pnpm contracts:migration`).
+- **Next (in order):** #46 reminders (after #137) → #52 policy settings (after #129, #137 merge) → #49 My data → #54 data requests → #124 day view design → #144 agent applies the policy → follow-ups (#126, #130, #135, #138–#140, #145–#149, #155, #156, #159–#161, #168, #169).
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
-- **Device checks for Raj:** batched here as they come up.
-  1. Chromium (Brave, Chrome) and Safari domains with Accessibility granted (#114).
-  2. Notification permission prompt and banners (#123).
+- **Device checks for Raj (one session, bundled `.app` from main):**
+  1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
+  2. Notifications: permission prompt and banners (#123).
   3. Two displays: an excluded app on one display blanks only that display (#123).
-  4. Screen sharing holds the card (CHK-03); with #102, a deferred marker shows on the day page.
-  5. Invite flow on device: invite email → join → agent sign-in.
-  6. Tray popover (#127): clock in with a project, break, pause with a note, extend, switch project, miss a card and give a reason; time today ticks, pause left drops.
+  4. Screen share or Keynote while a card is due: card held, deferred marker on the day page (#102); status In meeting while sharing (#170).
+  5. Invite flow: invite email → join → agent sign-in.
+  6. Tray popover (#127): clock in with a project, break, pause with a note, extend, switch project, miss a card and give a reason.
+  7. Monitoring notice (#141): unacknowledged user sees the notice and can't clock in; acknowledge; publish a new version while clocked in.
+  8. Watchdog (#158): first launch from /Applications installs the LaunchAgent; `kill -9` comes back in ~10 s with a short Tamper; Quit refused while clocked in; revoke Screen Recording → Tamper; reboot → no Tamper.
+  9. Onboarding (#165): permissions step, restart banner, test capture, re-run from the tray; webcam off hides the camera.
+  10. macOS 13 screenshots (#162): on a macOS 13 machine or VM; on 14+ with `AI_PROCTOR_DEV_FORCE_SCSTREAM=1`.
+  - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals. Each PR has its checklist.
 
 ## Build order
 
