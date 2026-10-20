@@ -2016,6 +2016,24 @@ mod tests {
     }
 
     #[test]
+    fn a_screen_share_is_queued_as_a_call_while_working() {
+        use agent_core::platform::ScreenShare;
+        let w = working();
+        w.platform
+            .update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        w.state.presence_tick();
+        let starts = w.events("call_start");
+        assert_eq!(starts.len(), 1, "share started: a call starts");
+        assert_eq!(starts[0]["source"], "screen_share");
+
+        w.platform.update(|s| s.screen_share = None);
+        w.state.presence_tick();
+        let ends = w.events("call_end");
+        assert_eq!(ends.len(), 1, "share ended: the call ends");
+        assert_eq!(ends[0]["source"], "screen_share");
+    }
+
+    #[test]
     fn the_org_idle_threshold_comes_with_the_config() {
         let w = working();
         let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
