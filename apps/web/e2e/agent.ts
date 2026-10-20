@@ -9,11 +9,17 @@ function env(): { url: string; anonKey: string } {
   return { url: get("VITE_SUPABASE_URL"), anonKey: get("VITE_SUPABASE_ANON_KEY") };
 }
 
-export async function agentFor(email: string) {
+/** A client signed in as a seed user, for setting up or checking state outside the page. */
+export async function clientFor(email: string) {
   const { url, anonKey } = env();
   const client = createClient(url, anonKey, { auth: { persistSession: false } });
   const { error } = await client.auth.signInWithPassword({ email, password: "password123" });
   if (error) throw error;
+  return client;
+}
+
+export async function agentFor(email: string) {
+  const client = await clientFor(email);
   const { data, error: regError } = await client.rpc("register_device", {
     platform: "macos",
     os_version: "26.7",
