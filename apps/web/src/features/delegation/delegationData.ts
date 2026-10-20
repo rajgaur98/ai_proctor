@@ -2,11 +2,9 @@
 // ends it. The rules live in the database (set_delegation, end_delegation); the check
 // here only spares a round trip and the messages explain its error codes.
 import { queryOptions } from "@tanstack/react-query";
-import { DateTime } from "luxon";
 import { supabase } from "../../lib/supabase";
 
 /** The most days one delegation may cover (the database refuses longer ones). */
-export const maxDelegationDays = 90;
 
 export interface Delegation {
   id: string;
@@ -64,27 +62,6 @@ export async function setDelegation(delegateId: string, startsOn: string, endsOn
 export async function endDelegation(id: string) {
   const { error } = await supabase.rpc("end_delegation", { p_id: id });
   if (error) throw new Error(explain(error.message));
-}
-
-/** What's wrong with a range (ISO dates, `today` in the viewer's zone), or null. */
-export function rangeProblem(startsOn: string, endsOn: string, today: string): string | null {
-  const start = DateTime.fromISO(startsOn);
-  const end = DateTime.fromISO(endsOn);
-  if (!start.isValid || !end.isValid) return "Choose a first and a last day.";
-  if (startsOn < today) return "The first day can't be in the past.";
-  if (end < start) return "The last day can't be before the first.";
-  if (end.diff(start, "days").days > maxDelegationDays) {
-    return `A delegation covers at most ${maxDelegationDays} days.`;
-  }
-  return null;
-}
-
-/** "3 Nov – 10 Nov 2026"; a single day is just "3 Nov 2026". */
-export function rangeLabel(startsOn: string, endsOn: string): string {
-  const start = DateTime.fromISO(startsOn);
-  const end = DateTime.fromISO(endsOn);
-  if (startsOn === endsOn) return end.toFormat("d LLL yyyy");
-  return `${start.toFormat(start.year === end.year ? "d LLL" : "d LLL yyyy")} – ${end.toFormat("d LLL yyyy")}`;
 }
 
 const messages: Record<string, string> = {

@@ -13,10 +13,9 @@ import {
   type Delegation as DelegationRow,
   delegationsQuery,
   endDelegation,
-  rangeLabel,
-  rangeProblem,
   setDelegation,
 } from "./delegationData";
+import { rangeLabel, rangeProblem } from "./range";
 
 const fieldClass = "h-11 w-full rounded-[9px] border border-line2 bg-panel px-3 text-sm text-ink";
 

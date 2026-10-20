@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rangeLabel, rangeProblem } from "./delegationData";
+import { rangeLabel, rangeProblem } from "./range";
 
 describe("rangeProblem", () => {
   const today = "2026-11-03";
