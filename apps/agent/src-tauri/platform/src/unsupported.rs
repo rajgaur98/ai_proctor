@@ -4,7 +4,7 @@
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionState,
+    SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use chrono::{DateTime, Utc};
@@ -75,4 +75,6 @@ impl Platform for UnsupportedPlatform {
     fn boot_time(&self) -> Option<DateTime<Utc>> {
         None
     }
+
+    fn on_session_end(&self, _handler: SessionEndHandler) {}
 }
