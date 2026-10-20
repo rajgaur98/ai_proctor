@@ -9,9 +9,9 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (21 Oct, late):** implementers on #156 reports at scale, #161 tamper policy, #174 Windows follow-ups, #198 project/client config refresh (stacked on #197). Merging green PRs one at a time (CLAUDE.md, merging); each gets main merged in first.
-- **Open PRs:** #172 (#145), #186 (#135), #193 (#124), #196 (#54), #197 (#146), #204 (#191), #206 (#159), #207 (#140), #208 (#177), #209 (#189).
-- **Next:** #169 after #161 lands (both touch the agent's permissions), #195 after #193 (both rewrite the e2e helpers). Blocked on Raj: #168, #175 (and the Windows/M6 items below).
+- **Now (21 Oct, night):** implementers on #195 e2e independence (stacked on main after #193) and #211 onboarding asks only for required permissions (stacked on #217). Merging green PRs one at a time (CLAUDE.md, merging): main merged in first; two PRs merge back to back only when their files and redefined functions don't overlap.
+- **Open PRs:** #172 (#145), #209 (#189, merge waiting on Raj), #217 (#161).
+- **Next:** nothing unstarted. Blocked on Raj: #168, #175, #209's merge commit (and the Windows/M6 items below).
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
@@ -24,7 +24,10 @@ Read this first after a restart or a context compaction. Update it with every PR
   8. Watchdog (#158): first launch from /Applications installs the LaunchAgent; `kill -9` comes back in ~10 s with a short Tamper; Quit refused while clocked in; revoke Screen Recording → Tamper; reboot → no Tamper.
   9. Onboarding (#165): permissions step, restart banner, test capture, re-run from the tray; webcam off hides the camera.
   10. macOS 13 screenshots (#162): on a macOS 13 machine or VM; on 14+ with `AI_PROCTOR_DEV_FORCE_SCSTREAM=1`.
-  - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals. Each PR has its checklist.
+  11. Accessibility step (#169, PR #215 checklist): optional card, tray banner only when activity sampling is on, no Tamper.
+  12. Tamper follows the policy (#161, PR #217 checklist): screenshots and window titles off → no banner or Tamper with Screen Recording revoked.
+  13. Restricted permission (#212): an MDM-restricted Screen Recording shows the device-management banner and Capture blocked.
+  - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals, #174 HDR / UWP / stale calls / toasts (PR #214). Each PR has its checklist.
 
 ## Build order
 
