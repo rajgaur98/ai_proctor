@@ -1,7 +1,9 @@
 //! Builds the `AgentStatus` the tray popover shows. Raw state only: the dashboard's
 //! status (Active, Idle, Away…) is computed on the server, not here.
 
-use crate::contracts::{AgentStatus, LastCheckin, MissedCheckin, ProjectRef, ShiftState};
+use crate::contracts::{
+    AgentStatus, LastCheckin, MissedCheckin, NoticeStatus, ProjectRef, ShiftState,
+};
 use crate::platform::Platform;
 
 /// Everything the tray shows beyond the platform's permissions (EMP-01).
@@ -19,6 +21,7 @@ pub struct Tray {
     pub projects: Vec<ProjectRef>,
     pub last_checkin: Option<LastCheckin>,
     pub missed_checkin: Option<MissedCheckin>,
+    pub notice: Option<NoticeStatus>,
 }
 
 pub fn agent_status(
@@ -45,6 +48,7 @@ pub fn agent_status(
         projects: tray.projects,
         last_checkin: tray.last_checkin,
         missed_checkin: tray.missed_checkin,
+        notice: tray.notice,
     }
 }
 

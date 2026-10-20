@@ -111,6 +111,8 @@ pub enum TransitionError {
     NotSignedIn,
     #[error("already clocked in")]
     AlreadyClockedIn,
+    #[error("the monitoring notice hasn't been acknowledged yet")]
+    NoticeNotAcknowledged,
     #[error("not clocked in")]
     NotClockedIn,
     #[error("on a break")]
@@ -211,6 +213,10 @@ pub struct Session {
     platform: Arc<dyn Platform>,
     sink: Arc<dyn EventSink>,
     store: Arc<dyn SessionStore>,
+    /// AGT-04: false until the person has acknowledged a monitoring notice; nobody
+    /// can clock in (by hand or automatically) while it is. Not saved: the app
+    /// sets it from the server's config after every launch.
+    collection_allowed: bool,
 }
 
 impl Session {
@@ -229,6 +235,7 @@ impl Session {
             platform,
             sink,
             store,
+            collection_allowed: true,
         }
     }
 
@@ -246,6 +253,12 @@ impl Session {
 
     pub fn set_policy(&mut self, policy: SessionPolicy) {
         self.policy = policy;
+    }
+
+    /// AGT-04: whether a monitoring notice has been acknowledged. Clocking out and
+    /// everything else on a shift already under way is unaffected.
+    pub fn set_collection_allowed(&mut self, allowed: bool) {
+        self.collection_allowed = allowed;
     }
 
     /// SHF-05: check-ins, captures and activity sampling run only while working
@@ -372,6 +385,7 @@ impl Session {
 
     fn maybe_auto_clock_in(&mut self, now: DateTime<Utc>) -> Result<(), TransitionError> {
         if !self.policy.auto_clock_in
+            || !self.collection_allowed
             || shift::window_containing(&self.policy.shifts, now).is_none()
             || self.platform.idle_seconds() > RECENT_INPUT_S
         {
@@ -418,6 +432,9 @@ impl Session {
         }
         if self.state.shift != ShiftPhase::OffShift {
             return Err(TransitionError::AlreadyClockedIn);
+        }
+        if !self.collection_allowed {
+            return Err(TransitionError::NoticeNotAcknowledged);
         }
         self.emit(
             "clock_in",
@@ -762,6 +779,42 @@ mod tests {
         r.platform.update(|s| s.idle_seconds = 1);
         r.session.tick().unwrap();
         assert_eq!(r.session.shift(), ShiftState::OffShift);
+    }
+
+    #[test]
+    fn nobody_clocks_in_before_acknowledging_the_notice() {
+        let mut r = rig(shift_policy(true));
+        r.session.set_collection_allowed(false);
+        assert_eq!(
+            r.session.clock_in(None),
+            Err(TransitionError::NoticeNotAcknowledged)
+        );
+        assert!(r.sink.types().is_empty(), "nothing is recorded");
+
+        // Auto clock-in waits too, quietly: no error, no notification, no event.
+        r.clock.advance(Duration::minutes(15)); // 09:05, inside the shift
+        r.platform.update(|s| s.idle_seconds = 1);
+        r.session.tick().unwrap();
+        assert_eq!(r.session.shift(), ShiftState::OffShift);
+        assert!(r.platform.snapshot().notifications.is_empty());
+
+        r.session.set_collection_allowed(true);
+        r.session.tick().unwrap();
+        assert_eq!(r.session.shift(), ShiftState::Working);
+    }
+
+    #[test]
+    fn a_shift_under_way_carries_on_when_the_notice_flag_drops() {
+        let mut r = rig(SessionPolicy::default());
+        r.session.clock_in(None).unwrap();
+        r.session.set_collection_allowed(false);
+        assert!(r.session.start_break(None).is_ok());
+        r.session.end_break().unwrap();
+        r.session.clock_out().unwrap();
+        assert_eq!(
+            r.session.clock_in(None),
+            Err(TransitionError::NoticeNotAcknowledged)
+        );
     }
 
     #[test]

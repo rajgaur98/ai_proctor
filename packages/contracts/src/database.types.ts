@@ -890,6 +890,103 @@ export type Database = {
           },
         ];
       };
+      notice_acks: {
+        Row: {
+          acknowledged_at: string;
+          notice_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          acknowledged_at?: string;
+          notice_id: string;
+          user_id: string;
+        };
+        Update: {
+          acknowledged_at?: string;
+          notice_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notice_acks_notice_id_fkey";
+            columns: ["notice_id"];
+            isOneToOne: false;
+            referencedRelation: "notices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notice_acks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notice_acks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notices: {
+        Row: {
+          body: NonNullable<Json>;
+          collection: NonNullable<Json>;
+          id: string;
+          org_id: string;
+          published_at: string;
+          published_by: string | null;
+          region: Database["public"]["Enums"]["region_preset"];
+          version: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          body: NonNullable<Json>;
+          collection: NonNullable<Json>;
+          id?: string;
+          org_id: string;
+          published_at?: string;
+          published_by?: string | null;
+          region: Database["public"]["Enums"]["region_preset"];
+          version: number;
+        };
+        Update: {
+          body?: NonNullable<Json>;
+          collection?: NonNullable<Json>;
+          id?: string;
+          org_id?: string;
+          published_at?: string;
+          published_by?: string | null;
+          region?: Database["public"]["Enums"]["region_preset"];
+          version?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notices_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notices_published_by_fkey";
+            columns: ["published_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notices_published_by_fkey";
+            columns: ["published_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       orgs: {
         Row: {
           created_at: string;
@@ -1449,6 +1546,7 @@ export type Database = {
       };
     };
     Functions: {
+      acknowledge_notice: { Args: { p_notice_id: string }; Returns: undefined };
       add_invited_member: {
         Args: {
           p_email: string;
@@ -1514,6 +1612,8 @@ export type Database = {
       email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
       email_mark_sent: { Args: { p_id: string }; Returns: undefined };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
+      notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
+      publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
         Args: {
           agent_version: string;

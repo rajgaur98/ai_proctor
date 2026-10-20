@@ -7,6 +7,7 @@ mod card;
 mod dev;
 #[cfg(all(debug_assertions, unix))]
 mod dev_control;
+mod notice_window;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -20,9 +21,10 @@ use agent_core::clock::{Clock, SystemClock};
 use agent_core::config::ProjectConfig;
 use agent_core::contracts::{
     AgentStatus, CardChallenge, CardClickResult, CheckinOutcome, CommandResult, LastCheckin,
-    MissedCheckin, PermissionState, ProjectRef, ShiftState,
+    MissedCheckin, NoticeContent, PermissionState, ProjectRef, ShiftState,
 };
 use agent_core::keystore::KeyStore;
+use agent_core::notice::NoticeState;
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
 use agent_core::platform::{CaptureError, Platform, SessionState};
 use agent_core::presence::PresenceTracker;
@@ -128,6 +130,9 @@ pub struct AgentState {
     account: Option<Arc<Account>>,
     /// The last sign-in link handled, so a link delivered twice is used once.
     last_redirect: Mutex<Option<String>>,
+    /// The monitoring notice from the server's config (#48); nothing is collected
+    /// until it has been acknowledged.
+    notice: Mutex<NoticeState>,
 }
 
 impl AgentState {
@@ -139,6 +144,12 @@ impl AgentState {
         outbox: Option<Arc<Outbox>>,
         account: Option<Arc<Account>>,
     ) -> Self {
+        // AGT-04: with a server, nobody clocks in until its config says they have
+        // acknowledged a notice (a build without a server has nothing to show).
+        let mut session = session;
+        if account.is_some() {
+            session.set_collection_allowed(false);
+        }
         let state = Self {
             platform,
             clock,
@@ -160,6 +171,7 @@ impl AgentState {
             missed_checkin: Mutex::new(None),
             account,
             last_redirect: Mutex::new(None),
+            notice: Mutex::new(NoticeState::default()),
         };
         state.sync_schedule();
         state
@@ -178,6 +190,7 @@ impl AgentState {
     pub fn status(&self) -> AgentStatus {
         let email = self.account.as_ref().and_then(|a| a.email());
         let projects = self.projects.lock().unwrap().clone();
+        let notice = self.notice.lock().unwrap().status();
         let session = self.session.lock().unwrap();
         let snap = session.snapshot();
         let today = session.today();
@@ -224,6 +237,7 @@ impl AgentState {
                     id: id.to_string(),
                     at: iso(at),
                 }),
+            notice,
         };
         agent_core::status::agent_status(
             self.platform.as_ref(),
@@ -605,6 +619,7 @@ impl AgentState {
     /// the session on the server.
     fn sign_out(&self) {
         self.act("sign out", |s| s.sign_out());
+        self.forget_notice();
         if let Some(account) = &self.account {
             if let Err(error) = account.sync() {
                 tracing::warn!(%error, "sign-out: queued events stay for the next sign-in");
@@ -619,6 +634,7 @@ impl AgentState {
     fn signed_out_by_server(&self, error: &SyncError) {
         tracing::warn!(%error, "signed out by the server");
         self.act("sign out", |s| s.sign_out());
+        self.forget_notice();
         if let Some(account) = &self.account {
             account.sign_out();
         }
@@ -627,6 +643,57 @@ impl AgentState {
             _ => "Your session ended. Sign in again from the menu bar.",
         };
         self.platform.notify("Signed out of AI Proctor", body);
+    }
+
+    /// Signed out: the next person starts without an acknowledged notice.
+    fn forget_notice(&self) {
+        self.notice.lock().unwrap().clear();
+        if self.account.is_some() {
+            self.session.lock().unwrap().set_collection_allowed(false);
+        }
+    }
+
+    /// The notice window's text, once the server has sent one.
+    fn notice_content(&self) -> Option<NoticeContent> {
+        self.notice.lock().unwrap().content()
+    }
+
+    /// True once per unacknowledged version: open the notice window now.
+    fn take_notice_prompt(&self) -> bool {
+        self.notice.lock().unwrap().take_prompt()
+    }
+
+    /// AGT-04: "I've read this" for `version`, the one on screen. The server stores
+    /// the acknowledgement; its fresh config then lets collection start.
+    fn acknowledge_notice(&self, version: i64) -> Result<(), String> {
+        let account = self.account()?;
+        let (id, current) = self
+            .notice
+            .lock()
+            .unwrap()
+            .id_and_version()
+            .ok_or_else(|| "There is no notice to acknowledge yet.".to_owned())?;
+        if current != version {
+            return Err("The notice changed. Read the new version first.".into());
+        }
+        match account.acknowledge_notice(id) {
+            Ok(()) => {
+                self.apply_new_config();
+                tracing::info!(version, "monitoring notice acknowledged");
+                Ok(())
+            }
+            Err(SyncError::Refused(message)) if message.contains("not_current_notice") => {
+                // A newer version was published while the window was open.
+                if account.refresh_config().is_ok() {
+                    self.apply_new_config();
+                }
+                Err("The notice changed. Read the new version first.".into())
+            }
+            Err(error) => {
+                tracing::warn!(%error, "acknowledgement not saved");
+                Err("Couldn't save your acknowledgement. Try again in a minute.".into())
+            }
+        }
     }
 
     /// What the heartbeat says: nothing while off shift, only "alive" during a
@@ -685,6 +752,21 @@ impl AgentState {
             "session policy updated"
         );
         self.session.lock().unwrap().set_policy(policy);
+        // AGT-04/05: what the person has acknowledged decides whether they can start
+        // a shift. The policy in this config already carries only that collection.
+        {
+            let mut notice = self.notice.lock().unwrap();
+            notice.update(config.notice.clone());
+            tracing::info!(
+                version = ?notice.id_and_version().map(|(_, v)| v),
+                allowed = notice.collection_allowed(),
+                "monitoring notice"
+            );
+            self.session
+                .lock()
+                .unwrap()
+                .set_collection_allowed(notice.collection_allowed());
+        }
         *self.projects.lock().unwrap() = config.projects.clone();
         *self.pause_daily_cap_s.lock().unwrap() = config.pause_daily_cap_s();
         // Same setting the server uses for Idle (minutes; default 10).
@@ -796,6 +878,37 @@ fn open_outbox(data_dir: &std::path::Path) -> Result<Outbox, String> {
 #[tauri::command(rename_all = "snake_case")]
 fn get_status(state: tauri::State<'_, AgentState>) -> AgentStatus {
     state.status()
+}
+
+/// `get_notice`: the notice window's content.
+#[tauri::command(rename_all = "snake_case")]
+fn get_notice(state: tauri::State<'_, AgentState>) -> Option<NoticeContent> {
+    state.notice_content()
+}
+
+/// `show_notice`: opens the notice window (the tray's "Review the monitoring notice").
+#[tauri::command(rename_all = "snake_case")]
+fn show_notice(app: AppHandle) -> CommandResult {
+    notice_window::show(&app);
+    CommandResult {
+        ok: true,
+        error: None,
+    }
+}
+
+/// `acknowledge_notice`: network call, so off the UI thread. Closes the window on success.
+#[tauri::command(rename_all = "snake_case")]
+async fn acknowledge_notice(app: AppHandle, version: i64) -> CommandResult {
+    off_main_thread(move || {
+        let state = app.state::<AgentState>();
+        let result = state.acknowledge_notice(version);
+        emit_status(&app);
+        if result.is_ok() {
+            notice_window::hide(&app);
+        }
+        result
+    })
+    .await
 }
 
 /// `sign_in_start`: emails a magic link to `email`.
@@ -1006,6 +1119,22 @@ fn card_switch_project(app: AppHandle) -> CommandResult {
     }
 }
 
+/// Pushes the current status to the windows that show it: the tray popover and the
+/// notice window.
+fn emit_status(app: &AppHandle) {
+    let status = app.state::<AgentState>().status();
+    let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, status.clone());
+    let _ = app.emit_to(notice_window::LABEL, EVENT_STATUS_CHANGED, status);
+}
+
+/// Opens the notice window when the server's config brought a version this person
+/// hasn't acknowledged (AGT-04 first time, AGT-05 later), once per version.
+fn prompt_notice_if_due(app: &AppHandle) {
+    if app.state::<AgentState>().take_notice_prompt() {
+        notice_window::show(app);
+    }
+}
+
 /// Network calls block; run them on a worker thread, never the UI thread.
 async fn off_main_thread(f: impl FnOnce() -> Result<(), String> + Send + 'static) -> CommandResult {
     let result = tauri::async_runtime::spawn_blocking(f)
@@ -1027,7 +1156,8 @@ fn handle_deep_links(app: &AppHandle, urls: Vec<tauri::Url>) {
         std::thread::spawn(move || {
             let state = app.state::<AgentState>();
             state.complete_sign_in(&url);
-            let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+            emit_status(&app);
+            prompt_notice_if_due(&app);
         });
     }
 }
@@ -1094,7 +1224,10 @@ pub fn run() {
             pause_end,
             switch_project,
             set_miss_reason,
-            open_link
+            open_link,
+            get_notice,
+            show_notice,
+            acknowledge_notice
         ])
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
@@ -1159,6 +1292,7 @@ pub fn run() {
             spawn_ticker(app.handle().clone());
             spawn_sync(app.handle().clone());
             card::create(app.handle())?;
+            notice_window::create(app.handle())?;
             spawn_card_runner(app.handle().clone());
             spawn_activity(app.handle().clone());
             #[cfg(all(debug_assertions, unix))]
@@ -1203,7 +1337,7 @@ fn spawn_ticker(app: AppHandle) {
         state.act("update the shift", |s| s.tick());
         let after = state.status();
         if after != before {
-            let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, after);
+            emit_status(&app);
         }
     });
 }
@@ -1253,6 +1387,7 @@ fn spawn_sync(app: AppHandle) {
                         last_heartbeat = Some(Instant::now());
                     }
                     backoff.success();
+                    prompt_notice_if_due(&app);
                     SYNC_EVERY
                 }
                 Err(error @ (SyncError::SignedOut(_) | SyncError::Revoked)) => {
@@ -1489,6 +1624,7 @@ mod tests {
             .filter_map(|w| w["label"].as_str())
             .collect();
         windows.push(card::LABEL);
+        windows.push(notice_window::LABEL);
         for w in windows {
             assert!(
                 allowed.contains(&w),
@@ -1503,6 +1639,19 @@ mod tests {
         let source = include_str!("lib.rs");
         let offenders = source.lines().filter(|l| l.trim() == bare).count();
         assert_eq!(offenders, 0, "a command would expect camelCase arguments");
+    }
+
+    #[test]
+    fn the_notice_commands_are_registered() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split("generate_handler![")
+            .nth(1)
+            .and_then(|rest| rest.split(']').next())
+            .unwrap();
+        for command in ["get_notice", "show_notice", "acknowledge_notice"] {
+            assert!(handler.contains(command), "{command} is not registered");
+        }
     }
 
     #[test]
@@ -1826,7 +1975,8 @@ mod tests {
             "policy": { "auto_clock_in": true },
             "policy_version": 2,
             "timezone": "UTC",
-            "shifts": [{ "days": [1], "start": "08:00", "end": "17:00", "timezone": "UTC" }]
+            "shifts": [{ "days": [1], "start": "08:00", "end": "17:00", "timezone": "UTC" }],
+            "notice": notice_json(1, true, Some(1))
         }))
         .unwrap();
         state.apply_config(&config);
@@ -2002,5 +2152,182 @@ mod tests {
         );
         state.session.lock().unwrap().sign_in();
         assert_eq!(state.sync_round(true), Ok(false));
+    }
+
+    fn notice_json(
+        version: i64,
+        acknowledged: bool,
+        acknowledged_version: Option<i64>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "id": "0190f5b0-0000-7000-8000-0000000000a1",
+            "version": version,
+            "acknowledged": acknowledged,
+            "acknowledged_version": acknowledged_version,
+            "body": {
+                "collected": "A screenshot when you pass a check-in.",
+                "when": "Only while clocked in.",
+                "who": "Your manager.",
+                "retention": "30 days.",
+                "rights": "See and export it."
+            }
+        })
+    }
+
+    fn config_with(
+        policy: serde_json::Value,
+        shifts: serde_json::Value,
+        notice: serde_json::Value,
+    ) -> agent_core::config::AgentConfig {
+        serde_json::from_value(serde_json::json!({
+            "policy": policy, "policy_version": 2, "timezone": "UTC", "shifts": shifts,
+            "notice": notice
+        }))
+        .unwrap()
+    }
+
+    /// Signed in with the queue wired up but not clocked in.
+    fn signed_in_off_shift() -> (AgentState, Arc<Outbox>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let outbox = Arc::new(Outbox::open(&dir.path().join("outbox"), &[1u8; 32]).unwrap());
+        let clock = Arc::new(FakeClock::at("2026-10-19T09:00:00Z"));
+        let state = state(
+            dir.path(),
+            Arc::new(OutboxSink {
+                outbox: outbox.clone(),
+                clock,
+            }),
+        );
+        state.session.lock().unwrap().sign_in();
+        (state, outbox, dir)
+    }
+
+    #[test]
+    fn nothing_is_collected_before_the_first_acknowledgement() {
+        let (state, outbox, _dir) = signed_in_off_shift();
+        // Monday 09:00 UTC is inside the shift and the org has auto clock-in on.
+        state.apply_config(&config_with(
+            serde_json::json!({ "auto_clock_in": true }),
+            serde_json::json!([{ "days": [1], "start": "08:00", "end": "17:00", "timezone": "UTC" }]),
+            notice_json(1, false, None),
+        ));
+        let status = state.status().notice.unwrap();
+        assert_eq!(
+            (status.version, status.acknowledged, status.required),
+            (1, false, true)
+        );
+
+        let manual = state.try_act("clock in", |s| s.clock_in(None));
+        assert!(manual.unwrap_err().contains("notice"), "clock-in refused");
+        state.act("update the shift", |s| s.tick());
+        assert_eq!(
+            state.status().shift,
+            ShiftState::OffShift,
+            "no auto clock-in"
+        );
+        state.activity_tick();
+        state.presence_tick();
+        assert_eq!(state.card_tick(), CardAction::Nothing);
+        assert!(
+            outbox.pending(100).unwrap().is_empty(),
+            "nothing queued at all"
+        );
+
+        assert!(state.take_notice_prompt(), "the notice window opens");
+        assert!(!state.take_notice_prompt(), "once");
+        assert_eq!(state.notice_content().unwrap().version, 1);
+    }
+
+    #[test]
+    fn acknowledging_lets_the_person_clock_in() {
+        let (state, outbox, _dir) = signed_in_off_shift();
+        state.apply_config(&config_with(
+            serde_json::json!({}),
+            serde_json::json!([]),
+            notice_json(1, false, None),
+        ));
+        assert!(state.try_act("clock in", |s| s.clock_in(None)).is_err());
+
+        // The config the server sends after the acknowledgement.
+        state.apply_config(&config_with(
+            serde_json::json!({}),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+        assert!(!state.status().notice.unwrap().required);
+        state.try_act("clock in", |s| s.clock_in(None)).unwrap();
+        assert_eq!(state.status().shift, ShiftState::Working);
+        assert_eq!(
+            outbox.pending(100).unwrap().len(),
+            1,
+            "the clock-in is queued"
+        );
+    }
+
+    #[test]
+    fn a_new_version_keeps_the_old_settings_until_it_is_acknowledged() {
+        let w = working();
+        w.state.apply_config(&config_with(
+            serde_json::json!({ "webcam": false }),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+        // Version 2 arrives (say the org enabled the webcam): the server still sends
+        // the settings version 1 allows, and asks for a review.
+        w.state.apply_config(&config_with(
+            serde_json::json!({ "webcam": false }),
+            serde_json::json!([]),
+            notice_json(2, false, Some(1)),
+        ));
+        let status = w.state.status();
+        let notice = status.notice.unwrap();
+        assert_eq!(
+            (notice.version, notice.acknowledged, notice.required),
+            (2, false, false)
+        );
+        assert_eq!(status.shift, ShiftState::Working, "the shift carries on");
+        assert!(
+            w.state.take_notice_prompt(),
+            "the notice window opens for it"
+        );
+
+        // Still collecting under the old version: a check-in passes as before.
+        w.pass();
+        assert_eq!(w.checkins().len(), 1);
+        // And the person can end the shift and start another without acknowledging.
+        w.state.try_act("clock out", |s| s.clock_out()).unwrap();
+        w.state.try_act("clock in", |s| s.clock_in(None)).unwrap();
+
+        // Acknowledged: version 2 applies.
+        w.state.apply_config(&config_with(
+            serde_json::json!({ "webcam": true }),
+            serde_json::json!([]),
+            notice_json(2, true, Some(2)),
+        ));
+        assert!(w.state.status().notice.unwrap().acknowledged);
+        assert!(!w.state.take_notice_prompt());
+    }
+
+    #[test]
+    fn signing_out_forgets_the_notice() {
+        let (state, _outbox, _dir) = signed_in_off_shift();
+        state.apply_config(&config_with(
+            serde_json::json!({}),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+        assert!(state.status().notice.is_some());
+        state.sign_out();
+        assert!(state.status().notice.is_none());
+        assert!(state.notice_content().is_none());
+    }
+
+    #[test]
+    fn acknowledging_needs_the_version_on_screen_and_a_server() {
+        let (state, _outbox, _dir) = signed_in_off_shift();
+        assert_eq!(
+            state.acknowledge_notice(1).unwrap_err(),
+            "This copy of AI Proctor has no server set up."
+        );
     }
 }
