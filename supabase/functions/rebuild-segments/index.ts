@@ -5,7 +5,11 @@
 //
 // Two callers:
 //  - the segments_kick cron job (service-role key as the bearer token): works
-//    through up to `limit` (default 50, at most 200) dirty days, oldest first.
+//    through up to `limit` (default 50, at most 200) due dirty days, oldest first
+//    (due_segment_days: a day that keeps failing waits out its backoff). A failure is
+//    reported through record_segment_failure, which counts the attempt and backs off;
+//    one failing day never stops the rest. TODO(M6): send days that keep failing to
+//    Sentry (stuck_segment_days lists them until then).
 //  - a signed-in user, for one day: { user_id, day: "YYYY-MM-DD" }, allowed when
 //    can_view_user(user_id). The dashboard asks for this when it opens a day.
 // Reply: { rebuilt, locked, failed, days: { user_id, day, segments | locked | error }[] }.
@@ -52,29 +56,53 @@ interface DayResult {
 }
 
 async function rebuildDay(admin: SupabaseClient, userId: string, day: string): Promise<DayResult> {
-  const loaded = await admin.rpc("segment_inputs", { p_user_id: userId, p_day: day });
-  if (loaded.error) return { user_id: userId, day, error: loaded.error.message };
-  const { input, loaded_at } = loaded.data as { input: DayInput; loaded_at: string };
+  try {
+    const loaded = await admin.rpc("segment_inputs", { p_user_id: userId, p_day: day });
+    if (loaded.error) return { user_id: userId, day, error: loaded.error.message };
+    const { input, loaded_at } = loaded.data as { input: DayInput; loaded_at: string };
 
-  const segments = buildSegments(input).map((s) => ({
-    start: s.start,
-    end: s.end,
-    type: s.type,
-    project_id: s.projectId,
-    counted: s.counted,
-    flagged: s.flagged,
-  }));
-  const replaced = await admin.rpc("replace_day_segments", {
-    p_user_id: userId,
-    p_day: day,
-    p_segments: segments,
-    p_loaded_at: loaded_at,
-  });
-  if (replaced.error) return { user_id: userId, day, error: replaced.error.message };
-  // null: the day is locked in an approved timesheet (#43); left as it is.
-  return replaced.data === null
-    ? { user_id: userId, day, locked: true }
-    : { user_id: userId, day, segments: replaced.data as number };
+    const segments = buildSegments(input).map((s) => ({
+      start: s.start,
+      end: s.end,
+      type: s.type,
+      project_id: s.projectId,
+      counted: s.counted,
+      flagged: s.flagged,
+    }));
+    const replaced = await admin.rpc("replace_day_segments", {
+      p_user_id: userId,
+      p_day: day,
+      p_segments: segments,
+      p_loaded_at: loaded_at,
+    });
+    if (replaced.error) return { user_id: userId, day, error: replaced.error.message };
+    // null: the day is locked in an approved timesheet (#43); left as it is.
+    return replaced.data === null
+      ? { user_id: userId, day, locked: true }
+      : { user_id: userId, day, segments: replaced.data as number };
+  } catch (e) {
+    // A day that throws (bad data, a bug in the rules) must not take the batch down.
+    return { user_id: userId, day, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Counts the failed attempt and backs the day off; never throws. */
+async function recordFailure(
+  admin: SupabaseClient,
+  result: DayResult,
+  pickedAt: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.rpc("record_segment_failure", {
+      p_user_id: result.user_id,
+      p_day: result.day,
+      p_error: result.error ?? "unknown",
+      p_started_at: pickedAt,
+    });
+    if (error) console.error("record_segment_failure", result.user_id, result.day, error.message);
+  } catch (e) {
+    console.error("record_segment_failure", result.user_id, result.day, e);
+  }
 }
 
 function summary(days: DayResult[]) {
@@ -97,20 +125,20 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => null);
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-  // The cron job: oldest dirty days first.
+  // The cron job: the oldest due dirty days first.
   if (serviceKey !== "" && sameSecret(bearer, serviceKey)) {
     const requested = Number(body?.limit);
     const limit = Number.isInteger(requested)
       ? Math.min(Math.max(requested, 1), MAX_LIMIT)
       : DEFAULT_LIMIT;
-    const { data: dirty, error } = await admin
-      .from("dirty_days")
-      .select("user_id, day")
-      .order("marked_at", { ascending: true })
-      .limit(limit);
+    const { data: due, error } = await admin.rpc("due_segment_days", { p_limit: limit });
     if (error) return reply({ error: "dirty_days_unreadable" }, 500);
     const days: DayResult[] = [];
-    for (const d of dirty ?? []) days.push(await rebuildDay(admin, d.user_id, d.day));
+    for (const d of (due ?? []) as { user_id: string; day: string; picked_at: string }[]) {
+      const result = await rebuildDay(admin, d.user_id, d.day);
+      if (result.error !== undefined) await recordFailure(admin, result, d.picked_at);
+      days.push(result);
+    }
     return reply(summary(days));
   }
 

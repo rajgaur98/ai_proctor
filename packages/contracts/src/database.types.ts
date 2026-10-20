@@ -810,19 +810,28 @@ export type Database = {
       };
       dirty_days: {
         Row: {
+          attempts: number;
           day: string;
+          last_error: string | null;
           marked_at: string;
+          next_attempt_at: string;
           user_id: string;
         };
         ComputedFields: never;
         Insert: {
+          attempts?: number;
           day: string;
+          last_error?: string | null;
           marked_at?: string;
+          next_attempt_at?: string;
           user_id: string;
         };
         Update: {
+          attempts?: number;
           day?: string;
+          last_error?: string | null;
           marked_at?: string;
+          next_attempt_at?: string;
           user_id?: string;
         };
         Relationships: [
@@ -2201,6 +2210,14 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role"];
         }[];
       };
+      due_segment_days: {
+        Args: { p_limit?: number };
+        Returns: {
+          day: string;
+          picked_at: string;
+          user_id: string;
+        }[];
+      };
       edit_segment: {
         Args: {
           p_end_at: string;
@@ -2296,6 +2313,10 @@ export type Database = {
       policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
       record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
+      record_segment_failure: {
+        Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
+        Returns: undefined;
+      };
       register_device: {
         Args: {
           agent_version: string;
@@ -2363,6 +2384,19 @@ export type Database = {
       };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
+      stuck_segment_days: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          attempts: number;
+          day: string;
+          email: string;
+          full_name: string;
+          last_error: string;
+          marked_at: string;
+          next_attempt_at: string;
+          user_id: string;
+        }[];
+      };
       submit_timesheet: { Args: { p_id: string }; Returns: string };
       timesheet_breakdown: {
         Args: { p_from: string; p_to: string; p_user_id: string };
