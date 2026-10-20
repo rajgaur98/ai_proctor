@@ -85,3 +85,26 @@ test("a range that ends before it starts is explained and nothing is exported", 
   await expectNoA11yViolations(page);
   expect(await exportsLogged()).toBe(before);
 });
+
+test("an employee downloads a week of their own time as CSV from My timesheet", async ({
+  page,
+}) => {
+  const before = await exportsLogged();
+  await signIn(page, "erin@acme.test", /\/me$/);
+  await page.goto("/my-timesheet");
+  await expect(page.getByRole("heading", { name: "My timesheet" })).toBeVisible();
+  await expectNoA11yViolations(page);
+
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: /^Download .* as CSV$/ })
+    .first()
+    .click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/\.csv$/);
+  const csv = await readFile((await file.path()) ?? "", "utf8");
+  // The daily view's header; only her own rows (the week may have none on a fresh database).
+  expect(csv.replace(/^\uFEFF/, "").split("\r\n")[0]).toMatch(/^Employee,Email,Date,/);
+  expect(csv).not.toContain("Lucas Martin");
+  expect(await exportsLogged()).toBe(before + 1);
+});
