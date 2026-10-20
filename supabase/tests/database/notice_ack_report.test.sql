@@ -114,7 +114,8 @@ select throws_ok($$ select * from public.notice_ack_report(9) $$, '22023', 'noti
 select pg_temp.act_as_postgres();
 select is((select count(*)::int from public.audit_log where action = 'notice.ack_report_exported'), 1,
   'the export above was logged; reading the report logs nothing');
-delete from public.audit_log where action = 'notice.ack_report_exported';
+-- The audit log is append-only, so the checks below count from here.
+select coalesce(max(id), 0) as audit_mark from public.audit_log \gset
 select pg_temp.act_as(:ada);
 select results_eq(
   $$ select full_name from public.export_notice_ack_report(null, 'not_yet') $$,
@@ -130,7 +131,8 @@ select throws_ok($$ select * from public.export_notice_ack_report(null, 'everyon
 select pg_temp.act_as_postgres();
 select results_eq(
   $$ select actor_id, target_user_id, metadata from public.audit_log
-     where org_id = '00000000-0000-4000-8000-000000000001' and action = 'notice.ack_report_exported' order by id $$,
+     where org_id = '00000000-0000-4000-8000-000000000001' and action = 'notice.ack_report_exported'
+       and id > $$ || :audit_mark || $$ order by id $$,
   $$ values ('00000000-0000-4000-8000-0000000000a1'::uuid, null::uuid,
              '{"version": null, "status": "not_yet", "row_count": 4}'::jsonb),
             ('00000000-0000-4000-8000-0000000000a1'::uuid, null,
@@ -150,13 +152,15 @@ select throws_ok($$ select * from public.notice_ack_report() $$, '42501', 'mfa_r
   'when the org requires MFA, a session without it cannot read the report');
 select throws_ok($$ select * from public.export_notice_ack_report() $$, '42501', 'mfa_required', 'or export it');
 select pg_temp.act_as_postgres();
-select is((select count(*)::int from public.audit_log where action = 'notice.ack_report_exported'), 3,
+select is((select count(*)::int from public.audit_log
+  where action = 'notice.ack_report_exported' and id > :audit_mark), 3,
   'and a refused export is not logged');
 select pg_temp.act_as(:ada, 'aal2');
 select is((select count(*)::int from public.notice_ack_report()), 5, 'with an MFA-verified session it works');
 select is((select count(*)::int from public.export_notice_ack_report()), 5, 'and so does the export');
 select pg_temp.act_as_postgres();
-select is((select count(*)::int from public.audit_log where action = 'notice.ack_report_exported'), 4,
+select is((select count(*)::int from public.audit_log
+  where action = 'notice.ack_report_exported' and id > :audit_mark), 4,
   'which is logged');
 
 select * from finish();
