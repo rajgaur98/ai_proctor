@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, SessionState,
 };
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
@@ -294,8 +294,12 @@ impl Platform for MacPlatform {
         }
     }
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        false
+    // TODO(ANT-03, P1): best-effort detection of synthetic events on macOS
+    // (event-source heuristics); flag only. Until then nothing is guarded.
+    fn start_input_guard(&self, _area: ScreenRect) {}
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        InjectedInput::default()
     }
 
     fn notify(&self, title: &str, body: &str) {

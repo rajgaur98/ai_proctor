@@ -254,6 +254,82 @@ export type Database = {
           },
         ];
       };
+      anticheat_flags: {
+        Row: {
+          created_at: string;
+          day: string;
+          details: NonNullable<Json>;
+          id: string;
+          kind: Database["public"]["Enums"]["anticheat_kind"];
+          org_id: string;
+          review_note: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          day: string;
+          details?: NonNullable<Json>;
+          id?: string;
+          kind: Database["public"]["Enums"]["anticheat_kind"];
+          org_id: string;
+          review_note?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          day?: string;
+          details?: NonNullable<Json>;
+          id?: string;
+          kind?: Database["public"]["Enums"]["anticheat_kind"];
+          org_id?: string;
+          review_note?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "anticheat_flags_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_reviewed_by_fkey";
+            columns: ["reviewed_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_reviewed_by_fkey";
+            columns: ["reviewed_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_log: {
         Row: {
           action: string;
@@ -1474,6 +1550,7 @@ export type Database = {
         };
         Returns: Json;
       };
+      anticheat_mark_reviewed: { Args: { p_flag_id: string; p_note?: string }; Returns: undefined };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
@@ -1560,6 +1637,7 @@ export type Database = {
     };
     Enums: {
       alert_kind: "consecutive_misses" | "offline" | "tamper" | "late_clock_in" | "pause_over_cap";
+      anticheat_kind: "injected_click" | "fast_response" | "low_variance";
       checkin_outcome: "pass" | "miss" | "failed";
       data_region: "us" | "eu";
       device_platform: "macos" | "windows";
@@ -1692,6 +1770,7 @@ export const Constants = {
   public: {
     Enums: {
       alert_kind: ["consecutive_misses", "offline", "tamper", "late_clock_in", "pause_over_cap"],
+      anticheat_kind: ["injected_click", "fast_response", "low_variance"],
       checkin_outcome: ["pass", "miss", "failed"],
       data_region: ["us", "eu"],
       device_platform: ["macos", "windows"],

@@ -4,7 +4,9 @@
 use std::sync::Mutex;
 
 use crate::contracts::{PermissionState, Permissions};
-use crate::platform::{CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState};
+use crate::platform::{
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, SessionState,
+};
 
 /// Every field can be changed mid-test through the setters.
 #[derive(Debug)]
@@ -22,7 +24,10 @@ pub struct FakeState {
     pub permissions: Permissions,
     pub displays: u32,
     pub camera: Result<(), CaptureError>,
-    pub injected: bool,
+    /// Injected clicks the guard will report when it stops (ANT-02).
+    pub injected_clicks: u32,
+    /// The area the input guard is watching; `None` when it isn't running.
+    pub input_guard: Option<ScreenRect>,
     pub notifications: Vec<(String, String)>,
 }
 
@@ -40,7 +45,8 @@ impl Default for FakeState {
             },
             displays: 1,
             camera: Ok(()),
-            injected: false,
+            injected_clicks: 0,
+            input_guard: None,
             notifications: Vec::new(),
         }
     }
@@ -139,8 +145,19 @@ impl Platform for FakePlatform {
         self.state.lock().unwrap().permissions.clone()
     }
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        self.state.lock().unwrap().injected
+    fn start_input_guard(&self, area: ScreenRect) {
+        self.state.lock().unwrap().input_guard = Some(area);
+    }
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        let mut state = self.state.lock().unwrap();
+        // Like the real guard: what it counted is reported once, then it's clear.
+        let count = if state.input_guard.take().is_some() {
+            std::mem::take(&mut state.injected_clicks)
+        } else {
+            0
+        };
+        InjectedInput { count }
     }
 
     fn notify(&self, title: &str, body: &str) {

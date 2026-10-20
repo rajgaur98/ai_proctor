@@ -416,7 +416,10 @@ pub trait Platform: Send + Sync {
     fn capture_webcam(&amp;self, w: u32, h: u32)
         -&gt; Result&lt;Frame, CaptureError&gt;;
     fn permissions(&amp;self) -&gt; Permissions;    <span class="cm">// screen, camera</span>
-    fn is_injected(&amp;self, click: &amp;Click) -&gt; bool;
+    <span class="cm">// Windows: low-level mouse hook while the card is up; injected clicks
+    // inside it are swallowed and counted (ANT-02). No-op elsewhere.</span>
+    fn start_input_guard(&amp;self, area: ScreenRect);
+    fn stop_input_guard(&amp;self) -&gt; InjectedInput;
 }
 
 <span class="cm">// Tests use FakePlatform + a fake clock, so the
@@ -738,6 +741,7 @@ pub trait Platform: Send + Sync {
           <tbody>
             <tr><td><code>offline_sweep</code></td><td>Every 1 min</td><td>Clocked-in users with <code>last_seen</code> older than 3 min become Offline</td></tr>
             <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
+            <tr><td><code>anticheat_daily</code></td><td>Daily 03:30 UTC</td><td>Flags each employee's previous local day: passes under 300 ms, implausibly even response times. Rows land in <code>anticheat_flags</code> as "needs review" (ANT-04, ANT-08)</td></tr>
             <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Calls <code>rebuild-segments</code> when <code>dirty_days</code> is not empty</td></tr>
             <tr><td><code>reminders</code></td><td>Hourly</td><td>Submit and approval reminders, admin escalations</td></tr>

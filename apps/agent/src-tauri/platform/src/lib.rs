@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use agent_core::platform::Platform;
 
+pub mod input_guard;
 pub mod keychain;
 
 #[cfg(target_os = "macos")]

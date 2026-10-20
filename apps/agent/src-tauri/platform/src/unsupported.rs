@@ -3,7 +3,7 @@
 
 use agent_core::contracts::{PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, SessionState,
 };
 
 #[derive(Default)]
@@ -45,8 +45,10 @@ impl Platform for UnsupportedPlatform {
         }
     }
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        false
+    fn start_input_guard(&self, _area: ScreenRect) {}
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        InjectedInput::default()
     }
 
     fn notify(&self, title: &str, _body: &str) {
