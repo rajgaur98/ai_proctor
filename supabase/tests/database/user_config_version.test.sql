@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(16);
+select plan(24);
 
 \set ada '''00000000-0000-4000-8000-0000000000a1'''
 \set max '''00000000-0000-4000-8000-0000000000b1'''
@@ -134,6 +134,81 @@ update public.users set timezone = 'Europe/Berlin' where id = :erin;
 select is(
   (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v2),
   array[0, 4, 1], 'time zone: only when it changes, and only that person');
+
+-- Saving a project or a client moves only the members who see it (#198) ------------------------------
+-- 'Mobile app' now has Lucas only; Northwind's Website revamp has Erin and Lucas.
+
+select pg_temp.act_as_postgres();
+create temp table v3 as select pg_temp.org_v() as org, pg_temp.user_v(:erin) as erin, pg_temp.user_v(:lucas) as lucas;
+grant select on v3 to authenticated;
+
+select pg_temp.act_as(:max);
+select public.save_project((select id from made), 'Mobile app v2');
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v3),
+  array[0, 0, 1], 'project rename: its members only');
+
+select pg_temp.act_as(:max);
+select public.save_project((select id from made), 'Mobile app v2');
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v3),
+  array[0, 0, 1], 'saving it again with nothing changed moves nobody');
+
+select pg_temp.act_as(:max);
+select public.save_project((select id from made), 'Mobile app v2', null, true, true);
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v3),
+  array[0, 0, 2], 'project archive: its members only');
+
+select pg_temp.act_as(:max);
+select public.save_project((select id from made), 'Mobile app v2', '00000000-0000-4000-8000-0000000000e1', false, true);
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v3),
+  array[0, 0, 3], 'project client or billable change: its members only');
+
+-- Creating a project has no members to bump.
+select pg_temp.act_as(:max);
+select public.save_project(null, 'Brand new');
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v3),
+  array[0, 0, 3], 'a new project moves nobody');
+
+-- A client with one project that only Erin is on, and Northwind (Erin and Lucas).
+select pg_temp.act_as(:max);
+create temp table globex as select public.save_client(null, 'Globex') as id;
+grant select on globex to authenticated;
+create temp table portal as select public.save_project(null, 'Portal', (select id from globex)) as id;
+grant select on portal to authenticated;
+select public.set_project_members((select id from portal), array[:erin::uuid]);
+select pg_temp.act_as_postgres();
+create temp table v4 as select pg_temp.org_v() as org, pg_temp.user_v(:erin) as erin, pg_temp.user_v(:lucas) as lucas;
+grant select on v4 to authenticated;
+
+select pg_temp.act_as(:max);
+select public.save_client((select id from globex), 'Globex Inc');
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v4),
+  array[0, 1, 0], 'client rename: members of its projects only');
+
+select pg_temp.act_as(:max);
+select public.save_client((select id from globex), 'Globex Inc', true);
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v4),
+  array[0, 1, 0], 'archiving a client alone changes no one''s config');
+
+select pg_temp.act_as(:max);
+select public.save_client('00000000-0000-4000-8000-0000000000e1', 'Northwind Traders');
+select pg_temp.act_as_postgres();
+select is(
+  (select array[pg_temp.org_v() - org, pg_temp.user_v(:erin) - erin, pg_temp.user_v(:lucas) - lucas] from v4),
+  array[0, 2, 1], 'another client rename: the members of that client''s projects');
 
 select * from finish();
 rollback;
