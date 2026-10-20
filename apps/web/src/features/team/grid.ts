@@ -106,6 +106,8 @@ export function applyPresence(
           last_checkin_at: change.last_checkin_at ?? r.last_checkin_at,
           last_checkin_outcome: change.last_checkin_outcome ?? r.last_checkin_outcome,
           project_id: change.project_id === undefined ? r.project_id : change.project_id,
+          tamper_reason:
+            change.tamper_reason === undefined ? r.tamper_reason : change.tamper_reason,
         }
       : r,
   );
