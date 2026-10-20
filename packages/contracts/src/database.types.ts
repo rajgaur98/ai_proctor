@@ -1611,7 +1611,35 @@ export type Database = {
       };
       email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
       email_mark_sent: { Args: { p_id: string }; Returns: undefined };
+      export_notice_ack_report: {
+        Args: { p_status?: string; p_version?: number };
+        Returns: {
+          acknowledged_at: string;
+          acknowledged_current: boolean;
+          acknowledged_selected: boolean;
+          acknowledged_version: number;
+          email: string;
+          full_name: string;
+          manager_name: string;
+          role: Database["public"]["Enums"]["user_role"];
+          user_id: string;
+        }[];
+      };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
+      notice_ack_report: {
+        Args: { p_version?: number };
+        Returns: {
+          acknowledged_at: string;
+          acknowledged_current: boolean;
+          acknowledged_selected: boolean;
+          acknowledged_version: number;
+          email: string;
+          full_name: string;
+          manager_name: string;
+          role: Database["public"]["Enums"]["user_role"];
+          user_id: string;
+        }[];
+      };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
