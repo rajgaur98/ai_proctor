@@ -53,12 +53,29 @@ impl Default for CapturePolicy {
         Self {
             screenshots: ScreenshotMode::Full,
             webcam: true,
-            excluded_apps: DEFAULT_EXCLUDED_APPS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            excluded_apps: default_excluded_apps(),
         }
     }
+}
+
+impl CapturePolicy {
+    /// Nothing is captured: what someone who has acknowledged no notice may collect
+    /// (AGT-04), and what a signed-out device runs with.
+    pub fn off() -> Self {
+        Self {
+            screenshots: ScreenshotMode::Off,
+            webcam: false,
+            ..Self::default()
+        }
+    }
+}
+
+/// CAP-04: the built-in list, used only when the server's config has none.
+pub fn default_excluded_apps() -> Vec<String> {
+    DEFAULT_EXCLUDED_APPS
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// What a capture produced: files to upload, and why anything is missing.

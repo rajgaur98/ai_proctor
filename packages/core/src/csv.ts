@@ -23,3 +23,25 @@ export function csvCell(value: CsvCell): string {
 export function toCsv(rows: CsvCell[][]): string {
   return rows.map((row) => `${row.map(csvCell).join(",")}\r\n`).join("");
 }
+
+/** A value from a database row: objects and arrays are written as JSON. */
+function recordCell(value: unknown): CsvCell {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "bigint") return String(value);
+  return JSON.stringify(value);
+}
+
+/** A header row, then one row per object (EMP-04 self-export). */
+export function recordsToCsv(columns: string[], rows: Record<string, unknown>[]): string {
+  return toCsv([columns, ...rows.map((row) => columns.map((c) => recordCell(row[c])))]);
+}
+
+/** The columns of a set of rows: the keys of the first row, then any a later row adds. */
+export function columnsOf(rows: Record<string, unknown>[]): string[] {
+  const seen = new Set<string>();
+  for (const row of rows) for (const key of Object.keys(row)) seen.add(key);
+  return [...seen];
+}

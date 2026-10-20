@@ -9,7 +9,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::platform::{Platform, SessionState};
+use crate::platform::{InjectedInput, Platform, SessionState};
 use crate::scheduler::{Deferral, Outcome, Random};
 
 /// CHK-20: 90 s by default, 30–300 s per org.
@@ -18,6 +18,10 @@ pub const MIN_COUNTDOWN: Duration = Duration::seconds(30);
 pub const MAX_COUNTDOWN: Duration = Duration::seconds(300);
 /// CHK-12: the second wrong click fails the challenge.
 pub const MAX_WRONG_CLICKS: u8 = 2;
+/// ANT-02: the flag on a check-in whose card was clicked by injected input, with
+/// the number of swallowed clicks (`injected_click:3`). Raw state only: the server
+/// turns it into a "needs review" flag and never into a penalty.
+pub const INJECTED_CLICK_FLAG: &str = "injected_click";
 
 /// Org and per-employee card settings.
 #[derive(Clone, Debug, PartialEq)]
@@ -108,6 +112,8 @@ pub struct Card {
     pub device_state: &'static str,
     pub project_id: Option<Uuid>,
     pub flags: Vec<String>,
+    /// Injected clicks the input guard swallowed on this card (ANT-02).
+    pub injected_clicks: u32,
 }
 
 /// How the card ended, ready to queue as a `checkin` event.
@@ -143,7 +149,15 @@ impl Card {
             },
             project_id,
             flags: Vec::new(),
+            injected_clicks: 0,
         }
+    }
+
+    /// What the input guard swallowed while the card was up (ANT-02). The check-in
+    /// still ends by its own outcome; the clicks that never reached the card
+    /// count for nothing.
+    pub fn record_injected(&mut self, input: InjectedInput) {
+        self.injected_clicks = self.injected_clicks.saturating_add(input.count);
     }
 
     /// Seconds left on the countdown, for the card's display.
@@ -185,6 +199,10 @@ impl Card {
             Outcome::Miss => "miss",
             Outcome::Failed => "failed",
         };
+        let mut flags = self.flags.clone();
+        if self.injected_clicks > 0 {
+            flags.push(format!("{INJECTED_CLICK_FLAG}:{}", self.injected_clicks));
+        }
         Finished {
             outcome,
             at,
@@ -199,7 +217,7 @@ impl Card {
                 "device_state": self.device_state,
                 "object_keys": [],
                 "project_id": self.project_id,
-                "flags": self.flags,
+                "flags": flags,
             }),
         }
     }
@@ -334,6 +352,50 @@ mod tests {
         assert_eq!(done.payload["outcome"], "failed");
         assert_eq!(done.payload["wrong_clicks"], 2);
         assert_eq!(done.payload["response_ms"], 7_000);
+    }
+
+    #[test]
+    fn a_card_without_injected_clicks_has_no_flags() {
+        let mut c = card(&Low);
+        c.record_injected(InjectedInput::default());
+        let done = c.finish(Outcome::Pass, t("2026-10-20T10:00:15Z"));
+        assert_eq!(done.payload["flags"], json!([]));
+        assert_eq!(done.payload["outcome"], "pass");
+    }
+
+    #[test]
+    fn injected_clicks_add_a_flag_with_their_count() {
+        let mut c = card(&Low);
+        c.record_injected(InjectedInput { count: 2 });
+        c.record_injected(InjectedInput { count: 1 });
+        let done = c.finish(Outcome::Pass, t("2026-10-20T10:00:15Z"));
+        assert_eq!(done.payload["flags"], json!(["injected_click:3"]));
+        // The outcome is still the card's own: the flag is only a note.
+        assert_eq!(done.payload["outcome"], "pass");
+        assert_eq!(done.payload["wrong_clicks"], 0);
+        assert_eq!(done.payload["response_ms"], 12_000);
+    }
+
+    #[test]
+    fn a_miss_with_injected_clicks_is_still_a_miss_with_the_flag() {
+        let mut c = card(&Low);
+        c.record_injected(InjectedInput { count: 4 });
+        let done = c.finish(Outcome::Miss, t("2026-10-20T10:01:34Z"));
+        assert_eq!(done.outcome, Outcome::Miss);
+        assert_eq!(done.payload["outcome"], "miss");
+        assert_eq!(done.payload["flags"], json!(["injected_click:4"]));
+    }
+
+    #[test]
+    fn the_injected_flag_comes_after_other_flags() {
+        let mut c = card(&Low);
+        c.flags.push("dev_marked".into());
+        c.record_injected(InjectedInput { count: 1 });
+        let done = c.finish(Outcome::Failed, t("2026-10-20T10:00:10Z"));
+        assert_eq!(
+            done.payload["flags"],
+            json!(["dev_marked", "injected_click:1"])
+        );
     }
 
     #[test]
