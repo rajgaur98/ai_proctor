@@ -34,7 +34,7 @@
   },
   "overrides": [
     {
-      "includes": ["supabase/functions/**"],
+      "includes": ["supabase/functions/**", "scripts/**"],
       "linter": {
         "rules": {
           "suspicious": {

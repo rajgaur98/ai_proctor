@@ -14,7 +14,8 @@ use agent_core::platform::{
 pub const DATA_DIR_VAR: &str = "AI_PROCTOR_DEV_DATA_DIR";
 /// Secrets go to files in this directory instead of the OS keychain (no prompt).
 pub const KEYSTORE_VAR: &str = "AI_PROCTOR_DEV_KEYSTORE";
-/// Path of the control socket (`dev_control.rs`).
+/// Path of the control socket (`dev_control.rs`, Unix only).
+#[cfg(unix)]
 pub const CONTROL_VAR: &str = "AI_PROCTOR_DEV_CONTROL";
 /// Set (to anything) to report the session as unlocked: an unattended Mac is
 /// usually locked, which holds every check-in (CHK-04).
@@ -32,6 +33,7 @@ pub fn keystore() -> Option<FileKeyStore> {
     dir_from_env(KEYSTORE_VAR).map(FileKeyStore::new)
 }
 
+#[cfg(unix)]
 pub fn control_path() -> Option<PathBuf> {
     dir_from_env(CONTROL_VAR)
 }
@@ -58,8 +60,8 @@ impl Platform for ActiveSession {
     fn call_state(&self) -> CallState {
         self.0.call_state()
     }
-    fn screen_shared(&self) -> bool {
-        self.0.screen_shared()
+    fn screen_share(&self) -> Option<agent_core::platform::ScreenShare> {
+        self.0.screen_share()
     }
     fn foreground(&self) -> Option<Foreground> {
         self.0.foreground()

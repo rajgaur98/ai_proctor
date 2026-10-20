@@ -6,6 +6,7 @@ use chrono::{Duration, NaiveTime};
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::contracts::NoticeBody;
 use crate::session::SessionPolicy;
 use crate::shift::Shift;
 
@@ -15,6 +16,32 @@ pub struct AgentConfig {
     pub policy_version: i64,
     pub timezone: String,
     pub shifts: Vec<ShiftConfig>,
+    /// Projects the person can log to (PRJ-02), for the tray and the card.
+    #[serde(default)]
+    pub projects: Vec<ProjectConfig>,
+    /// The monitoring notice (#48, AGT-04/05). Without one nothing may be collected.
+    #[serde(default)]
+    pub notice: Option<NoticeConfig>,
+}
+
+/// The org's current notice and where this person stands with it. The `policy` in
+/// the same config already carries only the collection they have acknowledged.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct NoticeConfig {
+    pub id: uuid::Uuid,
+    pub version: i64,
+    pub body: NoticeBody,
+    /// This person acknowledged the current version.
+    pub acknowledged: bool,
+    /// The latest version they did acknowledge; null: none yet.
+    pub acknowledged_version: Option<i64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct ProjectConfig {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub client: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -43,6 +70,15 @@ impl ShiftConfig {
 }
 
 impl AgentConfig {
+    /// BRK-06 daily pause allowance in seconds (org default 60 min).
+    pub fn pause_daily_cap_s(&self) -> i64 {
+        self.policy["pause_daily_max_min"]
+            .as_i64()
+            .filter(|m| (0..=24 * 60).contains(m))
+            .unwrap_or(60)
+            * 60
+    }
+
     /// Session rules from the config. Unknown or bad values fall back to the
     /// defaults; a shift that doesn't parse is skipped (and logged).
     pub fn session_policy(&self) -> SessionPolicy {
@@ -70,6 +106,7 @@ impl AgentConfig {
                 .map(Duration::minutes)
                 .unwrap_or(defaults.forgotten_clock_out_after),
             shifts,
+            timezone: self.timezone.parse().unwrap_or(defaults.timezone),
         }
     }
 }
@@ -104,6 +141,30 @@ mod tests {
             NaiveTime::from_hms_opt(22, 0, 0).unwrap()
         );
         assert_eq!(p.shifts[1].tz, chrono_tz::America::Los_Angeles);
+    }
+
+    #[test]
+    fn the_notice_arrives_with_the_config_and_is_optional() {
+        let without = config(json!({}), json!([]));
+        assert!(without.notice.is_none());
+
+        let with: AgentConfig = serde_json::from_value(json!({
+            "policy": { "webcam": false }, "policy_version": 4, "timezone": "UTC", "shifts": [],
+            "notice": {
+                "id": "0190f5b0-0000-7000-8000-0000000000a1", "version": 2,
+                "acknowledged": false, "acknowledged_version": 1,
+                "body": {
+                    "intro": "Acme uses AI Proctor.",
+                    "collected": "c", "when": "w", "who": "h", "retention": "r", "rights": "g"
+                }
+            }
+        }))
+        .unwrap();
+        let notice = with.notice.unwrap();
+        assert_eq!((notice.version, notice.acknowledged), (2, false));
+        assert_eq!(notice.acknowledged_version, Some(1));
+        assert_eq!(notice.body.intro.as_deref(), Some("Acme uses AI Proctor."));
+        assert!(notice.body.grievance.is_none());
     }
 
     #[test]

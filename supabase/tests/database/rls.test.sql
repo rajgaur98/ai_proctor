@@ -140,9 +140,9 @@ select pg_temp.act_as_postgres();
 select is_empty(
   $$ select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'public' and c.relkind in ('r', 'p')
-       and c.relname not in ('device_sessions', 'agent_event_rejections', 'retention_runs')
+       and c.relname not in ('device_sessions', 'agent_event_rejections', 'email_outbox', 'dirty_days', 'retention_runs')
        and not exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) $$,
-  'every public table except the three internal ones has a read policy'
+  'every public table except the internal ones (no API access at all) has a read policy'
 );
 
 select * from finish();

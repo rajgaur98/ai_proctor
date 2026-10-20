@@ -19,12 +19,15 @@ const admin: NavLink[] = [
   { to: "/team", label: "Live team" },
   { to: "/timesheets", label: "Timesheets" },
   { to: "/people", label: "People" },
+  { to: "/projects", label: "Projects" },
   { to: "/policy", label: "Policy" },
+  { to: "/notice", label: "Monitoring notice" },
 ];
 
 const employee: NavLink[] = [
   { to: "/me", label: "My data" },
   { to: "/my-timesheet", label: "My timesheet" },
+  { to: "/my-day", label: "My day" },
   { to: "/notice", label: "Monitoring notice" },
 ];
 

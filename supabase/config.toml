@@ -235,15 +235,19 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# Resend as Auth's SMTP server (#50). Off here so local sign-in and invite mail keeps
+# going to Mailpit. In a hosted project it is turned on (dashboard: Auth > SMTP, or
+# this block with enabled = true in a [remotes.<name>] override pushed with
+# `supabase config push`); RESEND_API_KEY and EMAIL_FROM_ADDRESS come from the
+# environment and are never committed. Setup steps: docs/tech-stack.md, "Email".
+[auth.email.smtp]
+enabled = false
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "env(EMAIL_FROM_ADDRESS)"
+sender_name = "AI Proctor"
 
 # The link goes to the dashboard's /join page, which verifies the token itself (#28).
 [auth.email.template.invite]

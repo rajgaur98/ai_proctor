@@ -10,6 +10,16 @@ const uuid = z.uuid();
 const timestamp = z.iso.datetime({ offset: true });
 const nonNegativeInt = z.int().min(0);
 
+/** Why a due check-in was held back: a call, a screen share or a presentation (CHK-03). */
+export const DeferralReason = z.enum(["call", "screen_share", "presenting"]);
+
+/**
+ * What is making the device count as in a call (STS rule 8): the camera or mic in use
+ * by another app, a screen share, or a full-screen presentation. Raw state only; the
+ * server decides In meeting while any source is on.
+ */
+export const CallSource = z.enum(["camera", "mic", "screen_share", "presenting"]);
+
 /** Why a capture failed; the check-in still passes (CAP-08). */
 export const CaptureFailure = z.enum(["permission_missing", "camera_busy", "no_camera", "failed"]);
 
@@ -31,6 +41,8 @@ const payloads = {
   break_end: z.strictObject({}),
   pause_start: z.strictObject({
     planned_min: z.union([z.literal(5), z.literal(10), z.literal(15)]),
+    // Private to the employee: managers and admins cannot read it (BRK-03).
+    reason: z.string().max(200).optional(),
   }),
   pause_end: z.strictObject({}),
   project_switch: z.strictObject({ project_id: uuid.nullable() }),
@@ -38,12 +50,15 @@ const payloads = {
     scheduled_at: timestamp,
     shown_at: timestamp.nullable().optional(),
     responded_at: timestamp.nullable().optional(),
-    outcome: z.enum(["pass", "miss", "failed"]),
+    // deferred: held for a call, share or presentation; nothing shown or captured.
+    outcome: z.enum(["pass", "miss", "failed", "deferred"]),
+    // Required with `deferred` and only then (the database enforces both).
+    deferral_reason: DeferralReason.nullable().optional(),
     response_ms: nonNegativeInt.nullable().optional(),
     wrong_clicks: z.int().min(0).max(2),
     idle_s_at_show: nonNegativeInt.nullable().optional(),
     device_state: z.string().max(32).nullable().optional(),
-    // File names only; misses never capture anything (the database enforces it).
+    // File names only; only a pass captures anything (the database enforces it).
     object_keys: z.array(z.string().regex(/^[a-z0-9-]{1,40}\.webp$/)).max(8),
     capture_errors: z
       .strictObject({ screen: CaptureFailure.optional(), webcam: CaptureFailure.optional() })
@@ -57,8 +72,8 @@ const payloads = {
   unlock: z.strictObject({}),
   sleep: z.strictObject({}),
   wake: z.strictObject({}),
-  call_start: z.strictObject({ source: z.enum(["camera", "mic"]) }),
-  call_end: z.strictObject({ source: z.enum(["camera", "mic"]) }),
+  call_start: z.strictObject({ source: CallSource }),
+  call_end: z.strictObject({ source: CallSource }),
   app_session: z.strictObject({
     app: z.string().min(1).max(200),
     title: z.string().max(500).nullable().optional(),

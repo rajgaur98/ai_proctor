@@ -6,6 +6,7 @@ import { type PresenceStatus, StatusChip, statusStyle } from "../../components/S
 import { initials } from "../../lib/nav";
 import { supabase } from "../../lib/supabase";
 import { formatTime, viewerZone } from "../../lib/time";
+import { projectsQuery } from "../projects/projectData";
 import {
   filterRows,
   onShift,
@@ -45,6 +46,12 @@ export function LiveTeam() {
       return data.filter((r) => r.user_id !== profile.id);
     },
   });
+
+  const projects = useQuery(projectsQuery).data;
+  const projectName = useMemo(
+    () => new Map((projects ?? []).map((p) => [p.id, p.name])),
+    [projects],
+  );
 
   const rows = data ?? [];
   const summary = useMemo(() => summarize(rows), [rows]);
@@ -147,7 +154,12 @@ export function LiveTeam() {
             </thead>
             <tbody>
               {visible.map((r) => (
-                <Row key={r.user_id} row={r} now={now} />
+                <Row
+                  key={r.user_id}
+                  row={r}
+                  now={now}
+                  project={(r.project_id && projectName.get(r.project_id)) || null}
+                />
               ))}
             </tbody>
           </table>
@@ -200,7 +212,7 @@ function StatusChipMark({ status }: { status: PresenceStatus }) {
   );
 }
 
-function Row({ row, now }: { row: TeamRow; now: Date }) {
+function Row({ row, now, project }: { row: TeamRow; now: Date; project: string | null }) {
   const zone = viewerZone();
   const missed = row.last_checkin_outcome === "miss" || row.last_checkin_outcome === "failed";
   return (
@@ -258,7 +270,7 @@ function Row({ row, now }: { row: TeamRow; now: Date }) {
       <td className="text-ink2 tabular-nums">
         {row.checkins_passed_today} of {row.checkins_shown_today}
       </td>
-      <td className="truncate text-ink2">{row.project_id ? "Project" : "—"}</td>
+      <td className="truncate text-ink2">{project ?? "—"}</td>
       <td className="md:pr-5 md:text-right">
         <Link
           to="/team/$userId"

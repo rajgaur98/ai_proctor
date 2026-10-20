@@ -62,3 +62,26 @@ values
 
 insert into public.presence (user_id, org_id)
 select id, org_id from public.users;
+
+-- A client with a billable project for both employees, and an internal one for Erin.
+insert into public.clients (id, org_id, name)
+values ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-000000000001', 'Northwind');
+insert into public.projects (id, org_id, client_id, name, billable)
+values
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-000000000001',
+   '00000000-0000-4000-8000-0000000000e1', 'Website revamp', true),
+  ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-000000000001',
+   null, 'Internal', false);
+insert into public.project_members (project_id, user_id, org_id)
+values
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000c2', '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-000000000001');
+
+-- Everyone has acknowledged version 1 of the monitoring notice (the org's template
+-- notice is created with the org), so they can clock in. Tests that need someone who
+-- hasn't acknowledged create that state themselves.
+insert into public.notice_acks (user_id, notice_id)
+select u.id, n.id
+from public.users u
+join public.notices n on n.org_id = u.org_id and n.version = 1;

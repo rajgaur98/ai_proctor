@@ -171,6 +171,89 @@ export type Database = {
           },
         ];
       };
+      alerts: {
+        Row: {
+          details: NonNullable<Json>;
+          email_id: string | null;
+          episode: string;
+          id: string;
+          kind: Database["public"]["Enums"]["alert_kind"];
+          org_id: string;
+          read_at: string | null;
+          recipient_id: string;
+          triggered_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          details?: NonNullable<Json>;
+          email_id?: string | null;
+          episode: string;
+          id?: string;
+          kind: Database["public"]["Enums"]["alert_kind"];
+          org_id: string;
+          read_at?: string | null;
+          recipient_id: string;
+          triggered_at?: string;
+          user_id: string;
+        };
+        Update: {
+          details?: NonNullable<Json>;
+          email_id?: string | null;
+          episode?: string;
+          id?: string;
+          kind?: Database["public"]["Enums"]["alert_kind"];
+          org_id?: string;
+          read_at?: string | null;
+          recipient_id?: string;
+          triggered_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "alerts_email_id_fkey";
+            columns: ["email_id"];
+            isOneToOne: false;
+            referencedRelation: "email_outbox";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "alerts_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "alerts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_log: {
         Row: {
           action: string;
@@ -244,6 +327,7 @@ export type Database = {
           end_at: string | null;
           id: string;
           org_id: string;
+          over_cap_s: number;
           planned_min: number | null;
           start_at: string;
           user_id: string;
@@ -254,6 +338,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id: string;
+          over_cap_s?: number;
           planned_min?: number | null;
           start_at: string;
           user_id: string;
@@ -263,6 +348,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id?: string;
+          over_cap_s?: number;
           planned_min?: number | null;
           start_at?: string;
           user_id?: string;
@@ -303,6 +389,7 @@ export type Database = {
           capture_errors: Json | null;
           captures_purged_at: string | null;
           created_at: string;
+          deferral_reason: string | null;
           device_id: string;
           device_state: string | null;
           face_present: boolean | null;
@@ -327,6 +414,7 @@ export type Database = {
           capture_errors?: Json | null;
           captures_purged_at?: string | null;
           created_at?: string;
+          deferral_reason?: string | null;
           device_id: string;
           device_state?: string | null;
           face_present?: boolean | null;
@@ -350,6 +438,7 @@ export type Database = {
           capture_errors?: Json | null;
           captures_purged_at?: string | null;
           created_at?: string;
+          deferral_reason?: string | null;
           device_id?: string;
           device_state?: string | null;
           face_present?: boolean | null;
@@ -385,6 +474,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "checkin_events_project_fk";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "checkin_events_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
@@ -396,6 +492,39 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      clients: {
+        Row: {
+          archived: boolean;
+          created_at: string;
+          id: string;
+          name: string;
+          org_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived?: boolean;
+          created_at?: string;
+          id?: string;
+          name: string;
+          org_id: string;
+        };
+        Update: {
+          archived?: boolean;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          org_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "clients_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
             referencedColumns: ["id"];
           },
         ];
@@ -451,6 +580,13 @@ export type Database = {
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "clock_sessions_project_fk";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
             referencedColumns: ["id"];
           },
           {
@@ -652,6 +788,91 @@ export type Database = {
           },
         ];
       };
+      dirty_days: {
+        Row: {
+          day: string;
+          marked_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          day: string;
+          marked_at?: string;
+          user_id: string;
+        };
+        Update: {
+          day?: string;
+          marked_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dirty_days_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "dirty_days_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      email_outbox: {
+        Row: {
+          attempts: number;
+          batch_key: string | null;
+          created_at: string;
+          id: string;
+          last_error: string | null;
+          org_id: string;
+          payload: NonNullable<Json>;
+          send_after: string;
+          sent_at: string | null;
+          template: string;
+          to_email: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          attempts?: number;
+          batch_key?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id: string;
+          payload?: NonNullable<Json>;
+          send_after?: string;
+          sent_at?: string | null;
+          template: string;
+          to_email: string;
+        };
+        Update: {
+          attempts?: number;
+          batch_key?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id?: string;
+          payload?: NonNullable<Json>;
+          send_after?: string;
+          sent_at?: string | null;
+          template?: string;
+          to_email?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "email_outbox_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       last_seen: {
         Row: {
           at: string;
@@ -706,6 +927,245 @@ export type Database = {
           },
         ];
       };
+      manual_entries: {
+        Row: {
+          created_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          decision_note: string | null;
+          end_at: string;
+          id: string;
+          org_id: string;
+          project_id: string | null;
+          reason: string;
+          start_at: string;
+          status: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_note?: string | null;
+          end_at: string;
+          id?: string;
+          org_id: string;
+          project_id?: string | null;
+          reason: string;
+          start_at: string;
+          status?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_note?: string | null;
+          end_at?: string;
+          id?: string;
+          org_id?: string;
+          project_id?: string | null;
+          reason?: string;
+          start_at?: string;
+          status?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "manual_entries_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "manual_entries_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manual_entries_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manual_entries_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manual_entries_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "manual_entries_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notice_acks: {
+        Row: {
+          acknowledged_at: string;
+          notice_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          acknowledged_at?: string;
+          notice_id: string;
+          user_id: string;
+        };
+        Update: {
+          acknowledged_at?: string;
+          notice_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notice_acks_notice_id_fkey";
+            columns: ["notice_id"];
+            isOneToOne: false;
+            referencedRelation: "notices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notice_acks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notice_acks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notices: {
+        Row: {
+          body: NonNullable<Json>;
+          collection: NonNullable<Json>;
+          id: string;
+          org_id: string;
+          published_at: string;
+          published_by: string | null;
+          region: Database["public"]["Enums"]["region_preset"];
+          version: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          body: NonNullable<Json>;
+          collection: NonNullable<Json>;
+          id?: string;
+          org_id: string;
+          published_at?: string;
+          published_by?: string | null;
+          region: Database["public"]["Enums"]["region_preset"];
+          version: number;
+        };
+        Update: {
+          body?: NonNullable<Json>;
+          collection?: NonNullable<Json>;
+          id?: string;
+          org_id?: string;
+          published_at?: string;
+          published_by?: string | null;
+          region?: Database["public"]["Enums"]["region_preset"];
+          version?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notices_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notices_published_by_fkey";
+            columns: ["published_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notices_published_by_fkey";
+            columns: ["published_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notifications: {
+        Row: {
+          created_at: string;
+          id: string;
+          kind: string;
+          org_id: string;
+          payload: NonNullable<Json>;
+          read_at: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          kind: string;
+          org_id: string;
+          payload?: NonNullable<Json>;
+          read_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          kind?: string;
+          org_id?: string;
+          payload?: NonNullable<Json>;
+          read_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       orgs: {
         Row: {
           created_at: string;
@@ -745,6 +1205,7 @@ export type Database = {
           org_id: string;
           over_cap_s: number;
           planned_min: number;
+          private_reason: string | null;
           start_at: string;
           user_id: string;
         };
@@ -756,6 +1217,7 @@ export type Database = {
           org_id: string;
           over_cap_s?: number;
           planned_min: number;
+          private_reason?: string | null;
           start_at: string;
           user_id: string;
         };
@@ -766,6 +1228,7 @@ export type Database = {
           org_id?: string;
           over_cap_s?: number;
           planned_min?: number;
+          private_reason?: string | null;
           start_at?: string;
           user_id?: string;
         };
@@ -853,6 +1316,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "presence_project_fk";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "presence_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: true;
@@ -864,6 +1334,100 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: true;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      project_members: {
+        Row: {
+          org_id: string;
+          project_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          org_id: string;
+          project_id: string;
+          user_id: string;
+        };
+        Update: {
+          org_id?: string;
+          project_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_members_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "project_members_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "project_members_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      projects: {
+        Row: {
+          archived: boolean;
+          billable: boolean;
+          client_id: string | null;
+          created_at: string;
+          id: string;
+          name: string;
+          org_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived?: boolean;
+          billable?: boolean;
+          client_id?: string | null;
+          created_at?: string;
+          id?: string;
+          name: string;
+          org_id: string;
+        };
+        Update: {
+          archived?: boolean;
+          billable?: boolean;
+          client_id?: string | null;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          org_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "projects_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "projects_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
             referencedColumns: ["id"];
           },
         ];
@@ -1007,6 +1571,272 @@ export type Database = {
           },
         ];
       };
+      time_segments: {
+        Row: {
+          counted: boolean;
+          day: string;
+          end_at: string;
+          excluded: boolean;
+          excluded_by: string | null;
+          excluded_reason: string | null;
+          flagged: boolean;
+          id: string;
+          org_id: string;
+          project_id: string | null;
+          source: string;
+          start_at: string;
+          type: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          counted: boolean;
+          day: string;
+          end_at: string;
+          excluded?: boolean;
+          excluded_by?: string | null;
+          excluded_reason?: string | null;
+          flagged: boolean;
+          id?: string;
+          org_id: string;
+          project_id?: string | null;
+          source?: string;
+          start_at: string;
+          type: string;
+          user_id: string;
+        };
+        Update: {
+          counted?: boolean;
+          day?: string;
+          end_at?: string;
+          excluded?: boolean;
+          excluded_by?: string | null;
+          excluded_reason?: string | null;
+          flagged?: boolean;
+          id?: string;
+          org_id?: string;
+          project_id?: string | null;
+          source?: string;
+          start_at?: string;
+          type?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "time_segments_excluded_by_fkey";
+            columns: ["excluded_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "time_segments_excluded_by_fkey";
+            columns: ["excluded_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_segments_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_segments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "time_segments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      timesheet_edits: {
+        Row: {
+          created_at: string;
+          detail: NonNullable<Json>;
+          editor_id: string | null;
+          end_at: string;
+          id: string;
+          kind: string;
+          org_id: string;
+          project_id: string | null;
+          reason: string | null;
+          seq: number;
+          start_at: string;
+          timesheet_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          detail?: NonNullable<Json>;
+          editor_id?: string | null;
+          end_at: string;
+          id?: string;
+          kind: string;
+          org_id: string;
+          project_id?: string | null;
+          reason?: string | null;
+          seq?: never;
+          start_at: string;
+          timesheet_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          detail?: NonNullable<Json>;
+          editor_id?: string | null;
+          end_at?: string;
+          id?: string;
+          kind?: string;
+          org_id?: string;
+          project_id?: string | null;
+          reason?: string | null;
+          seq?: never;
+          start_at?: string;
+          timesheet_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_edits_editor_id_fkey";
+            columns: ["editor_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_editor_id_fkey";
+            columns: ["editor_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_timesheet_id_fkey";
+            columns: ["timesheet_id"];
+            isOneToOne: false;
+            referencedRelation: "timesheets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      timesheets: {
+        Row: {
+          approved_at: string | null;
+          approver_id: string | null;
+          comment: string | null;
+          created_at: string;
+          id: string;
+          org_id: string;
+          period_start: string;
+          returned_at: string | null;
+          status: string;
+          submitted_at: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          approved_at?: string | null;
+          approver_id?: string | null;
+          comment?: string | null;
+          created_at?: string;
+          id?: string;
+          org_id: string;
+          period_start: string;
+          returned_at?: string | null;
+          status?: string;
+          submitted_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          approved_at?: string | null;
+          approver_id?: string | null;
+          comment?: string | null;
+          created_at?: string;
+          id?: string;
+          org_id?: string;
+          period_start?: string;
+          returned_at?: string | null;
+          status?: string;
+          submitted_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "timesheets_approver_id_fkey";
+            columns: ["approver_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheets_approver_id_fkey";
+            columns: ["approver_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheets_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheets_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheets_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       users: {
         Row: {
           active: boolean;
@@ -1077,6 +1907,72 @@ export type Database = {
       };
     };
     Views: {
+      my_pauses: {
+        Row: {
+          clock_session_id: string | null;
+          end_at: string | null;
+          id: string | null;
+          org_id: string | null;
+          over_cap_s: number | null;
+          planned_min: number | null;
+          private_reason: string | null;
+          start_at: string | null;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          clock_session_id?: string | null;
+          end_at?: string | null;
+          id?: string | null;
+          org_id?: string | null;
+          over_cap_s?: number | null;
+          planned_min?: number | null;
+          private_reason?: string | null;
+          start_at?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          clock_session_id?: string | null;
+          end_at?: string | null;
+          id?: string | null;
+          org_id?: string | null;
+          over_cap_s?: number | null;
+          planned_min?: number | null;
+          private_reason?: string | null;
+          start_at?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pauses_clock_session_id_fkey";
+            columns: ["clock_session_id"];
+            isOneToOne: false;
+            referencedRelation: "clock_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "pauses_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "pauses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "pauses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       team_live: {
         Row: {
           checkins_passed_today: number | null;
@@ -1096,6 +1992,13 @@ export type Database = {
         };
         ComputedFields: never;
         Relationships: [
+          {
+            foreignKeyName: "presence_project_fk";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "users_manager_id_fkey";
             columns: ["manager_id"];
@@ -1121,6 +2024,7 @@ export type Database = {
       };
     };
     Functions: {
+      acknowledge_notice: { Args: { p_notice_id: string }; Returns: undefined };
       add_invited_member: {
         Args: {
           p_email: string;
@@ -1134,6 +2038,17 @@ export type Database = {
           p_work_state: string;
         };
         Returns: undefined;
+      };
+      adjust_time: {
+        Args: {
+          p_end_at: string;
+          p_entry_id?: string;
+          p_project_id: string;
+          p_reason: string;
+          p_start_at: string;
+          p_timesheet_id: string;
+        };
+        Returns: string;
       };
       agent_config: { Args: { p_device_id: string }; Returns: Json };
       agent_events: { Args: { device_id: string; events: Json }; Returns: Json };
@@ -1149,8 +2064,11 @@ export type Database = {
         };
         Returns: Json;
       };
+      approve_timesheet: { Args: { p_id: string }; Returns: undefined };
       can_approve_for: { Args: { target: string }; Returns: boolean };
+      can_decide_timesheet: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
+      cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
       create_org: {
         Args: {
@@ -1161,6 +2079,50 @@ export type Database = {
         };
         Returns: string;
       };
+      decide_manual_entry: {
+        Args: { p_approve: boolean; p_id: string; p_note?: string };
+        Returns: undefined;
+      };
+      edit_segment: {
+        Args: {
+          p_end_at: string;
+          p_kind: string;
+          p_project_id?: string;
+          p_reason?: string;
+          p_start_at: string;
+          p_timesheet_id: string;
+        };
+        Returns: string;
+      };
+      email_claim: {
+        Args: { p_limit?: number };
+        Returns: {
+          attempts: number;
+          batch_key: string | null;
+          created_at: string;
+          id: string;
+          last_error: string | null;
+          org_id: string;
+          payload: NonNullable<Json>;
+          send_after: string;
+          sent_at: string | null;
+          template: string;
+          to_email: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "email_outbox";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
+      };
+      email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
+      email_mark_sent: { Args: { p_id: string }; Returns: undefined };
+      ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
+      mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
+      mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
+      notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
+      publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
         Args: {
           agent_version: string;
@@ -1169,6 +2131,15 @@ export type Database = {
           platform: Database["public"]["Enums"]["device_platform"];
         };
         Returns: Record<string, unknown>;
+      };
+      reopen_timesheet: { Args: { p_id: string; p_reason: string }; Returns: undefined };
+      replace_day_segments: {
+        Args: { p_day: string; p_loaded_at?: string; p_segments: Json; p_user_id: string };
+        Returns: number;
+      };
+      request_manual_entry: {
+        Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };
+        Returns: string;
       };
       retention_expired_captures: {
         Args: { p_limit?: number };
@@ -1179,13 +2150,82 @@ export type Database = {
       };
       retention_mark_captures_purged: { Args: { p_checkin_ids: string[] }; Returns: number };
       retention_purge_rows: { Args: Record<PropertyKey, never>; Returns: Json };
+      return_timesheet: { Args: { p_comment: string; p_id: string }; Returns: undefined };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
+      save_client: {
+        Args: { p_archived?: boolean; p_id: string; p_name: string };
+        Returns: string;
+      };
+      save_project: {
+        Args: {
+          p_archived?: boolean;
+          p_billable?: boolean;
+          p_client_id?: string;
+          p_id: string;
+          p_name: string;
+        };
+        Returns: string;
+      };
+      segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
       set_miss_reason: {
         Args: { p_checkin_id: string; p_kind: string; p_note?: string };
         Returns: undefined;
       };
+      set_project_members: {
+        Args: { p_project_id: string; p_user_ids: string[] };
+        Returns: undefined;
+      };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
+      submit_timesheet: { Args: { p_id: string }; Returns: string };
+      timesheet_breakdown: {
+        Args: { p_from: string; p_to: string; p_user_id: string };
+        Returns: {
+          counted: boolean;
+          day: string;
+          excluded: boolean;
+          flagged: boolean;
+          project_id: string;
+          seconds: number;
+          type: string;
+        }[];
+      };
+      timesheet_export_rows: {
+        Args: {
+          p_client_ids?: string[];
+          p_from: string;
+          p_manager_id?: string;
+          p_project_ids?: string[];
+          p_statuses?: string[];
+          p_to: string;
+          p_user_ids?: string[];
+          p_view: string;
+        };
+        Returns: Json;
+      };
+      timesheet_flagged_segments: {
+        Args: { p_from: string; p_to: string; p_user_id: string };
+        Returns: {
+          day: string;
+          decision: string;
+          end_at: string;
+          excluded: boolean;
+          excluded_reason: string;
+          id: string;
+          project_id: string;
+          start_at: string;
+          type: string;
+        }[];
+      };
+      timesheet_totals: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          excluded_s: number;
+          flagged_s: number;
+          user_id: string;
+          worked_s: number;
+        }[];
+      };
       update_member: {
         Args: {
           p_full_name: string;
@@ -1200,7 +2240,8 @@ export type Database = {
       };
     };
     Enums: {
-      checkin_outcome: "pass" | "miss" | "failed";
+      alert_kind: "consecutive_misses" | "offline" | "tamper" | "late_clock_in" | "pause_over_cap";
+      checkin_outcome: "pass" | "miss" | "failed" | "deferred";
       data_region: "us" | "eu";
       device_platform: "macos" | "windows";
       presence_status:
@@ -1331,7 +2372,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      checkin_outcome: ["pass", "miss", "failed"],
+      alert_kind: ["consecutive_misses", "offline", "tamper", "late_clock_in", "pause_over_cap"],
+      checkin_outcome: ["pass", "miss", "failed", "deferred"],
       data_region: ["us", "eu"],
       device_platform: ["macos", "windows"],
       presence_status: [
