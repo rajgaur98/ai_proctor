@@ -5,10 +5,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Delegation } from "../delegation/Delegation";
+import { ExportDialog } from "./ExportDialog";
 import { SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration } from "./summary";
 import {
@@ -19,7 +20,7 @@ import {
   weekListQuery,
   weekStartQuery,
 } from "./timesheetData";
-import { addWeeks, recentWeeks, weekLabel, weekStartOf } from "./weeks";
+import { addWeeks, recentWeeks, weekDays, weekLabel, weekStartOf } from "./weeks";
 
 const statuses: SheetStatus[] = ["submitted", "returned", "approved", "draft"];
 
@@ -33,6 +34,7 @@ export function Timesheets() {
   const [picked, setPicked] = useState<string | null>(null);
   const week = picked ?? currentWeek;
   const [status, setStatus] = useState<SheetStatus | "all">("all");
+  const exportRef = useRef<HTMLDialogElement>(null);
 
   const list = useQuery({ ...weekListQuery(week), enabled: startDay.isSuccess });
   const rows = (list.data ?? [])
@@ -51,14 +53,29 @@ export function Timesheets() {
           <h1 className="text-2xl font-semibold tracking-[-0.025em]">Timesheets</h1>
           <p className="mt-1 text-[13.5px] text-ink2">{profile.orgName}</p>
         </div>
-        <Link
-          to="/timesheets/$userId"
-          params={{ userId: profile.id }}
-          className="ml-auto text-[13.5px] text-acctext"
-        >
-          Open my own week
-        </Link>
+        <div className="ml-auto flex items-center gap-4">
+          <Link
+            to="/timesheets/$userId"
+            params={{ userId: profile.id }}
+            className="text-[13.5px] text-acctext"
+          >
+            Open my own week
+          </Link>
+          <Button
+            variant="secondary"
+            className="h-10"
+            onClick={() => exportRef.current?.showModal()}
+          >
+            Export CSV
+          </Button>
+        </div>
       </div>
+      <ExportDialog
+        key={week}
+        dialogRef={exportRef}
+        defaultFrom={week}
+        defaultTo={weekDays(week)[6] ?? week}
+      />
 
       <Delegation />
 
