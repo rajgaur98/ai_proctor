@@ -301,6 +301,7 @@ export type Database = {
       checkin_events: {
         Row: {
           capture_errors: Json | null;
+          captures_purged_at: string | null;
           created_at: string;
           device_id: string;
           device_state: string | null;
@@ -323,6 +324,7 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           capture_errors?: Json | null;
+          captures_purged_at?: string | null;
           created_at?: string;
           device_id: string;
           device_state?: string | null;
@@ -344,6 +346,7 @@ export type Database = {
         };
         Update: {
           capture_errors?: Json | null;
+          captures_purged_at?: string | null;
           created_at?: string;
           device_id?: string;
           device_state?: string | null;
@@ -862,6 +865,39 @@ export type Database = {
           },
         ];
       };
+      retention_runs: {
+        Row: {
+          at: string;
+          category: string;
+          deleted: number;
+          id: number;
+          org_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          at?: string;
+          category: string;
+          deleted: number;
+          id?: never;
+          org_id?: string | null;
+        };
+        Update: {
+          at?: string;
+          category?: string;
+          deleted?: number;
+          id?: never;
+          org_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "retention_runs_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       shifts: {
         Row: {
           created_at: string;
@@ -1131,6 +1167,15 @@ export type Database = {
         };
         Returns: Record<string, unknown>;
       };
+      retention_expired_captures: {
+        Args: { p_limit?: number };
+        Returns: {
+          checkin_id: string;
+          paths: string[];
+        }[];
+      };
+      retention_mark_captures_purged: { Args: { p_checkin_ids: string[] }; Returns: number };
+      retention_purge_rows: { Args: Record<PropertyKey, never>; Returns: Json };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
