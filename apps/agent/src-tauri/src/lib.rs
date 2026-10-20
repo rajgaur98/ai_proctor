@@ -329,6 +329,19 @@ impl AgentState {
                 sampler.stop()
             }
         };
+        self.queue_activity(sessions);
+    }
+
+    /// A shift change (clock-out, break, pause, and back) closes the open buckets
+    /// there and then, so none spans the change; the time since the last sample
+    /// isn't counted (#105).
+    fn flush_activity(&self) {
+        let sessions = self.activity.lock().unwrap().stop();
+        self.queue_activity(sessions);
+    }
+
+    fn queue_activity(&self, sessions: Vec<activity::AppSession>) {
+        let now = self.clock.now();
         let Some(outbox) = &self.outbox else {
             return;
         };
@@ -573,7 +586,15 @@ impl AgentState {
 
     /// Runs a transition; failures are logged and shown as a notification.
     fn act(&self, what: &str, f: impl FnOnce(&mut Session) -> Result<(), TransitionError>) {
-        let result = f(&mut self.session.lock().unwrap());
+        let (before, result, after) = {
+            let mut session = self.session.lock().unwrap();
+            let before = session.shift();
+            let result = f(&mut session);
+            (before, result, session.shift())
+        };
+        if before != after {
+            self.flush_activity();
+        }
         if let Err(error) = result {
             tracing::warn!(%error, what, "transition refused");
             self.platform
@@ -1459,6 +1480,50 @@ mod tests {
         w.platform.update(|s| s.idle_seconds = 130);
         w.state.presence_tick();
         assert_eq!(w.events("idle_start").len(), 1);
+    }
+
+    #[test]
+    fn a_quick_clock_out_and_in_never_spans_both_shifts() {
+        let w = working();
+        w.platform.update(|s| {
+            s.foreground = Some(agent_core::platform::Foreground {
+                app: "Xcode".into(),
+                title: None,
+                domain: None,
+            })
+        });
+        for _ in 0..4 {
+            w.state.activity_tick();
+            w.clock.advance(chrono::Duration::seconds(5));
+        }
+        // 09:00:20: out and back in before the next 5 s sample.
+        w.state.act("clock out", |s| s.clock_out());
+        let out_at = w.clock.now();
+        w.clock.advance(chrono::Duration::seconds(2));
+        w.state.act("clock in", |s| s.clock_in(None));
+        let in_at = w.clock.now();
+        for _ in 0..3 {
+            w.clock.advance(chrono::Duration::seconds(5));
+            w.state.activity_tick();
+        }
+        w.state.act("clock out", |s| s.clock_out());
+
+        let buckets = w.events("app_session");
+        assert_eq!(buckets.len(), 2, "one per shift: {buckets:?}");
+        let t = |v: &serde_json::Value| {
+            v.as_str()
+                .unwrap()
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap()
+        };
+        assert!(
+            t(&buckets[0]["end"]) <= out_at,
+            "first ends by the clock-out"
+        );
+        assert!(
+            t(&buckets[1]["start"]) >= in_at,
+            "second starts after the clock-in"
+        );
     }
 
     #[test]
