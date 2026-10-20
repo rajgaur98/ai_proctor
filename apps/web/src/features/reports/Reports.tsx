@@ -1,8 +1,9 @@
 // The Reports tab (#47, DSH-07): hours, flagged time, check-in outcomes, response rate
 // and time, break and pause totals and late clock-ins per person and for the team, for a
 // date range. The numbers come from `report_rows` (the same seconds as the timesheets);
-// charts and a sortable table show them.
-import { teamTotals } from "@ai-proctor/core";
+// charts and a sortable, paged table show them (#156: the whole report is sorted and added
+// up here, and only the table's rows are paged).
+import { type ReportRow, teamTotals } from "@ai-proctor/core";
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
@@ -14,11 +15,13 @@ import { cn } from "../../lib/cn";
 import { formatDuration } from "../timesheets/summary";
 import { weekStartQuery } from "../timesheets/timesheetData";
 import { formatRate, formatResponse } from "./format";
-import { ReportCharts } from "./ReportCharts";
-import { ReportTable } from "./ReportTable";
+import { chartNote } from "./paging";
+import { CHART_PEOPLE, ReportCharts } from "./ReportCharts";
+import { columnTitle, ReportTable, useReportTable } from "./ReportTable";
 import { type DateRange, presetLabel, presetOf, presetRange, presets, rangeProblem } from "./range";
 import { reportQuery, teamManagersQuery } from "./reportData";
 
+const NO_ROWS: ReportRow[] = [];
 const fieldClass = "h-10 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px] text-ink";
 
 export function Reports() {
@@ -40,6 +43,10 @@ export function Reports() {
     () => (rows ? teamTotals(rows, report.data?.teamMedianResponseMs ?? null) : null),
     [rows, report.data?.teamMedianResponseMs],
   );
+  const table = useReportTable(rows ?? NO_ROWS);
+  // Everyone in the table's order (sorting runs before the page is cut), for the charts.
+  const sortedRows = table.getPrePaginatedRowModel().rows.map((r) => r.original);
+  const sort = table.state.sorting[0];
   const active = presetOf(range, today, startDay.data ?? 1);
 
   return (
@@ -143,11 +150,19 @@ export function Reports() {
             <Tile label="Late clock-ins" value={String(totals.lateClockIns)} />
           </dl>
 
-          <ReportCharts rows={rows} />
+          <ReportCharts
+            rows={sortedRows}
+            note={chartNote(
+              Math.min(CHART_PEOPLE, sortedRows.length),
+              sortedRows.length,
+              sort,
+              columnTitle(sort?.id ?? ""),
+            )}
+          />
 
           <div className="overflow-hidden rounded-xl border border-line bg-panel">
             <ReportTable
-              rows={rows}
+              table={table}
               totals={totals}
               caption={`Hours and check-ins per person, ${range.from} to ${range.to}`}
             />
