@@ -155,6 +155,106 @@ describe("notice", () => {
   });
 });
 
+describe("onboarding", () => {
+  const state = {
+    platform: "macos",
+    permissions: { screen: "granted", camera: "not_determined" },
+    webcam: true,
+    ready: false,
+    restart_needed: false,
+    completed: false,
+    start_step: 2,
+  } as const;
+
+  it("reads the permission state", async () => {
+    expect(await invoke("onboarding_state", {}, async () => state)).toEqual(state);
+  });
+
+  it("rejects a state from another platform or without the gate", async () => {
+    await expect(
+      invoke("onboarding_state", {}, async () => ({ ...state, platform: "beos" })),
+    ).rejects.toThrow();
+    const { ready: _ready, ...partial } = state;
+    await expect(invoke("onboarding_state", {}, async () => partial)).rejects.toThrow();
+  });
+
+  it("asks for one permission, with snake_case arguments", async () => {
+    const calls: unknown[] = [];
+    const result = await invoke("request_permission", { kind: "camera" }, async (cmd, args) => {
+      calls.push([cmd, args]);
+      return { ok: true, error: null };
+    });
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual([["request_permission", { kind: "camera" }]]);
+  });
+
+  it("reads a test capture and a failed one", async () => {
+    const worked = {
+      ok: true,
+      screens: ["data:image/webp;base64,AAAA"],
+      webcam: "data:image/webp;base64,BBBB",
+      screen_error: null,
+      webcam_error: null,
+      restart_needed: false,
+    };
+    expect(await invoke("test_capture", {}, async () => worked)).toEqual(worked);
+    const failed = {
+      ok: false,
+      screens: [],
+      webcam: null,
+      screen_error: "permission_missing",
+      webcam_error: "camera_busy",
+      restart_needed: true,
+    };
+    expect(await invoke("test_capture", {}, async () => failed)).toEqual(failed);
+    await expect(
+      invoke("test_capture", {}, async () => ({ ...failed, screen_error: "exploded" })),
+    ).rejects.toThrow();
+  });
+
+  it("opens the flow at a step and finishes it", async () => {
+    const calls: unknown[] = [];
+    const raw = async (cmd: string, args: Record<string, unknown>) => {
+      calls.push([cmd, args]);
+      return { ok: true, error: null };
+    };
+    await invoke("show_onboarding", { step: 2 }, raw);
+    await invoke("finish_onboarding", {}, raw);
+    await invoke("close_onboarding", {}, raw);
+    await invoke("restart_app", {}, raw);
+    expect(calls).toEqual([
+      ["show_onboarding", { step: 2 }],
+      ["finish_onboarding", {}],
+      ["close_onboarding", {}],
+      ["restart_app", {}],
+    ]);
+  });
+
+  it("validates the window's events", async () => {
+    const opened: unknown[] = [];
+    await listen(
+      "onboarding_open",
+      (payload) => opened.push(payload),
+      async (_event, handler) => {
+        handler({ payload: { step: 2 } });
+        expect(() => handler({ payload: { step: 5 } })).toThrow();
+        return () => {};
+      },
+    );
+    expect(opened).toEqual([{ step: 2 }]);
+    let closed = 0;
+    await listen(
+      "onboarding_closed",
+      () => closed++,
+      async (_event, handler) => {
+        handler({ payload: {} });
+        return () => {};
+      },
+    );
+    expect(closed).toBe(1);
+  });
+});
+
 describe("card", () => {
   const challenge = {
     card_id: "0190f5b0-0000-7000-8000-000000000001",

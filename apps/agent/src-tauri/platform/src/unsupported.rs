@@ -1,7 +1,7 @@
 //! Any other OS: compiles so CI can build the workspace; never shipped.
 //! Stub until the M1+ features implement each method.
 
-use agent_core::contracts::{PermissionState, Permissions};
+use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
     SessionState,
@@ -47,6 +47,8 @@ impl Platform for UnsupportedPlatform {
             camera: PermissionState::Unsupported,
         }
     }
+
+    fn request_permission(&self, _kind: PermissionKind) {}
 
     fn start_input_guard(&self, _area: ScreenRect) {}
 

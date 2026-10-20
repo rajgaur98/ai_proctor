@@ -320,6 +320,98 @@
     "CardClickResult": {
       "type": "string",
       "enum": ["pass", "wrong", "failed", "ignored"]
+    },
+    "PermissionKind": {
+      "type": "string",
+      "enum": ["screen", "camera"]
+    },
+    "OnboardingPlatform": {
+      "type": "string",
+      "enum": ["macos", "windows", "other"]
+    },
+    "OnboardingState": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "$ref": "#/definitions/OnboardingPlatform"
+        },
+        "permissions": {
+          "$ref": "#/definitions/Permissions"
+        },
+        "webcam": {
+          "type": "boolean"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "restart_needed": {
+          "type": "boolean"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "start_step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "platform",
+        "permissions",
+        "webcam",
+        "ready",
+        "restart_needed",
+        "completed",
+        "start_step"
+      ],
+      "additionalProperties": false
+    },
+    "TestCaptureFailure": {
+      "type": "string",
+      "enum": ["permission_missing", "camera_busy", "no_camera", "failed"]
+    },
+    "TestCaptureResult": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "screens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "webcam": {
+          "type": ["string", "null"]
+        },
+        "screen_error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TestCaptureFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "webcam_error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TestCaptureFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "restart_needed": {
+          "type": "boolean"
+        }
+      },
+      "required": ["ok", "screens", "webcam", "screen_error", "webcam_error", "restart_needed"],
+      "additionalProperties": false
     }
   }
 }

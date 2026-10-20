@@ -75,6 +75,9 @@ impl Platform for ActiveSession {
     fn permissions(&self) -> Permissions {
         self.0.permissions()
     }
+    fn request_permission(&self, kind: agent_core::contracts::PermissionKind) {
+        self.0.request_permission(kind)
+    }
     fn start_input_guard(&self, area: ScreenRect) {
         self.0.start_input_guard(area)
     }

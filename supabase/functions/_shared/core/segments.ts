@@ -198,7 +198,17 @@ function classify(span: Span, overlays: { span: Span; type: SegmentType }[]): Se
 /**
  * BRK-06: each pause counts up to the per-pause cap and while the day's counted
  * pause time stays under the daily cap; the rest of it is over the cap. Same
- * arithmetic as the server's `pauses.over_cap_s`.
+ * arithmetic as the server's `internal.close_pause` (`pauses.over_cap_s`).
+ *
+ * A pause that runs past local midnight is split there, and this day sees only its
+ * own part:
+ *  - The per-pause cap is anchored at the pause's start and covers the whole pause:
+ *    only its first `pauseMaxS` seconds are eligible, on whichever day they fall.
+ *  - The daily cap is per local day: each day's eligible time counts while that
+ *    day's counted pause time stays under `pauseDailyMaxS`. Pauses on a day are
+ *    taken in start order, so what an earlier day counted never changes this day's
+ *    answer (buildSegments stays a function of one day's facts).
+ * Within a day's part, the counted time comes first, then the over-cap rest.
  */
 function splitPauses(input: DayInput): { span: Span; type: SegmentType }[] {
   const out: { span: Span; type: SegmentType }[] = [];
@@ -208,16 +218,21 @@ function splitPauses(input: DayInput): { span: Span; type: SegmentType }[] {
   );
   for (const p of pauses) {
     const end = p.end ?? input.now;
-    const duration = Math.max(0, end - p.start);
+    const part = clip({ start: p.start, end }, input.day);
+    if (!nonEmpty(part)) continue;
+    const eligible = clip(
+      { start: p.start, end: p.start + Math.min(end - p.start, input.policy.pauseMaxS) },
+      input.day,
+    );
     const counted = Math.min(
-      duration,
-      input.policy.pauseMaxS,
+      Math.max(0, eligible.end - eligible.start),
       Math.max(0, input.policy.pauseDailyMaxS - countedToday),
     );
     countedToday += counted;
-    if (counted > 0) out.push({ span: { start: p.start, end: p.start + counted }, type: "pause" });
-    if (counted < duration)
-      out.push({ span: { start: p.start + counted, end }, type: "pause_over_cap" });
+    if (counted > 0)
+      out.push({ span: { start: part.start, end: part.start + counted }, type: "pause" });
+    if (part.start + counted < part.end)
+      out.push({ span: { start: part.start + counted, end: part.end }, type: "pause_over_cap" });
   }
   return out;
 }

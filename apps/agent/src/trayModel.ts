@@ -8,13 +8,10 @@ import type {
   ShiftState,
 } from "@ai-proctor/contracts";
 
-export type PermissionTarget = "screen_settings" | "camera_settings";
-
 export interface PermissionIssue {
   kind: "screen" | "camera";
   /** Names the permission in the warning banner. */
   label: string;
-  target: PermissionTarget;
 }
 
 /** Which status chip to draw; "blocked" is the design's "Capture blocked". */
@@ -71,10 +68,10 @@ const blocking = new Set(["denied", "not_determined"]);
 export function permissionIssues(permissions: AgentStatus["permissions"]): PermissionIssue[] {
   const issues: PermissionIssue[] = [];
   if (blocking.has(permissions.screen)) {
-    issues.push({ kind: "screen", label: "Screen recording", target: "screen_settings" });
+    issues.push({ kind: "screen", label: "Screen recording" });
   }
   if (blocking.has(permissions.camera)) {
-    issues.push({ kind: "camera", label: "Camera", target: "camera_settings" });
+    issues.push({ kind: "camera", label: "Camera" });
   }
   return issues;
 }

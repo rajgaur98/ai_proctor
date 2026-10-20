@@ -743,7 +743,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
             <tr><td><code>anticheat_daily</code></td><td>Daily 03:30 UTC</td><td>Flags each employee's previous local day: passes under 300 ms, implausibly even response times. Rows land in <code>anticheat_flags</code> as "needs review" (ANT-04, ANT-08)</td></tr>
             <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
-            <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Calls <code>rebuild-segments</code> when <code>dirty_days</code> is not empty</td></tr>
+            <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Queues today (and any unfinished earlier day) for users with an open clock session, then calls <code>rebuild-segments</code> when a <code>dirty_days</code> row is due</td></tr>
             <tr><td><code>reminders</code></td><td>Every 15 min</td><td>Submit and approval reminders, admin escalations</td></tr>
             <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
             <tr><td><code>partitions</code></td><td>Weekly</td><td>Creates next weekly partitions, drops expired ones</td></tr>
@@ -875,7 +875,7 @@ pub trait Platform: Send + Sync {
           <li>project_members: (project_id, user_id)</li>
         </ul></div>
         <div class="t-card"><div class="name">dirty_days · alerts · audit_log</div><ul>
-          <li>dirty_days: <b>(user_id, day)</b> rebuild queue</li>
+          <li>dirty_days: <b>(user_id, day)</b> rebuild queue · attempts · last_error · next_attempt_at (backoff 5 min × 2^attempts, 6 h cap)</li>
           <li>alerts: user_id · recipient_id · kind · episode · details · triggered_at · read_at · email_id</li>
           <li>email_outbox: to · template · payload · batch_key · attempts · sent_at</li>
           <li>audit_log <em>(append-only)</em>: actor_id · action · target · metadata · at</li>
