@@ -33,11 +33,11 @@ impl WindowsPlatform {
         let mut cache = self.camera.lock().unwrap();
         if let Some((at, state)) = cache.as_ref() {
             if at.elapsed() < CAMERA_CACHE {
-                return state.clone();
+                return *state;
             }
         }
         let state = registry::camera_permission();
-        *cache = Some((Instant::now(), state.clone()));
+        *cache = Some((Instant::now(), state));
         state
     }
 }
