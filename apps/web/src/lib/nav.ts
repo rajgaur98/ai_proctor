@@ -12,7 +12,6 @@ const manager: NavLink[] = [
   { to: "/team", label: "Live team" },
   { to: "/timesheets", label: "Timesheets" },
   { to: "/projects", label: "Projects" },
-  { to: "/policy", label: "Policy" },
 ];
 
 const admin: NavLink[] = [

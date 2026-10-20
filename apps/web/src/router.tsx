@@ -10,6 +10,7 @@ import { AppShell } from "./components/AppShell";
 import { DayPage } from "./features/day/DayPage";
 import { NoticePage } from "./features/notice/Notice";
 import { People } from "./features/people/People";
+import { PolicyPage } from "./features/policy/PolicyPage";
 import { Projects } from "./features/projects/Projects";
 import { LiveTeam } from "./features/team/LiveTeam";
 import { TimesheetPage } from "./features/timesheets/TimesheetPage";
@@ -178,7 +179,7 @@ const routeTree = rootRoute.addChildren([
     timesheetRoute,
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
-    page("/policy", "Policy", 52),
+    page("/policy", "Policy", 52, PolicyPage),
     page("/me", "My data", 49),
     page("/my-timesheet", "My timesheet", 43, MyTimesheets),
     noticeRoute,

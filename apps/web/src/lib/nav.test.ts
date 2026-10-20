@@ -3,18 +3,15 @@ import { homeFor, initials, navFor } from "./nav";
 
 describe("navFor", () => {
   it("gives managers the team pages", () => {
-    expect(navFor("manager").map((l) => l.label)).toEqual([
-      "Live team",
-      "Timesheets",
-      "Projects",
-      "Policy",
-    ]);
+    expect(navFor("manager").map((l) => l.label)).toEqual(["Live team", "Timesheets", "Projects"]);
+    expect(navFor("manager").map((l) => l.to)).not.toContain("/policy");
   });
 
   it("gives owners and admins the admin set", () => {
     expect(navFor("owner")).toEqual(navFor("admin"));
     expect(navFor("admin").map((l) => l.label)).toContain("People");
     expect(navFor("admin").map((l) => l.label)).toContain("Projects");
+    expect(navFor("admin").map((l) => l.label)).toContain("Policy");
     expect(navFor("admin").map((l) => l.label)).toContain("Monitoring notice");
   });
 

@@ -10,6 +10,8 @@ use agent_core::platform::Platform;
 pub mod keychain;
 
 #[cfg(target_os = "macos")]
+mod launchd;
+#[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
 mod macos_notify;

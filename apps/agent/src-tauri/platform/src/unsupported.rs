@@ -5,6 +5,8 @@ use agent_core::contracts::{PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
+use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
+use chrono::{DateTime, Utc};
 
 #[derive(Default)]
 pub struct UnsupportedPlatform;
@@ -51,5 +53,21 @@ impl Platform for UnsupportedPlatform {
 
     fn notify(&self, title: &str, _body: &str) {
         tracing::debug!(title, "notification (stub)");
+    }
+
+    fn install_watchdog(&self, _spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError> {
+        Err(WatchdogError::Unsupported)
+    }
+
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError> {
+        Ok(())
+    }
+
+    fn watchdog_installed(&self) -> bool {
+        false
+    }
+
+    fn boot_time(&self) -> Option<DateTime<Utc>> {
+        None
     }
 }

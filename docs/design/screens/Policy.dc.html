@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:100%;background:var(--bg);color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+  <dc-import name="WebNav" active="policy" role="admin" hint-size="100%,56px"></dc-import>
+  <div style="padding:28px 32px 40px;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:24px;font-weight:600;letter-spacing:-0.025em">Monitoring policy</div>
+        <div style="font-size:13.5px;color:var(--ink2);margin-top:4px">Applies to everyone in Brightline Digital (46 people). Changes take effect at each person's next clock-in.</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button style="height:44px;padding:0 16px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer">Discard</button>
+        <button style="{{ saveStyle }}">Save policy</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px">
+        <div style="display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:24px;padding:20px 22px;border-bottom:1px solid var(--line)">
+          <div><div style="font-size:14px;font-weight:600">Region preset</div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:3px">Sets sensible defaults for local privacy law. You can change anything below.</div></div>
+          <div style="display:flex;align-self:start;border:1px solid var(--line2);border-radius:9px;overflow:hidden;width:max-content">
+            <sc-for list="{{ regions }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</button></sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:24px;padding:20px 22px;border-bottom:1px solid var(--line)">
+          <div><div style="font-size:14px;font-weight:600">Check-in interval</div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:3px">Average time between check-ins. Exact times are random so they can't be predicted.</div></div>
+          <div style="display:flex;flex-direction:column;gap:6px;max-width:420px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <input type="range" min="20" max="90" step="5" value="{{ interval }}" onChange="{{ onInterval }}" style="flex:1;accent-color:var(--acc);height:44px">
+              <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:14px;font-weight:500;width:72px;text-align:right">~{{ interval }} min</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3);margin-right:86px"><span>20 min</span><span>90 min</span></div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:24px;padding:20px 22px;border-bottom:1px solid var(--line)">
+          <div><div style="font-size:14px;font-weight:600">Response window</div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:3px">How long a check-in card stays up before it counts as missed.</div></div>
+          <div style="height:44px;width:160px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;display:flex;align-items:center;padding:0 12px;font-size:14px;gap:8px"><span style="font-family:'Geist Mono',ui-monospace,monospace">90 s</span><span style="margin-left:auto;width:6px;height:6px;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);transform:rotate(45deg) translateY(-2px)"></span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:24px;padding:20px 22px;border-bottom:1px solid var(--line)">
+          <div><div style="font-size:14px;font-weight:600">Screenshots</div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:3px">Taken only on a passed check-in. Blurred keeps app layout visible but text unreadable.</div></div>
+          <div style="display:flex;align-self:start;border:1px solid var(--line2);border-radius:9px;overflow:hidden;width:max-content">
+            <sc-for list="{{ shots }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</button></sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:24px;padding:20px 22px;border-bottom:1px solid var(--line)">
+          <div><div style="font-size:14px;font-weight:600">Webcam frame</div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:3px">One still image on a passed check-in. Never video, never audio.</div></div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-self:start;border:1px solid var(--line2);border-radius:9px;overflow:hidden;width:max-content">
+              <sc-for list="{{ cams }}" as="o" hint-placeholder-count="2"><button onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</button></sc-for>
+            </div>
+            <sc-if value="{{ needDpia }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:10px;background:var(--warnbg);border:1px solid var(--warnline);max-width:520px">
+                <span style="font-size:13px;line-height:1.45;color:var(--warnink)"><span style="font-weight:600">Required in the EU.</span> Webcam capture needs a completed Data Protection Impact Assessment.</span>
+                <button onClick="{{ toggleDpia }}" style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0;border:none;background:transparent;font-family:inherit;font-size:13.5px;font-weight:500;color:var(--ink);cursor:pointer;text-align:left">
+                  <span style="{{ boxStyle }}">{{ boxMark }}</span>I confirm a DPIA has been completed
+                </button>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:24px;padding:20px 22px;border-bottom:1px solid var(--line)">
+          <div><div style="font-size:14px;font-weight:600">Image retention</div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:3px">Screenshots and webcam frames are deleted after this. Time records are kept with timesheets.</div></div>
+          <div style="height:44px;width:160px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;display:flex;align-items:center;padding:0 12px;font-size:14px;gap:8px"><span>30 days</span><span style="margin-left:auto;width:6px;height:6px;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);transform:rotate(45deg) translateY(-2px)"></span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:24px;padding:20px 22px">
+          <div><div style="font-size:14px;font-weight:600">Pause limits</div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:3px">Pauses stop all collection. They aren't counted as worked time.</div></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12.5px;color:var(--ink2)">Each pause</span><div style="height:44px;width:140px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;display:flex;align-items:center;padding:0 12px;font-size:14px;gap:6px"><span style="font-family:'Geist Mono',ui-monospace,monospace">15</span><span style="color:var(--ink3)">min</span></div></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12.5px;color:var(--ink2)">Per day</span><div style="height:44px;width:140px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;display:flex;align-items:center;padding:0 12px;font-size:14px;gap:6px"><span style="font-family:'Geist Mono',ui-monospace,monospace">60</span><span style="color:var(--ink3)">min</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px">
+        <div><div style="font-size:15px;font-weight:600">What employees see</div><div style="font-size:12.5px;color:var(--ink2);margin-top:3px">Their monitoring notice updates with this policy.</div></div>
+        <sc-for list="{{ notice }}" as="n" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:2px;padding-top:10px;border-top:1px solid var(--line)">
+            <span style="font-size:12px;font-weight:500;color:var(--ink3)">{{ n.k }}</span>
+            <span style="font-size:13px;line-height:1.45">{{ n.v }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1000}}">
+const PRESET = { us: { shots: 'full', cam: 'on' }, eu: { shots: 'blurred', cam: 'on' }, in: { shots: 'full', cam: 'on' } };
+class Component extends DCLogic {
+  state = { region: 'eu', interval: 45, shots: 'blurred', cam: 'on', dpia: false };
+  renderVals() {
+    const st = this.state;
+    const seg = (opts, key, onPick) => opts.map(([v, label], i) => ({
+      label, pick: () => onPick ? onPick(v) : this.setState({ [key]: v }),
+      style: { height: 44, padding: '0 18px', border: 'none', borderLeft: i ? '1px solid var(--line2)' : 'none', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 500, cursor: 'pointer', background: st[key] === v ? 'var(--ink)' : 'var(--panel)', color: st[key] === v ? 'var(--panel)' : 'var(--ink)' }
+    }));
+    const needDpia = st.region === 'eu' && st.cam === 'on';
+    const ok = !needDpia || st.dpia;
+    return {
+      regions: seg([['us', 'US'], ['eu', 'EU'], ['in', 'India']], 'region', v => this.setState({ region: v, ...PRESET[v], dpia: false })),
+      shots: seg([['full', 'Full'], ['blurred', 'Blurred'], ['off', 'Off']], 'shots'),
+      cams: seg([['on', 'On'], ['off', 'Off']], 'cam'),
+      interval: st.interval, onInterval: e => this.setState({ interval: Number(e.target.value) }),
+      needDpia, toggleDpia: () => this.setState({ dpia: !st.dpia }),
+      boxStyle: { width: 20, height: 20, flex: 'none', boxSizing: 'border-box', borderRadius: 5, border: st.dpia ? 'none' : '1.5px solid var(--ink2)', background: st.dpia ? 'var(--acc)' : 'var(--panel)', color: 'var(--accink)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      boxMark: st.dpia ? '✓' : '',
+      saveStyle: { height: 44, padding: '0 18px', borderRadius: 9, border: 'none', background: 'var(--acc)', color: 'var(--accink)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: ok ? 'pointer' : 'default', opacity: ok ? 1 : 0.45 },
+      notice: [
+        { k: 'Check-ins', v: `About every ${st.interval} min while clocked in, at random times. 90 s to respond.` },
+        { k: 'On a passed check-in', v: [st.shots === 'off' ? null : `one ${st.shots === 'blurred' ? 'blurred ' : ''}screenshot`, st.cam === 'on' ? 'one webcam frame' : null].filter(Boolean).join(' and ').replace(/^./, c => c.toUpperCase()) || 'Nothing but the time of the check-in.' },
+        { k: 'Never collected', v: 'Anything on break, on pause or off shift.' },
+        { k: 'Kept for', v: 'Images 30 days. Time records with timesheets.' },
+        { k: 'Pauses', v: 'Up to 15 min each, 60 min per day.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
