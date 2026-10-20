@@ -90,7 +90,7 @@ async function lateNotices(id: string): Promise<number> {
 async function lateShift() {
   const lucas = await agentFor(LUCAS_EMAIL);
   await lucas("clock_out", { reason: "manual" });
-  const at = (minutes: number) => thisWeek.minus({ minutes }).toJSDate();
+  const at = (minutes: number) => thisWeek.minus({ minutes }).toJSDate().toISOString();
   await lucas("clock_in", { reason: "manual" }, crypto.randomUUID(), at(10));
   await lucas("clock_out", { reason: "manual" }, crypto.randomUUID(), at(5));
 }
