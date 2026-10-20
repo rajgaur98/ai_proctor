@@ -8,9 +8,11 @@ import { useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { membersQuery } from "../people/members";
+import { AckReport } from "./AckReport";
 import { DateTimeText, NoticeView } from "./NoticeView";
 import {
   type Ack,
+  ackReportQuery,
   acksQuery,
   type Notice,
   type NoticeSection,
@@ -43,6 +45,7 @@ export function NoticePage() {
         <>
           <MyNotice notices={notices.data} acks={acks.data} userId={profile.id} />
           {isAdmin && <NoticeEditor notices={notices.data} />}
+          {isAdmin && notices.data[0] && <AckReport currentVersion={notices.data[0].version} />}
           {isAdmin && <History notices={notices.data} acks={acks.data} />}
         </>
       )}
@@ -127,6 +130,7 @@ function NoticeEditor({ notices }: { notices: Notice[] }) {
       setPublished(version);
       queryClient.invalidateQueries({ queryKey: noticesQuery.queryKey });
       queryClient.invalidateQueries({ queryKey: acksQuery.queryKey });
+      queryClient.invalidateQueries({ queryKey: ackReportQuery.queryKey });
     },
   });
   const complete = noticeSections

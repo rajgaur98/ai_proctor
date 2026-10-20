@@ -1,14 +1,16 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
-import { DateTime } from "luxon";
-import { agentFor, clientFor } from "./agent";
-
-const ERIN = "00000000-0000-4000-8000-0000000000c1";
-const ERIN_EMAIL = "erin@acme.test";
-const MANAGER_EMAIL = "manager@acme.test";
-
-/** Erin's current week, Monday-based like the seed org, in her time zone. */
-const week = DateTime.now().setZone("America/Los_Angeles").startOf("week").toISODate() ?? "";
+import { clientFor } from "./agent";
+import {
+  ERIN,
+  ERIN_EMAIL,
+  flaggedTime,
+  MANAGER_EMAIL,
+  resetErinWeeks,
+  settleErinFlagged,
+  submitErinWeek,
+  erinWeek as week,
+} from "./helpers";
 
 async function signIn(page: Page, email: string, landing: RegExp) {
   await page.goto("/sign-in");
@@ -31,57 +33,13 @@ async function expectNoA11yViolations(page: Page) {
   expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
-/** Leaves Erin's week open to submit again, whatever earlier runs did to it. */
-async function resetWeek() {
-  const manager = await clientFor(MANAGER_EMAIL);
-  const { data, error } = await manager.from("timesheets").select("id, status").eq("user_id", ERIN);
-  if (error) throw error;
-  for (const sheet of data) {
-    if (sheet.status === "approved") {
-      const r = await manager.rpc("reopen_timesheet", { p_id: sheet.id, p_reason: "e2e reset" });
-      if (r.error) throw r.error;
-    }
-    if (sheet.status === "approved" || sheet.status === "submitted") {
-      const r = await manager.rpc("return_timesheet", { p_id: sheet.id, p_comment: "e2e reset" });
-      if (r.error) throw r.error;
-    }
-  }
-}
-
-async function submitAsErin() {
-  const erin = await clientFor(ERIN_EMAIL);
-  const ensured = await erin.rpc("ensure_timesheet", { p_user_id: ERIN, p_period_start: week });
-  if (ensured.error) throw ensured.error;
-  const submitted = await erin.rpc("submit_timesheet", { p_id: ensured.data });
-  if (submitted.error) throw submitted.error;
-}
-
-/** Time Erin was clocked in with a missed check-in: an unverified, flagged segment. */
-async function flaggedTime() {
-  const erin = await agentFor(ERIN_EMAIL);
-  await erin("clock_out", { reason: "manual" });
-  await erin("clock_in", { reason: "manual" });
-  await erin("checkin", {
-    // Scheduled well before it was shown, so it sorts ahead of the check-ins other specs
-    // add today (day.spec reads the newest one).
-    scheduled_at: new Date(Date.now() - 3_600_000).toISOString(),
-    shown_at: new Date().toISOString(),
-    outcome: "miss",
-    wrong_clicks: 0,
-    idle_s_at_show: 0,
-    device_state: "active",
-    object_keys: [],
-    flags: [],
-  });
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  await erin("clock_out", { reason: "manual" });
-}
-
 test("an employee submits her week, the manager excludes flagged time with a reason and approves, and she sees the edit", async ({
   page,
 }) => {
+  // Submitting and opening the week each rebuild seven days through the Edge Function.
+  test.setTimeout(60_000);
   const reason = `Idle before lunch ${Date.now()}`;
-  await resetWeek();
+  await resetErinWeeks();
   await flaggedTime();
 
   await signIn(page, ERIN_EMAIL, /\/me$/);
@@ -94,7 +52,8 @@ test("an employee submits her week, the manager excludes flagged time with a rea
   await expect(thisWeek).toContainText(/Draft|Returned/);
   await expectNoA11yViolations(page);
   await thisWeek.getByRole("button", { name: /^Submit Week of/ }).click();
-  await expect(thisWeek).toContainText("Submitted");
+  // Submitting rebuilds the week through the Edge Function first.
+  await expect(thisWeek).toContainText("Submitted", { timeout: 20_000 });
 
   await thisWeek.getByRole("link", { name: /^Week of/ }).click();
   await expect(page.getByRole("heading", { name: /Erin Employee · Week of/ })).toBeVisible();
@@ -117,7 +76,8 @@ test("an employee submits her week, the manager excludes flagged time with a rea
 
   const approve = page.getByRole("button", { name: "Approve week" });
   const flagged = page.getByRole("region", { name: "Flagged segments" });
-  await expect(flagged.getByRole("listitem").first()).toBeVisible();
+  // The list fills in once the page has rebuilt the week.
+  await expect(flagged.getByRole("listitem").first()).toBeVisible({ timeout: 20_000 });
   await expect(approve).toBeDisabled();
   await expect(page.getByText(/Decide on \d+ flagged segments? first/)).toBeVisible();
   await expectNoA11yViolations(page);
@@ -175,8 +135,8 @@ test("an employee submits her week, the manager excludes flagged time with a rea
 
 test("a manager returns a week with a comment and the employee sees it", async ({ page }) => {
   const comment = `Please add Thursday's visit ${Date.now()}`;
-  await resetWeek();
-  await submitAsErin();
+  await resetErinWeeks();
+  await submitErinWeek();
 
   await signIn(page, MANAGER_EMAIL, /\/team$/);
   await page.goto(`/timesheets/${ERIN}?week=${week}`);
@@ -202,8 +162,8 @@ test("a manager returns a week with a comment and the employee sees it", async (
 
 test("a manager reopens an approved week and the employee is notified", async ({ page }) => {
   const reason = `Forgot the Friday visit ${Date.now()}`;
-  await resetWeek();
-  await submitAsErin();
+  await resetErinWeeks();
+  await submitErinWeek();
   const manager = await clientFor(MANAGER_EMAIL);
   const sheet = await manager
     .from("timesheets")
@@ -212,23 +172,7 @@ test("a manager reopens an approved week and the employee is notified", async ({
     .eq("period_start", week)
     .single();
   if (sheet.error) throw sheet.error;
-  const flagged = await manager.rpc("timesheet_flagged_segments", {
-    p_user_id: ERIN,
-    p_from: week,
-    p_to: DateTime.fromISO(week).plus({ days: 6 }).toISODate() ?? week,
-  });
-  if (flagged.error) throw flagged.error;
-  for (const s of flagged.data) {
-    const kept = await manager.rpc("edit_segment", {
-      p_timesheet_id: sheet.data.id,
-      p_kind: s.decision === "exclude" ? "include" : "keep",
-      p_start_at: s.start_at,
-      p_end_at: s.end_at,
-      p_project_id: null as unknown as string,
-      p_reason: "e2e" as string,
-    });
-    if (kept.error) throw kept.error;
-  }
+  await settleErinFlagged(manager, sheet.data.id);
   const approved = await manager.rpc("approve_timesheet", { p_id: sheet.data.id });
   if (approved.error) throw approved.error;
 

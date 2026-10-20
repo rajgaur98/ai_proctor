@@ -2,15 +2,19 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
+import {
+  ERIN,
+  ERIN_EMAIL,
+  erinWeek,
+  MANAGER_EMAIL,
+  resetErinWeeks,
+  settleErinFlagged,
+  submitErinWeek,
+} from "./helpers";
 
-const ERIN = "00000000-0000-4000-8000-0000000000c1";
 const ADA = "00000000-0000-4000-8000-0000000000a1";
-const ERIN_EMAIL = "erin@acme.test";
-const MANAGER_EMAIL = "manager@acme.test";
 const OWNER_EMAIL = "admin@acme.test";
 
-/** Erin's current week (the seed org starts weeks on Monday), in her time zone. */
-const erinWeek = DateTime.now().setZone("America/Los_Angeles").startOf("week").toISODate() ?? "";
 /** The same for Ada, who is in New York. */
 const adaWeek = DateTime.now().setZone("America/New_York").startOf("week").toISODate() ?? "";
 
@@ -44,35 +48,23 @@ async function resetState() {
     const r = await manager.rpc("end_delegation", { p_id: d.id });
     if (r.error) throw r.error;
   }
-  const { data, error } = await manager.from("timesheets").select("id, status").eq("user_id", ERIN);
-  if (error) throw error;
-  for (const sheet of data) {
-    if (sheet.status === "approved") {
-      const r = await manager.rpc("reopen_timesheet", { p_id: sheet.id, p_reason: "e2e reset" });
-      if (r.error) throw r.error;
-    }
-    if (sheet.status === "approved" || sheet.status === "submitted") {
-      const r = await manager.rpc("return_timesheet", { p_id: sheet.id, p_comment: "e2e reset" });
-      if (r.error) throw r.error;
-    }
-  }
+  await resetErinWeeks();
 }
 
 test("a manager sets a delegate, the delegate decides and approves, then the manager ends it", async ({
   page,
 }) => {
+  // Opening the day and the week each rebuild segments through the Edge Function.
+  test.setTimeout(90_000);
   const reason = `Client visit ${Date.now()}`;
   // A past day nobody has clocked in on, picked per run: the local database keeps earlier runs.
   const day = DateTime.now()
     .minus({ days: 400 + (Date.now() % 1000) })
     .toISODate();
   await resetState();
+  await submitErinWeek();
 
   const erin = await clientFor(ERIN_EMAIL);
-  const ensured = await erin.rpc("ensure_timesheet", { p_user_id: ERIN, p_period_start: erinWeek });
-  if (ensured.error) throw ensured.error;
-  const submitted = await erin.rpc("submit_timesheet", { p_id: ensured.data });
-  if (submitted.error) throw submitted.error;
   const requested = await erin.rpc("request_manual_entry", {
     p_start_at:
       DateTime.fromISO(`${day}T10:00`, { zone: "America/Los_Angeles" }).toUTC().toISO() ?? "",
@@ -128,7 +120,7 @@ test("a manager sets a delegate, the delegate decides and approves, then the man
   const owner = await clientFor(OWNER_EMAIL);
   const sheet = await owner
     .from("timesheets")
-    .select("id")
+    .select("id, status")
     .eq("user_id", ERIN)
     .eq("period_start", erinWeek)
     .single();
@@ -144,34 +136,15 @@ test("a manager sets a delegate, the delegate decides and approves, then the man
     if (r.error) throw r.error;
   }
   // The timesheet page rebuilds the week when it opens, which can add flagged time
-  // other specs left behind; rebuild first so every flagged segment is settled here.
-  for (let d = 0; d < 7; d++) {
-    const day = DateTime.fromISO(erinWeek).plus({ days: d }).toISODate() ?? erinWeek;
-    const rebuilt = await owner.functions.invoke("rebuild-segments", {
-      body: { user_id: ERIN, day },
-    });
-    if (rebuilt.error) throw rebuilt.error;
-  }
-  const flagged = await owner.rpc("timesheet_flagged_segments", {
-    p_user_id: ERIN,
-    p_from: erinWeek,
-    p_to: DateTime.fromISO(erinWeek).plus({ days: 6 }).toISODate() ?? erinWeek,
-  });
-  if (flagged.error) throw flagged.error;
-  for (const s of flagged.data) {
-    const kept = await owner.rpc("edit_segment", {
-      p_timesheet_id: sheet.data.id,
-      p_kind: s.decision === "exclude" ? "include" : "keep",
-      p_start_at: s.start_at,
-      p_end_at: s.end_at,
-      p_project_id: null as unknown as string,
-      p_reason: "e2e" as string,
-    });
-    if (kept.error) throw kept.error;
-  }
+  // other specs left behind; the helper rebuilds first so every flagged segment is settled.
+  await settleErinFlagged(owner, sheet.data.id);
+  // Still the week Erin submitted above (a failure here is state, not the page).
+  expect(sheet.data.status).toBe("submitted");
 
   await page.goto(`/timesheets/${ERIN}?week=${erinWeek}`);
-  await expect(page.getByText(/^Submitted · /)).toBeVisible();
+  await expect(page.getByText(/^Submitted · /)).toBeVisible({ timeout: 15_000 });
+  // Approve is enabled once the page has rebuilt the week and found nothing to decide.
+  await expect(page.getByRole("button", { name: "Approve week" })).toBeEnabled({ timeout: 20_000 });
   await page.getByRole("button", { name: "Approve week" }).click();
   await expect(page.getByText(/^Approved · /)).toBeVisible();
   await expect(page.getByRole("button", { name: "Reopen week" })).toBeVisible();

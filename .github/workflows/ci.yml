@@ -195,6 +195,27 @@ jobs:
       - run: pnpm --filter @ai-proctor/web e2e
         env:
           CI: "true"
+      # Nightly order check (#221): a spec that leans on another spec's data fails here
+      # instead of flaking on PRs. A second full run on the same stack (with what the
+      # first left behind), then each spec file on its own in reverse order.
+      - name: Second full run without a reset (nightly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: pnpm --filter @ai-proctor/web e2e
+        env:
+          CI: "true"
+      - name: Each spec alone, in reverse order (nightly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        working-directory: apps/web
+        env:
+          CI: "true"
+        run: |
+          failed=""
+          for f in $(ls e2e/*.spec.ts | sort -r); do
+            echo "::group::$f"
+            pnpm exec playwright test "$f" || failed="$failed $f"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then echo "::error::failed alone:$failed"; exit 1; fi
 
   # The integration checks (Edge Functions, pg_cron through pg_net, Storage, Mailpit),
   # each on a freshly reset database (#191).

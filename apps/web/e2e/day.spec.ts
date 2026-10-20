@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { agentFor, asEmployee } from "./agent";
+import { timeAt } from "./helpers";
 
 test("a manager opens an employee's day and reads a missed and a deferred check-in", async ({
   page,
@@ -8,7 +9,8 @@ test("a manager opens an employee's day and reads a missed and a deferred check-
   const erin = await agentFor("erin@acme.test");
   await erin("clock_out", { reason: "manual" });
   await erin("clock_in", { reason: "manual" });
-  const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+  const now = Date.now();
+  const ago = (s: number) => new Date(now - s * 1000).toISOString();
   const missId = crypto.randomUUID();
   await erin(
     "checkin",
@@ -60,11 +62,9 @@ test("a manager opens an employee's day and reads a missed and a deferred check-
   // Markers this close overlap on the bar; the list below reaches each one.
   await expect(page.getByRole("button", { name: /^Missed check-in at / }).last()).toBeVisible();
   const list = page.getByRole("region", { name: "Check-ins" });
-  // Newest last: earlier runs may have left check-ins on today.
-  await list
-    .getByRole("button", { name: /Missed/ })
-    .last()
-    .click();
+  // Other specs add check-ins on today: pick this spec's rows by the time each was shown.
+  const row = (iso: string) => list.getByRole("button").filter({ has: page.locator(timeAt(iso)) });
+  await row(ago(29)).filter({ hasText: "Missed" }).click();
   const details = page.getByRole("region", { name: /^Missed check-in · / });
   await expect(details).toContainText("Idle before check-in");
   await expect(details).toContainText("7 min");
@@ -76,21 +76,13 @@ test("a manager opens an employee's day and reads a missed and a deferred check-
   await expect(
     page.getByRole("button", { name: /^Deferred check-in at \d\d:\d\d \(screen shared\)$/ }).last(),
   ).toBeVisible();
-  await list
-    .getByRole("button", { name: /Deferred/ })
-    .filter({ hasText: "Screen shared" })
-    .last()
-    .click();
+  await row(ago(20)).filter({ hasText: "Screen shared" }).click();
   const deferred = page.getByRole("region", { name: /^Deferred check-in · / });
   await expect(deferred).toContainText("Reason");
   await expect(deferred).toContainText("Screen shared");
   await expect(deferred).toContainText("not counted as missed");
 
-  await list
-    .getByRole("button", { name: /Passed/ })
-    .filter({ hasText: "in 4 s" })
-    .last()
-    .click();
+  await row(ago(9)).filter({ hasText: "in 4 s" }).click();
   const passed = page.getByRole("region", { name: /^Check-in · / });
   await expect(passed).toContainText("Passed · 4.2 s");
   await expect(passed).toContainText("Answered in");
