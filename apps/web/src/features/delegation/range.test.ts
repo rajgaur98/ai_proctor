@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rangeLabel, rangeProblem } from "./range";
+import { rangeLabel, rangeProblem, statusLabel } from "./range";
 
 describe("rangeProblem", () => {
   const today = "2026-11-03";
@@ -26,5 +26,21 @@ describe("rangeLabel", () => {
     expect(rangeLabel("2026-11-03", "2026-11-03")).toBe("3 Nov 2026");
     expect(rangeLabel("2026-11-03", "2026-11-10")).toBe("3 Nov – 10 Nov 2026");
     expect(rangeLabel("2026-12-30", "2027-01-03")).toBe("30 Dec 2026 – 3 Jan 2027");
+  });
+});
+
+describe("statusLabel", () => {
+  it("names each stage and why one ended early", () => {
+    expect(statusLabel({ status: "upcoming", endReason: null })).toBe("Upcoming");
+    expect(statusLabel({ status: "active", endReason: null })).toBe("Active");
+    expect(statusLabel({ status: "completed", endReason: null })).toBe("Completed");
+    expect(statusLabel({ status: "ended", endReason: "manual" })).toBe("Ended early");
+    expect(statusLabel({ status: "ended", endReason: null })).toBe("Ended early");
+    expect(statusLabel({ status: "ended", endReason: "deactivated" })).toBe(
+      "Ended early (deactivated)",
+    );
+    expect(statusLabel({ status: "ended", endReason: "demoted" })).toBe(
+      "Ended early (made an employee)",
+    );
   });
 });
