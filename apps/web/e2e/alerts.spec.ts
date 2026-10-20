@@ -45,7 +45,18 @@ test("a manager sees an alert for three missed check-ins and marks it read", asy
     .filter({ hasText: "3 missed check-ins in a row" })
     .filter({ has: page.getByRole("button", { name: /^Mark read/ }) });
   await expect(item).toHaveCount(1, { timeout: 100_000 });
-  await expect(page.getByRole("button", { name: "Alerts, 1 unread" })).toBeVisible();
+  // The same job can raise alerts for what earlier specs left (tamper-reason.spec's
+  // Tamper, a minute later), so the bell counts every unread alert, this one included.
+  const bell = page.getByRole("button", { name: /^Alerts(, \d+ unread)?$/ });
+  const unread = panel
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: /^Mark read/ }) });
+  const bellCountsUnread = async () => {
+    const n = await unread.count();
+    return (await bell.getAttribute("aria-label")) === (n > 0 ? `Alerts, ${n} unread` : "Alerts");
+  };
+  await expect(bell).toHaveAccessibleName(/^Alerts, \d+ unread$/);
+  await expect.poll(bellCountsUnread).toBe(true);
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
@@ -53,8 +64,8 @@ test("a manager sees an alert for three missed check-ins and marks it read", asy
   expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 
   await item.getByRole("button", { name: /^Mark read/ }).click();
-  await expect(page.getByRole("button", { name: "Alerts", exact: true })).toBeVisible();
   await expect(item).toHaveCount(0);
+  await expect.poll(bellCountsUnread).toBe(true);
 
   // An alert links to Lucas's day.
   await panel

@@ -1,12 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
-import { agentFor, clientFor } from "./agent";
+import { clientFor } from "./agent";
+import { ERIN, ERIN_EMAIL, flaggedTime, MANAGER_EMAIL } from "./helpers";
 
-const ERIN = "00000000-0000-4000-8000-0000000000c1";
 const LUCAS = "00000000-0000-4000-8000-0000000000c2";
-const ERIN_EMAIL = "erin@acme.test";
-const MANAGER_EMAIL = "manager@acme.test";
 const ADMIN_EMAIL = "admin@acme.test";
 
 /** The Monday-based week the page opens on, from the manager's calendar (Chicago). */
@@ -38,31 +36,6 @@ function duration(seconds: number): string {
   return h > 0 ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
 }
 
-/** Erin works a stretch with a missed check-in, so her week has worked and flagged time. */
-async function someTime() {
-  const erin = await agentFor(ERIN_EMAIL);
-  await erin("clock_out", { reason: "manual" });
-  await erin("clock_in", { reason: "manual" });
-  await erin("checkin", {
-    scheduled_at: new Date(Date.now() - 3_600_000).toISOString(),
-    shown_at: new Date().toISOString(),
-    outcome: "miss",
-    wrong_clicks: 0,
-    idle_s_at_show: 0,
-    device_state: "active",
-    object_keys: [],
-    flags: [],
-  });
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  await erin("clock_out", { reason: "manual" });
-  // Build today's segments now rather than waiting for the five-minute job.
-  const manager = await clientFor(MANAGER_EMAIL);
-  const rebuilt = await manager.functions.invoke("rebuild-segments", {
-    body: { user_id: ERIN, day: DateTime.now().setZone("America/Los_Angeles").toISODate() },
-  });
-  if (rebuilt.error) throw rebuilt.error;
-}
-
 async function body(page: Page) {
   const rows = page.getByRole("table").locator("tbody tr");
   return rows;
@@ -71,7 +44,8 @@ async function body(page: Page) {
 test("a manager reads the week's report and it matches the timesheet totals, sorted by any column", async ({
   page,
 }) => {
-  await someTime();
+  // Erin's week has worked and flagged time.
+  await flaggedTime();
   const manager = await clientFor(MANAGER_EMAIL);
   const { data: totalRows, error } = await manager.rpc("timesheet_totals", {
     p_from: weekFrom,
