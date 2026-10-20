@@ -9,9 +9,9 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (21 Oct):** implementers on #140 late data after approval, #160 Tamper reasons, #185 retention for alerts/outbox. Merging green PRs one at a time (CLAUDE.md, merging).
-- **Open PRs:** #186 (#135), #188 (#139), #192 (e2e fixes), #193 (#124), #194 (#147), #196 (#54), #197 (#146).
-- **Next:** #149, #156, #159, #161, #169, #174, #177, #189, #191, #195, #198. Blocked on Raj: #168, #175 (and the Windows/M6 items below).
+- **Now (21 Oct, late):** implementers on #156 reports at scale, #161 tamper policy, #174 Windows follow-ups, #198 project/client config refresh (stacked on #197). Merging green PRs one at a time (CLAUDE.md, merging); each gets main merged in first.
+- **Open PRs:** #172 (#145), #186 (#135), #193 (#124), #196 (#54), #197 (#146), #204 (#191), #206 (#159), #207 (#140), #208 (#177), #209 (#189).
+- **Next:** #169 after #161 lands (both touch the agent's permissions), #195 after #193 (both rewrite the e2e helpers). Blocked on Raj: #168, #175 (and the Windows/M6 items below).
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
