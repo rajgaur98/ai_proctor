@@ -13,6 +13,17 @@ use agent_core::sync::{Api, ApiConfig, DeviceIdentity, Heartbeat, SyncError, Syn
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+/// The dashboard (My data, monitoring notice): run-time environment first, then
+/// the build's; local dev otherwise.
+pub fn dashboard_url() -> String {
+    std::env::var("AI_PROCTOR_DASHBOARD_URL")
+        .ok()
+        .or_else(|| option_env!("AI_PROCTOR_DASHBOARD_URL").map(str::to_owned))
+        .unwrap_or_else(|| "http://localhost:5173".into())
+        .trim_end_matches('/')
+        .to_owned()
+}
+
 /// Supabase project for this build: runtime environment first (dev, tests), then
 /// what the release build was compiled with. Without it the agent can't sign in.
 pub fn api_config() -> Option<ApiConfig> {
@@ -172,6 +183,49 @@ impl Account {
         };
         self.keep_config(config);
         Ok(())
+    }
+
+    /// AGT-04: acknowledges the notice, then fetches the config again: the server now
+    /// lets this person collect what that version describes (`take_config`).
+    pub fn acknowledge_notice(&self, notice_id: Uuid) -> Result<(), SyncError> {
+        let config = {
+            let syncer = self.syncer.lock().unwrap();
+            let Some(syncer) = syncer.as_ref() else {
+                return Err(SyncError::Retry("not connected yet".into()));
+            };
+            syncer.api().acknowledge_notice(notice_id)?;
+            syncer.config()?
+        };
+        self.keep_config(config);
+        Ok(())
+    }
+
+    /// Fetches the config now (the notice changed under the person's feet).
+    pub fn refresh_config(&self) -> Result<(), SyncError> {
+        let config = {
+            let syncer = self.syncer.lock().unwrap();
+            let Some(syncer) = syncer.as_ref() else {
+                return Err(SyncError::Retry("not connected yet".into()));
+            };
+            syncer.config()?
+        };
+        self.keep_config(config);
+        Ok(())
+    }
+
+    /// CHK-23: sends what's queued first, so the server has the check-in.
+    pub fn set_miss_reason(
+        &self,
+        checkin_id: Uuid,
+        kind: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<(), SyncError> {
+        let syncer = self.syncer.lock().unwrap();
+        let Some(syncer) = syncer.as_ref() else {
+            return Err(SyncError::Retry("not connected yet".into()));
+        };
+        syncer.sync_once()?;
+        syncer.api().set_miss_reason(checkin_id, kind, note)
     }
 
     /// A stable, non-identifying id for this install: SHA-256 of a random id kept

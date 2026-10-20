@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:360px;height:520px;box-sizing:border-box;display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+  <div style="height:52px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)">
+    <div style="width:22px;height:22px;border-radius:6px;background:var(--acc);position:relative;flex:none"><div style="position:absolute;left:10px;top:5px;width:2px;height:7px;background:var(--accink);border-radius:1px"></div><div style="position:absolute;left:10px;top:10px;width:6px;height:2px;background:var(--accink);border-radius:1px"></div></div>
+    <div style="font-weight:600;font-size:14px;letter-spacing:-0.01em">AI Proctor</div>
+    <div style="margin-left:auto;font-size:12px;color:var(--ink3);font-family:'Geist Mono',ui-monospace,monospace">Tue 7 Oct</div>
+  </div>
+  <div style="flex:1;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;padding:16px;gap:14px">
+
+    <sc-if value="{{ isOff }}">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 9px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;font-weight:500"><span style="width:8px;height:8px;box-sizing:border-box;border-radius:50%;border:1.5px dashed var(--soff)"></span>Off shift</span>
+        <span style="font-size:12px;color:var(--ink3)">Shift 09:00–18:00 IST</span>
+      </div>
+      <div>
+        <div style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Not clocked in</div>
+        <div style="font-size:13px;line-height:1.45;color:var(--ink2);margin-top:4px">Nothing is collected while you're off shift.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12.5px;color:var(--ink2)">Project <span style="color:var(--ink3)">(optional)</span></span>
+        <div style="height:44px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;display:flex;align-items:center;padding:0 12px;font-size:14px;gap:8px;cursor:pointer"><span>Acme Redesign</span><span style="margin-left:auto;width:7px;height:7px;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);transform:rotate(45deg) translateY(-3px)"></span></div>
+      </div>
+      <button style="height:48px;border-radius:10px;border:none;background:var(--acc);color:var(--accink);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.08)">Clock in</button>
+      <div style="margin-top:auto;font-size:12px;line-height:1.5;color:var(--ink3)">Last clocked out Mon 6 Oct, 18:04</div>
+    </sc-if>
+
+    <sc-if value="{{ isWorking }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 9px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;font-weight:500"><span style="width:8px;height:8px;border-radius:50%;background:var(--sactive)"></span>Active</span>
+        <span style="font-size:12px;color:var(--ink3)">Clocked in 09:02</span>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--ink3)">Time today</div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace;font-size:32px;font-weight:500;letter-spacing:-0.04em;margin-top:2px;font-variant-numeric:tabular-nums">5 h 12 min</div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:10px;background:var(--sunk);font-size:13px">
+        <div style="display:flex;align-items:center;gap:8px;padding:11px 12px"><span style="color:var(--ink3);width:92px">Project</span><span style="font-weight:500">Acme Redesign</span><a style="margin-left:auto;color:var(--acctext);font-weight:500;cursor:pointer">Switch</a></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:11px 12px;border-top:1px solid var(--line)"><span style="color:var(--ink3);width:92px">Last check-in</span><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px">10:42</span><span style="color:var(--ink2)">· passed</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button style="height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer" style-hover="background:var(--sunk)">Break</button>
+        <button style="height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer" style-hover="background:var(--sunk)">Pause</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--ink2)">Pause allowance</span><span style="font-variant-numeric:tabular-nums">45 of 60 min left today</span></div>
+        <div style="height:4px;border-radius:2px;background:var(--sunk);overflow:hidden"><div style="width:75%;height:100%;background:var(--spaused)"></div></div>
+      </div>
+      <button style="margin-top:auto;height:44px;border-radius:9px;border:none;background:transparent;color:var(--ink2);font-family:inherit;font-size:13.5px;font-weight:500;cursor:pointer" style-hover="background:var(--sunk);color:var(--ink)">Clock out</button>
+    </sc-if>
+
+    <sc-if value="{{ isPaused }}">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 9px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;font-weight:500"><span style="width:8px;height:8px;border-radius:2px;background:var(--spaused)"></span>Paused</span>
+        <span style="font-size:12px;color:var(--ink3)">15 min pause</span>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--ink3)">Paused</div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace;font-size:32px;font-weight:500;letter-spacing:-0.04em;margin-top:2px;font-variant-numeric:tabular-nums">8:41 <span style="font-size:15px;letter-spacing:0;color:var(--ink2)">left</span></div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:10px;background:var(--sunk);padding:12px;display:flex;flex-direction:column;gap:4px">
+        <span style="font-size:13.5px;font-weight:600">Nothing is being collected</span>
+        <span style="font-size:12.5px;line-height:1.45;color:var(--ink2)">No check-ins, screenshots or activity until you resume. Time today stays at 5 h 12 min.</span>
+      </div>
+      <button style="height:48px;border-radius:10px;border:none;background:var(--acc);color:var(--accink);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.08)">Resume</button>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--ink2)">Pause allowance</span><span style="font-variant-numeric:tabular-nums">30 of 60 min left today</span></div>
+        <div style="height:4px;border-radius:2px;background:var(--sunk);overflow:hidden"><div style="width:50%;height:100%;background:var(--spaused)"></div></div>
+      </div>
+      <div style="margin-top:auto;font-size:12px;line-height:1.5;color:var(--ink3)">You'll be set back to Active when the pause ends.</div>
+    </sc-if>
+
+    <sc-if value="{{ isBreak }}">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 9px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;font-weight:500"><span style="width:8px;height:8px;border-radius:50%;background:var(--sbreak)"></span>On break</span>
+        <span style="font-size:12px;color:var(--ink3)">Started 13:00</span>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--ink3)">On break</div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace;font-size:32px;font-weight:500;letter-spacing:-0.04em;margin-top:2px;font-variant-numeric:tabular-nums">22 min</div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:10px;background:var(--sunk);padding:12px;display:flex;flex-direction:column;gap:4px">
+        <span style="font-size:13.5px;font-weight:600">Nothing is being collected on break</span>
+        <span style="font-size:12.5px;line-height:1.45;color:var(--ink2)">Breaks aren't counted as worked time.</span>
+      </div>
+      <button style="height:48px;border-radius:10px;border:none;background:var(--acc);color:var(--accink);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.08)">End break</button>
+      <div style="margin-top:auto;display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink2)"><span>Time today</span><span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--ink)">5 h 12 min</span></div>
+    </sc-if>
+
+    <sc-if value="{{ isPermission }}">
+      <div style="background:var(--warnbg);border:1px solid var(--warnline);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="width:18px;height:18px;flex:none;border-radius:50%;background:var(--warnink);color:var(--warnbg);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px">!</span>
+          <div style="font-size:13px;line-height:1.45;color:var(--warnink)"><span style="font-weight:600">Screen recording permission is off.</span> Your manager sees “Capture blocked”.</div>
+        </div>
+        <button style="height:44px;border-radius:9px;border:1px solid var(--warnline);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer" style-hover="background:var(--sunk)">Fix</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 9px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;font-weight:500"><span style="width:7px;height:7px;border-radius:1px;background:var(--stamper);transform:rotate(45deg)"></span>Capture blocked</span>
+        <span style="font-size:12px;color:var(--ink3)">since 11:20</span>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--ink3)">Time today</div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace;font-size:32px;font-weight:500;letter-spacing:-0.04em;margin-top:2px">5 h 12 min</div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:10px;background:var(--sunk);font-size:13px">
+        <div style="display:flex;align-items:center;gap:8px;padding:11px 12px"><span style="color:var(--ink3);width:92px">Project</span><span style="font-weight:500">Acme Redesign</span><a style="margin-left:auto;color:var(--acctext);font-weight:500;cursor:pointer">Switch</a></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button style="height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer">Break</button>
+        <button style="height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer">Pause</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isMissed }}">
+      <div style="border:1px solid var(--line);border-radius:10px;background:var(--sunk);padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <div style="font-size:14.5px;font-weight:600;letter-spacing:-0.01em">You missed a check-in at 14:03</div>
+          <div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:4px;text-wrap:pretty">A reason makes it clear on your timesheet. Sarah Lee (your manager) will see it.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:500;color:var(--ink3)">Add a reason</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ reasons }}" as="r" hint-placeholder-count="5">
+              <button onClick="{{ r.pick }}" style="{{ r.style }}">{{ r.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <button style="{{ saveStyle }}">Save reason</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+        <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 9px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;font-weight:500"><span style="width:8px;height:8px;border-radius:50%;background:var(--sactive)"></span>Active</span>
+        <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px">5 h 12 min</span><span style="color:var(--ink3)">today</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button style="height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer">Break</button>
+        <button style="height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer">Pause</button>
+      </div>
+    </sc-if>
+
+  </div>
+  <div style="height:48px;flex:none;box-sizing:border-box;border-top:1px solid var(--line);display:flex;align-items:center;gap:20px;padding:0 16px;font-size:13px">
+    <a style="color:var(--acctext);font-weight:500;cursor:pointer">My data</a>
+    <a style="color:var(--acctext);font-weight:500;cursor:pointer">Monitoring notice</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:360,&quot;height&quot;:520},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;off&quot;,&quot;working&quot;,&quot;paused&quot;,&quot;break&quot;,&quot;permission&quot;,&quot;missed&quot;],&quot;default&quot;:&quot;working&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  state = { reason: null };
+  renderVals() {
+    const s = this.props.state ?? 'working';
+    const labels = ['Meeting', 'Phone call', 'Break', 'Away from desk', 'Other'];
+    const base = { height: 44, padding: '0 14px', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 500, cursor: 'pointer' };
+    const reasons = labels.map(l => {
+      const on = this.state.reason === l;
+      return {
+        label: l,
+        pick: () => this.setState({ reason: on ? null : l }),
+        style: { ...base, border: on ? '1.5px solid var(--acc)' : '1px solid var(--line2)', background: on ? 'var(--accsoft)' : 'var(--panel)', color: 'var(--ink)' }
+      };
+    });
+    const ready = !!this.state.reason;
+    return {
+      isOff: s === 'off', isWorking: s === 'working', isPaused: s === 'paused', isBreak: s === 'break',
+      isPermission: s === 'permission', isMissed: s === 'missed', reasons,
+      saveStyle: { height: 44, borderRadius: 9, border: 'none', background: 'var(--acc)', color: 'var(--accink)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: ready ? 'pointer' : 'default', opacity: ready ? 1 : 0.45 }
+    };
+  }
+}
+</script>
+</body>
+</html>

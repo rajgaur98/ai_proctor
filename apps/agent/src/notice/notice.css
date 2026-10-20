@@ -1,0 +1,124 @@
+/* Monitoring notice window (#48). Ported from step 1 of the Claude Design "Onboarding"
+   screen (docs/design/screens/Onboarding.dc.html); steps 2 to 4 arrive with #59. */
+@import "../tokens.css";
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--panel);
+  color: var(--ink);
+  font:
+    13px / 1.4 -apple-system,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.notice {
+  box-sizing: border-box;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.n-body {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 28px;
+  overflow-y: auto;
+}
+.notice h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.n-intro {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink2);
+  text-wrap: pretty;
+}
+.n-table {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.n-row {
+  display: contents;
+}
+.n-row dt,
+.n-row dd {
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.n-row dt {
+  background: var(--sunk);
+  font-weight: 600;
+}
+.n-row dd {
+  color: var(--ink2);
+  text-wrap: pretty;
+}
+.n-row:first-child dt,
+.n-row:first-child dd {
+  border-top: 0;
+}
+.n-foot {
+  flex: none;
+  min-height: 64px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 28px;
+  border-top: 1px solid var(--line);
+}
+.n-version {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--ink3);
+}
+.n-error {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--stamper);
+}
+.n-primary {
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--acc);
+  color: var(--accink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.n-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.n-primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.n-primary:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.n-state {
+  margin: auto;
+  color: var(--ink2);
+}

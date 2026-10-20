@@ -30,6 +30,34 @@ describe("AgentEvent", () => {
     expect(AgentEvent.parse(event)).toEqual(event);
   });
 
+  it("accepts a deferred check-in with its reason (CHK-03)", () => {
+    const event = {
+      ...base,
+      type: "checkin",
+      payload: {
+        scheduled_at: "2026-10-07T09:39:58Z",
+        shown_at: null,
+        responded_at: null,
+        outcome: "deferred",
+        deferral_reason: "screen_share",
+        response_ms: null,
+        wrong_clicks: 0,
+        idle_s_at_show: null,
+        device_state: null,
+        object_keys: [],
+        project_id: null,
+        flags: [],
+      },
+    };
+    expect(AgentEvent.parse(event)).toEqual(event);
+    for (const reason of ["call", "presenting"]) {
+      const payload = { ...event.payload, deferral_reason: reason };
+      expect(AgentEvent.safeParse({ ...event, payload }).success).toBe(true);
+    }
+    const unknown = { ...event.payload, deferral_reason: "lunch" };
+    expect(AgentEvent.safeParse({ ...event, payload: unknown }).success).toBe(false);
+  });
+
   it("covers every LLD event type", () => {
     expect(agentEventTypes).toEqual(
       expect.arrayContaining([
@@ -68,6 +96,16 @@ describe("AgentEvent", () => {
     expect(pause({ planned_min: 5, reason: "Doctor call" })).toBe(true);
     expect(pause({ planned_min: 5, reason: "x".repeat(200) })).toBe(true);
     expect(pause({ planned_min: 5, reason: "x".repeat(201) })).toBe(false);
+  });
+
+  it("takes camera, mic, screen share and presenting as call sources (STS rule 8)", () => {
+    const call = (type: "call_start" | "call_end", source: string) =>
+      AgentEvent.safeParse({ ...base, type, payload: { source } }).success;
+    for (const source of ["camera", "mic", "screen_share", "presenting"]) {
+      expect(call("call_start", source)).toBe(true);
+      expect(call("call_end", source)).toBe(true);
+    }
+    expect(call("call_start", "speaker")).toBe(false);
   });
 
   it("rejects unknown payload fields", () => {
