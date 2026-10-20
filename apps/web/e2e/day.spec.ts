@@ -1,22 +1,31 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { agentFor } from "./agent";
+import { agentFor, asEmployee } from "./agent";
 
 test("a manager opens an employee's day and reads a missed check-in", async ({ page }) => {
   const erin = await agentFor("erin@acme.test");
   await erin("clock_out", { reason: "manual" });
   await erin("clock_in", { reason: "manual" });
   const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
-  await erin("checkin", {
-    scheduled_at: ago(30),
-    shown_at: ago(29),
-    outcome: "miss",
-    wrong_clicks: 0,
-    idle_s_at_show: 420,
-    device_state: "active",
-    object_keys: [],
-    flags: [],
-  });
+  const missId = crypto.randomUUID();
+  await erin(
+    "checkin",
+    {
+      scheduled_at: ago(30),
+      shown_at: ago(29),
+      outcome: "miss",
+      wrong_clicks: 0,
+      idle_s_at_show: 420,
+      device_state: "active",
+      object_keys: [],
+      flags: [],
+    },
+    missId,
+  );
+  // CHK-23: she explains it (the tray does this with #37).
+  await asEmployee("erin@acme.test", (db) =>
+    db.rpc("set_miss_reason", { p_checkin_id: missId, p_kind: "meeting", p_note: "Client call" }),
+  );
   await erin("checkin", {
     scheduled_at: ago(10),
     shown_at: ago(9),
@@ -48,7 +57,7 @@ test("a manager opens an employee's day and reads a missed check-in", async ({ p
   const details = page.getByRole("region", { name: "Missed check-in" });
   await expect(details).toContainText("Idle when shown");
   await expect(details).toContainText("7 min");
-  await expect(details).toContainText("No reason given yet");
+  await expect(details).toContainText("Meeting: Client call");
 
   await list
     .getByRole("button", { name: /Passed check-in/ })
