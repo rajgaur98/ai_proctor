@@ -254,6 +254,82 @@ export type Database = {
           },
         ];
       };
+      anticheat_flags: {
+        Row: {
+          created_at: string;
+          day: string;
+          details: NonNullable<Json>;
+          id: string;
+          kind: Database["public"]["Enums"]["anticheat_kind"];
+          org_id: string;
+          review_note: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          day: string;
+          details?: NonNullable<Json>;
+          id?: string;
+          kind: Database["public"]["Enums"]["anticheat_kind"];
+          org_id: string;
+          review_note?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          day?: string;
+          details?: NonNullable<Json>;
+          id?: string;
+          kind?: Database["public"]["Enums"]["anticheat_kind"];
+          org_id?: string;
+          review_note?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "anticheat_flags_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_reviewed_by_fkey";
+            columns: ["reviewed_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_reviewed_by_fkey";
+            columns: ["reviewed_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "anticheat_flags_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_log: {
         Row: {
           action: string;
@@ -387,6 +463,7 @@ export type Database = {
       checkin_events: {
         Row: {
           capture_errors: Json | null;
+          captures_purged_at: string | null;
           created_at: string;
           deferral_reason: string | null;
           device_id: string;
@@ -411,6 +488,7 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           capture_errors?: Json | null;
+          captures_purged_at?: string | null;
           created_at?: string;
           deferral_reason?: string | null;
           device_id: string;
@@ -434,6 +512,7 @@ export type Database = {
         };
         Update: {
           capture_errors?: Json | null;
+          captures_purged_at?: string | null;
           created_at?: string;
           deferral_reason?: string | null;
           device_id?: string;
@@ -807,19 +886,28 @@ export type Database = {
       };
       dirty_days: {
         Row: {
+          attempts: number;
           day: string;
+          last_error: string | null;
           marked_at: string;
+          next_attempt_at: string;
           user_id: string;
         };
         ComputedFields: never;
         Insert: {
+          attempts?: number;
           day: string;
+          last_error?: string | null;
           marked_at?: string;
+          next_attempt_at?: string;
           user_id: string;
         };
         Update: {
+          attempts?: number;
           day?: string;
+          last_error?: string | null;
           marked_at?: string;
+          next_attempt_at?: string;
           user_id?: string;
         };
         Relationships: [
@@ -1529,6 +1617,39 @@ export type Database = {
           },
         ];
       };
+      retention_runs: {
+        Row: {
+          at: string;
+          category: string;
+          deleted: number;
+          id: number;
+          org_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          at?: string;
+          category: string;
+          deleted: number;
+          id?: never;
+          org_id?: string | null;
+        };
+        Update: {
+          at?: string;
+          category?: string;
+          deleted?: number;
+          id?: never;
+          org_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "retention_runs_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       shifts: {
         Row: {
           created_at: string;
@@ -2128,6 +2249,7 @@ export type Database = {
         };
         Returns: Json;
       };
+      anticheat_mark_reviewed: { Args: { p_flag_id: string; p_note?: string }; Returns: undefined };
       approve_timesheet: { Args: { p_id: string }; Returns: undefined };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_decide_timesheet: { Args: { target: string }; Returns: boolean };
@@ -2154,6 +2276,14 @@ export type Database = {
           full_name: string;
           id: string;
           role: Database["public"]["Enums"]["user_role"];
+        }[];
+      };
+      due_segment_days: {
+        Args: { p_limit?: number };
+        Returns: {
+          day: string;
+          picked_at: string;
+          user_id: string;
         }[];
       };
       edit_segment: {
@@ -2193,8 +2323,18 @@ export type Database = {
       email_mark_sent: { Args: { p_id: string }; Returns: undefined };
       end_delegation: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
+      export_audit_log: {
+        Args: {
+          p_actions?: string[];
+          p_actor_id?: string;
+          p_from?: string;
+          p_target_user_id?: string;
+          p_to?: string;
+        };
+        Returns: Json;
+      };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
-      mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
+      mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
       my_delegations: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -2208,7 +2348,12 @@ export type Database = {
         }[];
       };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
+      policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
+      record_segment_failure: {
+        Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
+        Returns: undefined;
+      };
       register_device: {
         Args: {
           agent_version: string;
@@ -2227,6 +2372,15 @@ export type Database = {
         Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };
         Returns: string;
       };
+      retention_expired_captures: {
+        Args: { p_limit?: number };
+        Returns: {
+          checkin_id: string;
+          paths: string[];
+        }[];
+      };
+      retention_mark_captures_purged: { Args: { p_checkin_ids: string[] }; Returns: number };
+      retention_purge_rows: { Args: Record<PropertyKey, never>; Returns: Json };
       return_timesheet: { Args: { p_comment: string; p_id: string }; Returns: undefined };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       save_client: {
@@ -2243,7 +2397,33 @@ export type Database = {
         };
         Returns: string;
       };
+      search_audit_log: {
+        Args: {
+          p_actions?: string[];
+          p_actor_id?: string;
+          p_cursor_at?: string;
+          p_cursor_id?: number;
+          p_from?: string;
+          p_limit?: number;
+          p_target_user_id?: string;
+          p_to?: string;
+        };
+        Returns: {
+          action: string;
+          actor_id: string;
+          actor_name: string;
+          at: string;
+          id: number;
+          metadata: Json;
+          target_name: string;
+          target_user_id: string;
+        }[];
+      };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      set_approval_required: {
+        Args: { p_required: boolean; p_user_id: string };
+        Returns: undefined;
+      };
       set_delegation: {
         Args: {
           p_delegate_id: string;
@@ -2263,6 +2443,19 @@ export type Database = {
       };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
+      stuck_segment_days: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          attempts: number;
+          day: string;
+          email: string;
+          full_name: string;
+          last_error: string;
+          marked_at: string;
+          next_attempt_at: string;
+          user_id: string;
+        }[];
+      };
       submit_timesheet: { Args: { p_id: string }; Returns: string };
       timesheet_breakdown: {
         Args: { p_from: string; p_to: string; p_user_id: string };
@@ -2324,9 +2517,14 @@ export type Database = {
         };
         Returns: undefined;
       };
+      update_policy: {
+        Args: { p_dpia_confirmed?: boolean; p_policy: Json; p_works_council_confirmed?: boolean };
+        Returns: Json;
+      };
     };
     Enums: {
       alert_kind: "consecutive_misses" | "offline" | "tamper" | "late_clock_in" | "pause_over_cap";
+      anticheat_kind: "injected_click" | "fast_response" | "low_variance";
       checkin_outcome: "pass" | "miss" | "failed" | "deferred";
       data_region: "us" | "eu";
       device_platform: "macos" | "windows";
@@ -2459,6 +2657,7 @@ export const Constants = {
   public: {
     Enums: {
       alert_kind: ["consecutive_misses", "offline", "tamper", "late_clock_in", "pause_over_cap"],
+      anticheat_kind: ["injected_click", "fast_response", "low_variance"],
       checkin_outcome: ["pass", "miss", "failed", "deferred"],
       data_region: ["us", "eu"],
       device_platform: ["macos", "windows"],

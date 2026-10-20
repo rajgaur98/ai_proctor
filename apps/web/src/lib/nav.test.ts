@@ -3,19 +3,22 @@ import { homeFor, initials, navFor } from "./nav";
 
 describe("navFor", () => {
   it("gives managers the team pages", () => {
-    expect(navFor("manager").map((l) => l.label)).toEqual([
-      "Live team",
-      "Timesheets",
-      "Projects",
-      "Policy",
-    ]);
+    expect(navFor("manager").map((l) => l.label)).toEqual(["Live team", "Timesheets", "Projects"]);
+    expect(navFor("manager").map((l) => l.to)).not.toContain("/policy");
   });
 
   it("gives owners and admins the admin set", () => {
     expect(navFor("owner")).toEqual(navFor("admin"));
     expect(navFor("admin").map((l) => l.label)).toContain("People");
     expect(navFor("admin").map((l) => l.label)).toContain("Projects");
+    expect(navFor("admin").map((l) => l.label)).toContain("Policy");
     expect(navFor("admin").map((l) => l.label)).toContain("Monitoring notice");
+  });
+
+  it("keeps the audit log to owners and admins", () => {
+    expect(navFor("owner").map((l) => l.to)).toContain("/audit");
+    expect(navFor("manager").map((l) => l.to)).not.toContain("/audit");
+    expect(navFor("employee").map((l) => l.to)).not.toContain("/audit");
   });
 
   it("gives employees only their own pages", () => {

@@ -3,7 +3,8 @@
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
+    SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use chrono::{DateTime, Utc};
@@ -49,8 +50,10 @@ impl Platform for UnsupportedPlatform {
 
     fn request_permission(&self, _kind: PermissionKind) {}
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        false
+    fn start_input_guard(&self, _area: ScreenRect) {}
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        InjectedInput::default()
     }
 
     fn notify(&self, title: &str, _body: &str) {
