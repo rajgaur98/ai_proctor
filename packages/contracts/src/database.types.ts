@@ -2145,6 +2145,19 @@ export type Database = {
           type: string;
         }[];
       };
+      timesheet_export_rows: {
+        Args: {
+          p_client_ids?: string[];
+          p_from: string;
+          p_manager_id?: string;
+          p_project_ids?: string[];
+          p_statuses?: string[];
+          p_to: string;
+          p_user_ids?: string[];
+          p_view: string;
+        };
+        Returns: Json;
+      };
       timesheet_flagged_segments: {
         Args: { p_from: string; p_to: string; p_user_id: string };
         Returns: {
