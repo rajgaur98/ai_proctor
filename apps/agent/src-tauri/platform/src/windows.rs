@@ -1,7 +1,10 @@
 //! Windows (windows-rs: Graphics.Capture, Media Foundation, Win32 hooks, WTS).
 //! Stub until the M1+ features implement each method.
 
-use agent_core::contracts::{PermissionState, Permissions};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
@@ -10,13 +13,32 @@ use agent_core::watchdog::{
 };
 use chrono::{DateTime, Utc};
 
+/// The registry read behind `permissions()` is reused this long: status is asked for
+/// several times a second and each read starts two `reg.exe` processes.
+const CAMERA_CACHE: Duration = Duration::from_secs(2);
+
 #[derive(Default)]
-pub struct WindowsPlatform;
+pub struct WindowsPlatform {
+    camera: Mutex<Option<(Instant, PermissionState)>>,
+}
 
 impl WindowsPlatform {
     pub fn new() -> Self {
         tracing::info!(platform = "windows", "platform stub in use");
-        Self
+        Self::default()
+    }
+
+    /// The camera privacy switches (AGT-03), read at most every `CAMERA_CACHE`.
+    fn camera_permission(&self) -> PermissionState {
+        let mut cache = self.camera.lock().unwrap();
+        if let Some((at, state)) = cache.as_ref() {
+            if at.elapsed() < CAMERA_CACHE {
+                return state.clone();
+            }
+        }
+        let state = registry::camera_permission();
+        *cache = Some((Instant::now(), state.clone()));
+        state
     }
 }
 
@@ -49,12 +71,18 @@ impl Platform for WindowsPlatform {
         Err(CaptureError::Unsupported)
     }
 
+    /// Capturing the screen needs no permission on Windows; the camera follows the
+    /// Settings → Privacy & security → Camera switches.
     fn permissions(&self) -> Permissions {
         Permissions {
-            screen: PermissionState::Unsupported,
-            camera: PermissionState::Unsupported,
+            screen: PermissionState::Granted,
+            camera: self.camera_permission(),
         }
     }
+
+    /// Windows has no prompt to trigger: the person turns the camera switches on in
+    /// Settings (`ms-settings:privacy-webcam`, opened by the onboarding window).
+    fn request_permission(&self, _kind: PermissionKind) {}
 
     fn is_injected(&self, _click: &Click) -> bool {
         false
@@ -78,6 +106,38 @@ impl Platform for WindowsPlatform {
 
     fn boot_time(&self) -> Option<DateTime<Utc>> {
         task::boot_time()
+    }
+}
+
+/// The camera privacy switches in the per-user consent store, read with `reg.exe`.
+/// Needs a device test (no Windows machine yet).
+mod registry {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    use agent_core::camera_privacy::{
+        camera_state, parse_reg_value, CONSENT_KEY, DESKTOP_APPS_KEY,
+    };
+
+    use super::PermissionState;
+
+    /// No console window flashing up for each call.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    fn value(key: &str) -> Option<String> {
+        let output = Command::new("reg.exe")
+            .args(["query", key, "/v", "Value"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .ok()?;
+        parse_reg_value(&String::from_utf8_lossy(&output.stdout))
+    }
+
+    pub fn camera_permission() -> PermissionState {
+        camera_state(
+            value(CONSENT_KEY).as_deref(),
+            value(DESKTOP_APPS_KEY).as_deref(),
+        )
     }
 }
 

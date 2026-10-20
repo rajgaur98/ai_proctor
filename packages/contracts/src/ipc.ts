@@ -90,6 +90,54 @@ export const AgentStatus = z
   })
   .meta({ id: "AgentStatus" });
 
+/** The two permissions the onboarding flow asks for (AGT-03). */
+export const PermissionKind = z.enum(["screen", "camera"]).meta({ id: "PermissionKind" });
+
+export const OnboardingPlatform = z
+  .enum(["macos", "windows", "other"])
+  .meta({ id: "OnboardingPlatform" });
+
+/**
+ * What the onboarding flow's permission and finish steps need (AGT-03). `ready` is the core's
+ * gate: Screen Recording is on, and the camera too when the org's webcam setting is on.
+ */
+export const OnboardingState = z
+  .object({
+    platform: OnboardingPlatform,
+    permissions: Permissions,
+    /** The org's webcam setting; when off, the Camera card is skipped. */
+    webcam: z.boolean(),
+    ready: z.boolean(),
+    /** The OS says Screen Recording is on but a capture still failed: reopen the app. */
+    restart_needed: z.boolean(),
+    /** The flow has been finished on this device. */
+    completed: z.boolean(),
+    /** The step the window was last opened at (1 to 4), for a window that loads late. */
+    start_step: z.int().nonnegative(),
+  })
+  .meta({ id: "OnboardingState" });
+
+/** Why a test capture failed; the same reasons a check-in records. */
+export const TestCaptureFailure = z
+  .enum(["permission_missing", "camera_busy", "no_camera", "failed"])
+  .meta({ id: "TestCaptureFailure" });
+
+/**
+ * The test capture (AGT-03): the images go to the onboarding window as data URLs (WebP) to be
+ * shown and dropped. They are never stored or uploaded.
+ */
+export const TestCaptureResult = z
+  .object({
+    ok: z.boolean(),
+    /** One per display. */
+    screens: z.array(z.string()),
+    webcam: z.string().nullable(),
+    screen_error: TestCaptureFailure.nullable(),
+    webcam_error: TestCaptureFailure.nullable(),
+    restart_needed: z.boolean(),
+  })
+  .meta({ id: "TestCaptureResult" });
+
 /** Result of a command that only succeeds or fails with a message for the user. */
 export const CommandResult = z
   .object({ ok: z.boolean(), error: z.string().nullable() })
@@ -164,6 +212,23 @@ export const ipcCommands = {
   show_notice: { args: z.object({}), result: CommandResult },
   /** AGT-04: "I've read this". `version` is the one on screen; the core refuses a stale one. */
   acknowledge_notice: { args: z.object({ version: z.int().nonnegative() }), result: CommandResult },
+  /** The onboarding flow's permission state, polled on its Permissions step. */
+  onboarding_state: { args: z.object({}), result: OnboardingState },
+  /**
+   * "Open System Settings": asks the OS for the permission (macOS shows its prompt), then
+   * opens the right privacy pane (Windows: the camera privacy page).
+   */
+  request_permission: { args: z.object({ kind: PermissionKind }), result: CommandResult },
+  /** Takes one screenshot (and one webcam frame when the webcam is on); nothing is kept. */
+  test_capture: { args: z.object({}), result: TestCaptureResult },
+  /** Marks the flow finished on this device; refused while a required permission is off. */
+  finish_onboarding: { args: z.object({}), result: CommandResult },
+  /** Opens (or focuses) the onboarding window at `step` (1 notice, 2 permissions, 3 test, 4 done). */
+  show_onboarding: { args: z.object({ step: z.int().min(1).max(4) }), result: CommandResult },
+  /** Hides the onboarding window; its test images are dropped. */
+  close_onboarding: { args: z.object({}), result: CommandResult },
+  /** Quits and reopens the app: macOS applies a new Screen Recording grant to a fresh process. */
+  restart_app: { args: z.object({}), result: CommandResult },
   /** "Switch project" on the card: opens the popover; never blocks the card. */
   card_switch_project: { args: z.object({}), result: CommandResult },
 } as const;
@@ -172,9 +237,18 @@ export const ipcCommands = {
 export const ipcEvents = {
   status_changed: AgentStatus,
   card_challenge: CardChallenge,
+  /** The onboarding window was brought up at this step; it starts the flow from there. */
+  onboarding_open: z.object({ step: z.int().min(1).max(4) }),
+  /** The onboarding window was closed: drop anything it holds (test images). */
+  onboarding_closed: z.object({}),
 } as const;
 
 export type PermissionState = z.infer<typeof PermissionState>;
+export type PermissionKind = z.infer<typeof PermissionKind>;
+export type OnboardingPlatform = z.infer<typeof OnboardingPlatform>;
+export type OnboardingState = z.infer<typeof OnboardingState>;
+export type TestCaptureFailure = z.infer<typeof TestCaptureFailure>;
+export type TestCaptureResult = z.infer<typeof TestCaptureResult>;
 export type Permissions = z.infer<typeof Permissions>;
 export type ShiftState = z.infer<typeof ShiftState>;
 export type AgentStatus = z.infer<typeof AgentStatus>;

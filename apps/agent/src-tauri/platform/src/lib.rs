@@ -18,11 +18,11 @@ mod unsupported;
 #[cfg(target_os = "windows")]
 mod windows;
 
-/// Shows the OS permission prompts the agent needs. Debug builds use it to try the
-/// agent before guided onboarding (#59); a no-op where there's nothing to ask.
-pub fn request_permissions() {
+/// Shows the Accessibility prompt (browser domains, #25), which onboarding doesn't
+/// cover. Debug builds use it; a no-op where there's nothing to ask.
+pub fn request_accessibility() {
     #[cfg(target_os = "macos")]
-    macos::request_permissions();
+    macos::request_accessibility();
 }
 
 /// The platform for the OS this binary was built for.
