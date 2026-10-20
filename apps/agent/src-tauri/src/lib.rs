@@ -107,15 +107,17 @@ pub struct AgentState {
     outbox: Option<Arc<Outbox>>,
     /// The card on screen, if any.
     card: Mutex<Option<Card>>,
-    card_policy: CardPolicy,
-    /// Org capture settings; the webcam one follows the server's config (CAP-05).
+    /// Org card settings (response window) from the server's config (CHK-13).
+    card_policy: Mutex<CardPolicy>,
+    /// Org capture settings from the server's config: what this person has
+    /// acknowledged (#144, CAP-01..05).
     capture_policy: Mutex<CapturePolicy>,
     /// Capture permissions: reported on change, asked about while missing (AGT-07).
     permissions: Mutex<PermissionMonitor>,
     /// Last-alive evidence for the watchdog's restart report (ANT-01); `None` when
     /// the keychain is unavailable.
     liveness: Option<Liveness>,
-    /// Activity sampling (#25); org settings arrive with the policy work.
+    /// Activity sampling (#25); sampling and titles follow the server's config.
     activity: Mutex<Sampler>,
     /// Idle, lock, sleep and call changes sent as events (STS-01).
     presence: Mutex<PresenceTracker>,
@@ -151,9 +153,14 @@ impl AgentState {
         // AGT-04: with a server, nobody clocks in until its config says they have
         // acknowledged a notice (a build without a server has nothing to show).
         let mut session = session;
-        if account.is_some() {
+        // The same until the config says what they acknowledged: nothing is captured
+        // or sampled (#144).
+        let (capture_policy, activity_policy) = if account.is_some() {
             session.set_collection_allowed(false);
-        }
+            (CapturePolicy::off(), ActivityPolicy::off())
+        } else {
+            (CapturePolicy::default(), ActivityPolicy::default())
+        };
         let (liveness, previous_run) = match &outbox {
             Some(outbox) => {
                 let (liveness, previous) = Liveness::start(outbox.clone(), clock.now());
@@ -168,12 +175,12 @@ impl AgentState {
             scheduler,
             outbox,
             card: Mutex::new(None),
-            // Org card settings arrive with the policy work; defaults until then.
-            card_policy: CardPolicy::default(),
-            capture_policy: Mutex::new(CapturePolicy::default()),
+            // Org card settings arrive with the server's config; defaults until then.
+            card_policy: Mutex::new(CardPolicy::default()),
+            capture_policy: Mutex::new(capture_policy),
             permissions: Mutex::new(PermissionMonitor::default()),
             liveness,
-            activity: Mutex::new(Sampler::new(ActivityPolicy::default())),
+            activity: Mutex::new(Sampler::new(activity_policy)),
             presence: Mutex::new(PresenceTracker::default()),
             sync_thread: Mutex::new(None),
             random: Arc::new(ThreadRandom),
@@ -351,16 +358,17 @@ impl AgentState {
             }
             _ => return CardAction::Nothing,
         };
+        let card_policy = self.card_policy.lock().unwrap().clone();
         let shown = Card::show(
             scheduled_at,
             now,
-            &self.card_policy,
+            &card_policy,
             self.platform.as_ref(),
             self.random.as_ref(),
             self.session.lock().unwrap().project_id(),
         );
         tracing::info!(card = %shown.id, "check-in shown");
-        if self.card_policy.notify {
+        if card_policy.notify {
             self.platform
                 .notify("Check-in", "Click the number shown on the card.");
         }
@@ -580,7 +588,11 @@ impl AgentState {
     /// else ends the current buckets. Finished minutes go to the outbox.
     fn activity_tick(&self) {
         let collecting = self.session.lock().unwrap().collecting();
-        let foreground = collecting.then(|| self.platform.foreground()).flatten();
+        let sampling = self.activity.lock().unwrap().sampling();
+        // With sampling off the frontmost app isn't even read.
+        let foreground = (collecting && sampling)
+            .then(|| self.platform.foreground())
+            .flatten();
         let now = self.clock.now();
         let sessions = {
             let mut sampler = self.activity.lock().unwrap();
@@ -666,7 +678,7 @@ impl AgentState {
             options: card.challenge.options.map(i64::from),
             remaining_s: card.remaining_s(self.clock.now()).into(),
             wrong_clicks: card.wrong_clicks.into(),
-            sound: self.card_policy.sound,
+            sound: self.card_policy.lock().unwrap().sound,
             project: self.session.lock().unwrap().project_id().and_then(|id| {
                 self.projects
                     .lock()
@@ -806,6 +818,14 @@ impl AgentState {
         self.notice.lock().unwrap().clear();
         if self.account.is_some() {
             self.session.lock().unwrap().set_collection_allowed(false);
+            // Whatever the last person was allowed to collect stops with them.
+            *self.capture_policy.lock().unwrap() = CapturePolicy::off();
+            let sessions = self
+                .activity
+                .lock()
+                .unwrap()
+                .set_policy(ActivityPolicy::off());
+            self.queue_activity(sessions);
         }
     }
 
@@ -924,18 +944,43 @@ impl AgentState {
                 .set_collection_allowed(notice.collection_allowed());
         }
         *self.projects.lock().unwrap() = config.projects.clone();
-        self.capture_policy.lock().unwrap().webcam = config.webcam_enabled();
         *self.pause_daily_cap_s.lock().unwrap() = config.pause_daily_cap_s();
-        // Same setting the server uses for Idle (minutes; default 10).
-        if let Some(min) = config.policy["idle_threshold_min"]
-            .as_i64()
-            .filter(|m| (1..=240).contains(m))
-        {
-            self.presence
-                .lock()
-                .unwrap()
-                .set_idle_threshold(chrono::Duration::minutes(min));
+        self.apply_collection_policy(config);
+        // CHK-01, CHK-13: the next draw and the next card use these; a check-in
+        // already armed or on screen keeps what it was drawn or shown with.
+        if dev_schedule_policy().is_none() {
+            self.scheduler.set_policy(config.schedule_policy());
         }
+        self.card_policy.lock().unwrap().countdown = config.card_policy().countdown;
+        // Same setting the server uses for Idle (minutes; default 10).
+        self.presence
+            .lock()
+            .unwrap()
+            .set_idle_threshold(config.idle_threshold());
+    }
+
+    /// CAP-01..05, ACT-02/03, AGT-05: what is captured and sampled. The collection
+    /// keys in the config are what this person acknowledged, so a newer policy that
+    /// widens collection changes nothing here until they acknowledge it. Without
+    /// any acknowledged notice nothing runs, whatever the keys say.
+    fn apply_collection_policy(&self, config: &agent_core::config::AgentConfig) {
+        let allowed = self.notice.lock().unwrap().collection_allowed();
+        let (capture, activity) = if allowed {
+            (config.capture_policy(), config.activity_policy())
+        } else {
+            (CapturePolicy::off(), ActivityPolicy::off())
+        };
+        tracing::info!(
+            screenshots = ?capture.screenshots,
+            webcam = capture.webcam,
+            excluded_apps = capture.excluded_apps.len(),
+            sampling = activity.sampling,
+            window_titles = activity.window_titles,
+            "collection policy updated"
+        );
+        *self.capture_policy.lock().unwrap() = capture;
+        let sessions = self.activity.lock().unwrap().set_policy(activity);
+        self.queue_activity(sessions);
     }
 
     /// Runs a transition; failures are logged and shown as a notification.
@@ -1454,10 +1499,9 @@ fn handle_deep_links(app: &AppHandle, urls: Vec<tauri::Url>) {
     }
 }
 
-/// Org intervals arrive with the policy work; defaults until then. Debug builds
-/// accept `AI_PROCTOR_DEV_CHECKIN_S` (one fixed interval, in seconds) so the card
-/// can be tried by hand.
-fn schedule_policy() -> SchedulePolicy {
+/// Debug builds accept `AI_PROCTOR_DEV_CHECKIN_S` (one fixed interval, in seconds)
+/// so the card can be tried by hand. It wins over the org's intervals.
+fn dev_schedule_policy() -> Option<SchedulePolicy> {
     #[cfg(debug_assertions)]
     if let Some(s) = std::env::var("AI_PROCTOR_DEV_CHECKIN_S")
         .ok()
@@ -1465,12 +1509,17 @@ fn schedule_policy() -> SchedulePolicy {
     {
         tracing::warn!(seconds = s, "dev check-in interval");
         let every = chrono::Duration::seconds(s.max(5));
-        return SchedulePolicy {
+        return Some(SchedulePolicy {
             min: every,
             max: every,
-        };
+        });
     }
-    SchedulePolicy::default()
+    None
+}
+
+/// The intervals until the server's config arrives: the defaults (20-90 min).
+fn schedule_policy() -> SchedulePolicy {
+    dev_schedule_policy().unwrap_or_default()
 }
 
 fn open_account(
@@ -2236,6 +2285,256 @@ mod tests {
         assert_eq!(w.outbox.stats().unwrap().uploads, 2);
     }
 
+    // --- The server's collection policy (#144; CAP-01..05, ACT-03, CHK-01/13, AGT-05) ---
+
+    /// What the server sends for someone who acknowledged version 1.
+    fn apply_policy(w: &Working, policy: serde_json::Value) {
+        w.state.apply_config(&config_with(
+            policy,
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+    }
+
+    fn collection(overrides: serde_json::Value) -> serde_json::Value {
+        let mut policy = serde_json::json!({
+            "screenshots": "full", "webcam": true, "window_titles": true,
+            "excluded_apps": [], "activity_sampling": true
+        });
+        for (k, v) in overrides.as_object().unwrap() {
+            policy[k] = v.clone();
+        }
+        policy
+    }
+
+    fn keys_of_first_checkin(w: &Working) -> serde_json::Value {
+        w.checkins()[0]["object_keys"].clone()
+    }
+
+    #[test]
+    fn screenshots_follow_the_org_setting() {
+        let off = working();
+        apply_policy(
+            &off,
+            collection(serde_json::json!({ "screenshots": "off" })),
+        );
+        off.pass();
+        assert_eq!(
+            keys_of_first_checkin(&off),
+            serde_json::json!(["webcam.webp"])
+        );
+        assert!(off.checkins()[0].get("capture_errors").is_none());
+
+        let size_of = |mode: &str| {
+            let w = working();
+            apply_policy(&w, collection(serde_json::json!({ "screenshots": mode })));
+            w.pass();
+            assert_eq!(
+                keys_of_first_checkin(&w),
+                serde_json::json!(["screen-1.webp", "webcam.webp"])
+            );
+            w.outbox.stats().unwrap().upload_bytes
+        };
+        let (full, blurred) = (size_of("full"), size_of("blurred"));
+        assert!(blurred < full, "blurred {blurred} vs full {full}");
+    }
+
+    #[test]
+    fn the_webcam_follows_the_org_setting() {
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({ "webcam": false })));
+        w.pass();
+        assert_eq!(
+            keys_of_first_checkin(&w),
+            serde_json::json!(["screen-1.webp"])
+        );
+        assert!(
+            w.checkins()[0].get("capture_errors").is_none(),
+            "off is not a failure"
+        );
+    }
+
+    #[test]
+    fn the_excluded_apps_in_the_config_replace_the_built_in_list() {
+        let in_front = |w: &Working, app: &str| {
+            w.platform.update(|s| {
+                s.foreground = Some(agent_core::platform::Foreground {
+                    app: app.into(),
+                    title: None,
+                    domain: None,
+                    display: None,
+                })
+            })
+        };
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "excluded_apps": ["signal"] })),
+        );
+        in_front(&w, "Signal");
+        w.pass();
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!(["excluded_app"])
+        );
+
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "excluded_apps": ["signal"] })),
+        );
+        in_front(&w, "1Password");
+        w.pass();
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!([]),
+            "the admin's list is the list"
+        );
+    }
+
+    #[test]
+    fn a_newer_unacknowledged_policy_with_the_webcam_on_captures_no_webcam() {
+        let w = working();
+        // Version 1 was acknowledged with the webcam off. The org has since turned it
+        // on (version 2), but the server still sends what version 1 allows.
+        w.state.apply_config(&config_with(
+            collection(serde_json::json!({ "webcam": false })),
+            serde_json::json!([]),
+            notice_json(2, false, Some(1)),
+        ));
+        w.pass();
+        assert_eq!(
+            keys_of_first_checkin(&w),
+            serde_json::json!(["screen-1.webp"])
+        );
+
+        // Acknowledged: the webcam comes on from the next check-in.
+        apply_policy(&w, collection(serde_json::json!({ "webcam": true })));
+        w.pass();
+        assert_eq!(
+            w.checkins()[1]["object_keys"],
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+    }
+
+    #[test]
+    fn nothing_is_captured_or_sampled_without_an_acknowledged_notice() {
+        let w = working();
+        w.platform.update(|s| {
+            s.foreground = Some(agent_core::platform::Foreground {
+                app: "Mail".into(),
+                title: Some("t".into()),
+                domain: None,
+                display: None,
+            })
+        });
+        // Even a config that says everything is on.
+        w.state.apply_config(&config_with(
+            collection(serde_json::json!({})),
+            serde_json::json!([]),
+            notice_json(1, false, None),
+        ));
+        w.pass();
+        assert_eq!(keys_of_first_checkin(&w), serde_json::json!([]));
+        for _ in 0..20 {
+            w.state.activity_tick();
+            w.clock.advance(chrono::Duration::seconds(5));
+        }
+        w.state.flush_activity();
+        assert!(w.events("app_session").is_empty());
+    }
+
+    #[test]
+    fn activity_sampling_and_titles_follow_the_org_setting() {
+        let sample = |w: &Working| {
+            w.platform.update(|s| {
+                s.foreground = Some(agent_core::platform::Foreground {
+                    app: "Mail".into(),
+                    title: Some("Re: salary".into()),
+                    domain: Some("mail.example.com".into()),
+                    display: None,
+                })
+            });
+            for _ in 0..8 {
+                w.state.activity_tick();
+                w.clock.advance(chrono::Duration::seconds(5));
+            }
+            w.state.flush_activity();
+            w.events("app_session")
+        };
+
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "activity_sampling": false })),
+        );
+        assert!(
+            sample(&w).is_empty(),
+            "sampling off: nothing, not even apps"
+        );
+
+        let w = working();
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "window_titles": false })),
+        );
+        let sessions = sample(&w);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0]["title"], serde_json::Value::Null);
+        assert_eq!(sessions[0]["app"], "Mail");
+        assert_eq!(sessions[0]["domain"], "mail.example.com");
+
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({})));
+        assert_eq!(sample(&w)[0]["title"], "Re: salary");
+    }
+
+    #[test]
+    fn a_policy_change_applies_from_the_next_config() {
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({})));
+        w.pass();
+        assert_eq!(
+            keys_of_first_checkin(&w),
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+        // The heartbeat saw a new policy_version: the refetched config applies.
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "screenshots": "off", "webcam": false })),
+        );
+        w.pass();
+        assert_eq!(w.checkins()[1]["object_keys"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn the_org_intervals_and_response_window_apply_to_the_next_draw_and_card() {
+        let w = working();
+        apply_policy(
+            &w,
+            serde_json::json!({
+                "checkin_min_interval_min": 10, "checkin_max_interval_min": 10,
+                "checkin_response_s": 45
+            }),
+        );
+        // Already armed with 20-90 min: this card still comes.
+        let card = w.card_due();
+        assert_eq!(card.remaining_s, 45, "the new response window");
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+
+        // The draw after it is exactly 10 minutes.
+        w.clock.advance(chrono::Duration::seconds(9 * 60 + 59));
+        assert_eq!(w.state.card_tick(), CardAction::Nothing);
+        w.clock.advance(chrono::Duration::seconds(1));
+        assert!(matches!(w.state.card_tick(), CardAction::Show(_)));
+
+        // The UI never learns when it is: no field in the status carries it.
+        let json = serde_json::to_string(&w.state.status()).unwrap();
+        assert!(!json.contains("next"), "never the next check-in time");
+        assert!(!json.contains("checkin_"), "nor the intervals");
+    }
+
     fn permission_reports(w: &Working) -> Vec<serde_json::Value> {
         w.events("permission_change")
     }
@@ -2604,7 +2903,7 @@ mod tests {
     fn the_org_idle_threshold_comes_with_the_config() {
         let w = working();
         let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
-            "policy": { "idle_threshold_min": 2 },
+            "policy": { "idle_threshold_min": 3 },
             "policy_version": 2,
             "timezone": "UTC",
             "shifts": []
@@ -2612,6 +2911,9 @@ mod tests {
         .unwrap();
         w.state.apply_config(&config);
         w.platform.update(|s| s.idle_seconds = 130);
+        w.state.presence_tick();
+        assert!(w.events("idle_start").is_empty(), "under 3 minutes");
+        w.platform.update(|s| s.idle_seconds = 190);
         w.state.presence_tick();
         assert_eq!(w.events("idle_start").len(), 1);
     }
