@@ -3,8 +3,8 @@
 // 1. Deletes the capture files of check-ins past their org's image retention through
 //    the Storage API, in batches, and marks each check-in once its files are gone.
 // 2. Calls retention_purge_rows for the expired rows (events, status periods, shift
-//    records). It runs even when step 1 failed: check-ins whose files are still in
-//    Storage are kept for the next night.
+//    records, timesheets and their segments). It runs even when step 1 failed:
+//    check-ins whose files are still in Storage are kept for the next night.
 // Counts are logged in retention_runs and audit_log by the database functions.
 // Request: POST, bearer = SUPABASE_SERVICE_ROLE_KEY, any body. Reply: { captures:
 // files deleted, rows: counts per table, errors } (500 when anything failed).
