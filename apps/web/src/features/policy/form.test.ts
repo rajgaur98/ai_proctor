@@ -37,6 +37,23 @@ describe("validate", () => {
   });
 });
 
+describe("reminders_enabled (#177)", () => {
+  it("is a switch: either value is valid, anything else is not", () => {
+    expect(validate({ ...us, reminders_enabled: false }, "us").errors).toBeNull();
+    expect(validate({ ...us, reminders_enabled: "no" as unknown as boolean }, "us").errors).toEqual(
+      { reminders_enabled: "Invalid input: expected boolean, received string" },
+    );
+  });
+
+  it("shows as a change, and is the only one", () => {
+    expect(changedKeys(us, { ...us, reminders_enabled: false })).toEqual(["reminders_enabled"]);
+  });
+
+  it("is filled from the preset, which has reminders on", () => {
+    expect(applyPreset({ ...us, reminders_enabled: false }, eu).reminders_enabled).toBe(true);
+  });
+});
+
 describe("changedKeys and pick", () => {
   it("lists the keys that differ, including list values", () => {
     const draft = { ...us, webcam: false, excluded_apps: ["1Password"] };
