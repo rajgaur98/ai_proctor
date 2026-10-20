@@ -31,9 +31,9 @@ export interface StatusInput {
   paused: boolean;
   /** Screen locked or device asleep. */
   locked: boolean;
-  /** Outcome of the most recent check-in, if any. */
-  last_checkin: "pass" | "miss" | "failed" | null;
-  /** Camera or mic in use by another app. */
+  /** Outcome of the most recent check-in, if any. A deferral is neither pass nor miss. */
+  last_checkin: "pass" | "miss" | "failed" | "deferred" | null;
+  /** Camera or mic in use by another app, or the screen shared or presented. */
   in_call: boolean;
   /** No input for at least the idle threshold. */
   idle: boolean;

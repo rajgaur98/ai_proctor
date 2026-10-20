@@ -194,6 +194,7 @@ mod tests {
             app: app.into(),
             title: title.map(Into::into),
             domain: domain.map(Into::into),
+            display: None,
         })
     }
 

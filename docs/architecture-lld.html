@@ -392,9 +392,9 @@ footer { color: var(--muted); font-size: 13px; }
           <thead><tr><th>Module</th><th>Owns</th></tr></thead>
           <tbody>
             <tr><td><code>policy</code></td><td>Org policy cached on disk with its version. Replaced when a heartbeat reply carries a newer version.</td></tr>
-            <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events, and closes an <code>app_session</code> on every foreground change.</td></tr>
+            <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events (camera, mic, screen share and presentation each start and end a call, so In meeting holds while any is on), and closes an <code>app_session</code> on every foreground change.</td></tr>
             <tr><td><code>session</code></td><td>Shift state machine (section 2). Auto clock-in on first input inside the shift; auto clock-out after 30 min without input past shift end.</td></tr>
-            <tr><td><code>scheduler</code></td><td>Draws <code>next_at</code> uniformly in [min, max] and writes it to disk before arming, so a restart keeps the same time. Applies deferral and lock rules.</td></tr>
+            <tr><td><code>scheduler</code></td><td>Draws <code>next_at</code> uniformly in [min, max] and writes it to disk before arming, so a restart keeps the same time. Applies deferral and lock rules. A due check-in held for a call, share or presentation leaves one <code>deferred</code> check-in (due time and <code>deferral_reason</code> call | screen_share | presenting; no capture); the card still follows once the hold ends.</td></tr>
             <tr><td><code>checkin</code></td><td>Builds the challenge (target number, three shuffled buttons), validates clicks in Rust, rejects injected clicks, records <code>response_ms</code> and the outcome.</td></tr>
             <tr><td><code>capture</code></td><td>Screens (one per display), one webcam frame, excluded-app placeholders, blur, downscale, WebP. Writes files to the uploads table, never sends them itself.</td></tr>
             <tr><td><code>sync</code></td><td>Drains events in <code>seq</code> order, heartbeats every 60 s, applies the reply (acks, clock offset, policy, commands).</td></tr>
@@ -634,7 +634,7 @@ pub trait Platform: Send + Sync {
     "scheduled_at": "2026-10-07T09:39:58Z",
     "shown_at": "2026-10-07T09:40:00Z",
     "responded_at": "2026-10-07T09:40:12Z",
-    "outcome": "pass",             <span class="cm">// pass | miss | failed</span>
+    "outcome": "pass",             <span class="cm">// pass | miss | failed | deferred</span>
     "response_ms": 12481,
     "wrong_clicks": 0,
     "idle_s_at_show": 4,
@@ -691,7 +691,7 @@ pub trait Platform: Send + Sync {
           <tr><td><code>checkin</code></td><td>see example above</td><td><code>checkin_events</code> row; presence Active or Away</td></tr>
           <tr><td><code>idle_start</code> / <code>idle_end</code></td><td>since</td><td><code>status_periods</code>; presence Idle</td></tr>
           <tr><td><code>lock</code> / <code>unlock</code> / <code>sleep</code> / <code>wake</code></td><td>none</td><td>Presence Away (Locked)</td></tr>
-          <tr><td><code>call_start</code> / <code>call_end</code></td><td>source (camera, mic)</td><td>Presence In meeting</td></tr>
+          <tr><td><code>call_start</code> / <code>call_end</code></td><td>source (camera, mic, screen_share, presenting)</td><td>Presence In meeting while any source is on; a call and a share overlapping are one Meeting period</td></tr>
           <tr><td><code>app_session</code></td><td>app, title?, domain?, start, end</td><td><code>activity_sessions</code> (title dropped if policy says so)</td></tr>
           <tr><td><code>permission_change</code></td><td>screen, camera</td><td>Tamper (capture blocked) while missing</td></tr>
         </tbody>
@@ -738,6 +738,7 @@ pub trait Platform: Send + Sync {
           <tbody>
             <tr><td><code>offline_sweep</code></td><td>Every 1 min</td><td>Clocked-in users with <code>last_seen</code> older than 3 min become Offline</td></tr>
             <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
+            <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Calls <code>rebuild-segments</code> when <code>dirty_days</code> is not empty</td></tr>
             <tr><td><code>reminders</code></td><td>Hourly</td><td>Submit and approval reminders, admin escalations</td></tr>
             <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
@@ -808,7 +809,7 @@ pub trait Platform: Send + Sync {
           <li><span class="badge pk">PK</span><b>id</b> = event id</li>
           <li><span class="badge">FK</span>user_id · device_id · project_id</li>
           <li>scheduled_at · shown_at · responded_at</li>
-          <li>outcome · response_ms · wrong_clicks</li>
+          <li>outcome · deferral_reason · response_ms · wrong_clicks</li>
           <li>idle_s_at_show · device_state</li>
           <li>object_keys text[] · face_present</li>
           <li>flags text[] · missed_reason</li>
@@ -871,7 +872,8 @@ pub trait Platform: Send + Sync {
         </ul></div>
         <div class="t-card"><div class="name">dirty_days · alerts · audit_log</div><ul>
           <li>dirty_days: <b>(user_id, day)</b> rebuild queue</li>
-          <li>alerts: type · payload · sent_at</li>
+          <li>alerts: user_id · recipient_id · kind · episode · details · triggered_at · read_at · email_id</li>
+          <li>email_outbox: to · template · payload · batch_key · attempts · sent_at</li>
           <li>audit_log <em>(append-only)</em>: actor_id · action · target · metadata · at</li>
         </ul></div>
       </div>

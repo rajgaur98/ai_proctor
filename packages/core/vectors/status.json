@@ -255,6 +255,36 @@
         "idle": false
       },
       "expected": "tamper"
+    },
+    {
+      "name": "a deferred check-in is neither a miss nor a pass",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "deferred",
+        "in_call": false,
+        "idle": false
+      },
+      "expected": "active"
+    },
+    {
+      "name": "a deferred check-in leaves a call and idle as they are",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": "deferred",
+        "in_call": true,
+        "idle": true
+      },
+      "expected": "in_meeting"
     }
   ]
 }

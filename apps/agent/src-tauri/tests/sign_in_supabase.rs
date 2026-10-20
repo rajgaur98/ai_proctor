@@ -101,6 +101,11 @@ fn sign_in_register_sync_and_sign_out() {
     // Erin's seeded shift (Mon–Fri 09:00–17:00, Los Angeles) arrives with the config.
     let config = first.take_config().expect("config fetched on attach");
     assert_eq!(config.session_policy().shifts.len(), 1);
+    // AGT-04: the config carries the notice, and the seeded person has acknowledged one.
+    assert!(config
+        .notice
+        .as_ref()
+        .is_some_and(|n| n.acknowledged_version.is_some()));
     assert!(first.take_config().is_none(), "handed over once");
 
     // A shift recorded locally reaches the server, with a heartbeat in between.
