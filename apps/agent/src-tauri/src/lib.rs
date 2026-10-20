@@ -13,8 +13,10 @@ use agent_core::auth::{AuthError, REDIRECT_URL};
 use agent_core::capture::{self, CapturePolicy, Captured};
 use agent_core::checkin::{Card, CardPolicy, ClickResult, Finished};
 use agent_core::clock::{Clock, SystemClock};
+use agent_core::config::ProjectConfig;
 use agent_core::contracts::{
-    AgentStatus, CardChallenge, CardClickResult, CommandResult, PermissionState, ShiftState,
+    AgentStatus, CardChallenge, CardClickResult, CheckinOutcome, CommandResult, LastCheckin,
+    MissedCheckin, PermissionState, ProjectRef, ShiftState,
 };
 use agent_core::keystore::KeyStore;
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
@@ -112,6 +114,12 @@ pub struct AgentState {
     /// The sync thread, woken early when there's something to send right away.
     sync_thread: Mutex<Option<std::thread::Thread>>,
     random: Arc<dyn Random>,
+    /// From the server config (#29, #38): projects to pick and the pause allowance.
+    projects: Mutex<Vec<ProjectConfig>>,
+    pause_daily_cap_s: Mutex<i64>,
+    /// For the tray: today's latest check-in, and a miss still without a reason.
+    last_checkin: Mutex<Option<(chrono::DateTime<chrono::Utc>, Outcome)>>,
+    missed_checkin: Mutex<Option<(uuid::Uuid, chrono::DateTime<chrono::Utc>)>>,
     /// `None` when this build has no server configured (see `account::api_config`).
     account: Option<Arc<Account>>,
     /// The last sign-in link handled, so a link delivered twice is used once.
@@ -142,6 +150,10 @@ impl AgentState {
             presence: Mutex::new(PresenceTracker::default()),
             sync_thread: Mutex::new(None),
             random: Arc::new(ThreadRandom),
+            projects: Mutex::new(Vec::new()),
+            pause_daily_cap_s: Mutex::new(60 * 60),
+            last_checkin: Mutex::new(None),
+            missed_checkin: Mutex::new(None),
             account,
             last_redirect: Mutex::new(None),
         };
@@ -161,13 +173,60 @@ impl AgentState {
 
     pub fn status(&self) -> AgentStatus {
         let email = self.account.as_ref().and_then(|a| a.email());
+        let projects = self.projects.lock().unwrap().clone();
         let session = self.session.lock().unwrap();
+        let snap = session.snapshot();
+        let today = session.today();
+        let iso = |t: chrono::DateTime<chrono::Utc>| t.to_rfc3339();
+        let project_ref = |p: &ProjectConfig| ProjectRef {
+            id: p.id.to_string(),
+            name: p.name.clone(),
+            client: p.client.clone(),
+        };
+        let today_date = self.clock.now().date_naive();
+        let tray = agent_core::status::Tray {
+            account_email: email,
+            clocked_in_at: snap.clocked_in_at.map(iso),
+            phase_started_at: snap.phase_started_at.map(iso),
+            pause_ends_at: snap.pause_until.map(iso),
+            pause_planned_min: snap.pause_planned_min,
+            worked_today_s: today.worked_s,
+            pause_used_today_s: today.pause_s,
+            pause_daily_cap_s: *self.pause_daily_cap_s.lock().unwrap(),
+            project: snap
+                .project_id
+                .and_then(|id| projects.iter().find(|p| p.id == id))
+                .map(project_ref),
+            projects: projects.iter().map(project_ref).collect(),
+            last_checkin: self
+                .last_checkin
+                .lock()
+                .unwrap()
+                .filter(|(at, _)| at.date_naive() == today_date)
+                .map(|(at, outcome)| LastCheckin {
+                    at: iso(at),
+                    outcome: match outcome {
+                        Outcome::Pass => CheckinOutcome::Pass,
+                        Outcome::Miss => CheckinOutcome::Miss,
+                        Outcome::Failed => CheckinOutcome::Failed,
+                    },
+                }),
+            missed_checkin: self
+                .missed_checkin
+                .lock()
+                .unwrap()
+                .filter(|(_, at)| at.date_naive() == today_date)
+                .map(|(id, at)| MissedCheckin {
+                    id: id.to_string(),
+                    at: iso(at),
+                }),
+        };
         agent_core::status::agent_status(
             self.platform.as_ref(),
             session.shift(),
             session.signed_in(),
-            email,
             env!("CARGO_PKG_VERSION"),
+            tray,
         )
     }
 
@@ -393,8 +452,14 @@ impl AgentState {
             remaining_s: card.remaining_s(self.clock.now()).into(),
             wrong_clicks: card.wrong_clicks.into(),
             sound: self.card_policy.sound,
-            // Project names arrive with #38.
-            project: None,
+            project: self.session.lock().unwrap().project_id().and_then(|id| {
+                self.projects
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p.id == id)
+                    .map(|p| p.name.clone())
+            }),
         }
     }
 
@@ -408,6 +473,7 @@ impl AgentState {
     /// Queues a `checkin` event; its id keys the capture uploads.
     fn queue(&self, finished: Finished) -> Option<uuid::Uuid> {
         tracing::info!(outcome = ?finished.outcome, "check-in finished");
+        let (at, outcome) = (finished.at, finished.outcome);
         let Some(outbox) = &self.outbox else {
             tracing::error!("check-in not queued: the local queue is unavailable");
             return None;
@@ -423,6 +489,12 @@ impl AgentState {
             .map(|event| event.id)
             .map_err(|error| tracing::error!(%error, "check-in not queued"))
             .ok()
+            .inspect(|id| {
+                *self.last_checkin.lock().unwrap() = Some((at, outcome));
+                if outcome == Outcome::Miss {
+                    *self.missed_checkin.lock().unwrap() = Some((*id, at));
+                }
+            })
     }
 
     fn account(&self) -> Result<&Arc<Account>, String> {
@@ -559,6 +631,8 @@ impl AgentState {
             "session policy updated"
         );
         self.session.lock().unwrap().set_policy(policy);
+        *self.projects.lock().unwrap() = config.projects.clone();
+        *self.pause_daily_cap_s.lock().unwrap() = config.pause_daily_cap_s();
         // Same setting the server uses for Idle (minutes; default 10).
         if let Some(min) = config.policy["idle_threshold_min"]
             .as_i64()
@@ -573,13 +647,23 @@ impl AgentState {
 
     /// Runs a transition; failures are logged and shown as a notification.
     fn act(&self, what: &str, f: impl FnOnce(&mut Session) -> Result<(), TransitionError>) {
-        let result = f(&mut self.session.lock().unwrap());
-        if let Err(error) = result {
-            tracing::warn!(%error, what, "transition refused");
-            self.platform
-                .notify(&format!("Couldn't {what}"), &error.to_string());
+        if let Err(error) = self.try_act(what, f) {
+            self.platform.notify(&format!("Couldn't {what}"), &error);
         }
+    }
+
+    /// A transition from the popover: the error comes back to show there.
+    fn try_act(
+        &self,
+        what: &str,
+        f: impl FnOnce(&mut Session) -> Result<(), TransitionError>,
+    ) -> Result<(), String> {
+        let result = f(&mut self.session.lock().unwrap());
         self.sync_schedule();
+        result.map_err(|error| {
+            tracing::warn!(%error, what, "transition refused");
+            error.to_string()
+        })
     }
 }
 
@@ -662,6 +746,144 @@ fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> Car
         std::thread::spawn(move || app.state::<AgentState>().finish_pass(pass));
     }
     reply.result
+}
+
+/// Runs a popover transition and pushes the new status (EMP-01).
+fn tray_act(
+    app: &AppHandle,
+    what: &str,
+    f: impl FnOnce(&mut Session) -> Result<(), TransitionError>,
+) -> CommandResult {
+    let state = app.state::<AgentState>();
+    let result = state.try_act(what, f);
+    let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+    CommandResult {
+        ok: result.is_ok(),
+        error: result.err(),
+    }
+}
+
+fn parse_project(project_id: Option<String>) -> Result<Option<uuid::Uuid>, String> {
+    project_id
+        .map(|p| uuid::Uuid::parse_str(&p).map_err(|_| "Unknown project.".to_owned()))
+        .transpose()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn clock_in(app: AppHandle, project_id: Option<String>) -> CommandResult {
+    match parse_project(project_id) {
+        Ok(project) => tray_act(&app, "clock in", |s| s.clock_in(project)),
+        Err(error) => CommandResult {
+            ok: false,
+            error: Some(error),
+        },
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn clock_out(app: AppHandle) -> CommandResult {
+    tray_act(&app, "clock out", |s| s.clock_out())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn break_start(app: AppHandle, planned_min: Option<i64>) -> CommandResult {
+    let planned = planned_min.and_then(|m| u32::try_from(m).ok());
+    tray_act(&app, "start a break", |s| s.start_break(planned))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn break_end(app: AppHandle) -> CommandResult {
+    tray_act(&app, "end the break", |s| s.end_break())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn pause_start(app: AppHandle, minutes: i64, reason: Option<String>) -> CommandResult {
+    let minutes = u32::try_from(minutes).unwrap_or(0);
+    tray_act(&app, "pause", |s| {
+        s.start_pause_with_reason(minutes, reason.as_deref())
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn pause_end(app: AppHandle) -> CommandResult {
+    tray_act(&app, "resume", |s| s.end_pause())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn switch_project(app: AppHandle, project_id: Option<String>) -> CommandResult {
+    match parse_project(project_id) {
+        Ok(project) => tray_act(&app, "switch project", |s| s.switch_project(project)),
+        Err(error) => CommandResult {
+            ok: false,
+            error: Some(error),
+        },
+    }
+}
+
+/// CHK-23: reason for today's miss; network call, so off the UI thread.
+#[tauri::command(rename_all = "snake_case")]
+async fn set_miss_reason(
+    app: AppHandle,
+    checkin_id: String,
+    kind: Option<String>,
+    note: Option<String>,
+) -> CommandResult {
+    off_main_thread(move || {
+        let state = app.state::<AgentState>();
+        let id = uuid::Uuid::parse_str(&checkin_id).map_err(|_| "Unknown check-in.".to_owned())?;
+        state
+            .account()?
+            .set_miss_reason(id, kind.as_deref(), note.as_deref())
+            .map_err(|_| "Couldn't save the reason. Try again in a minute.".to_owned())?;
+        let mut missed = state.missed_checkin.lock().unwrap();
+        if missed.is_some_and(|(m, _)| m == id) {
+            *missed = None;
+        }
+        drop(missed);
+        let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+        Ok(())
+    })
+    .await
+}
+
+/// My data and the notice live on the dashboard (#48, #49); the privacy panes
+/// are where a missing permission is fixed (#58, #59).
+#[tauri::command(rename_all = "snake_case")]
+fn open_link(target: String) -> CommandResult {
+    let dashboard = account::dashboard_url();
+    let url = match target.as_str() {
+        "my_data" => format!("{dashboard}/me"),
+        "notice" => format!("{dashboard}/notice"),
+        "screen_settings" => {
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture".into()
+        }
+        "camera_settings" => {
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera".into()
+        }
+        _ => {
+            return CommandResult {
+                ok: false,
+                error: Some("Unknown link.".into()),
+            }
+        }
+    };
+    let opened = if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+    } else {
+        std::process::Command::new("open").arg(&url).spawn()
+    };
+    match opened {
+        Ok(_) => CommandResult {
+            ok: true,
+            error: None,
+        },
+        Err(error) => CommandResult {
+            ok: false,
+            error: Some(error.to_string()),
+        },
+    }
 }
 
 /// `card_switch_project`: opens the popover next to the card; the card stays.
@@ -762,7 +984,16 @@ pub fn run() {
             sign_in_start,
             sign_out,
             card_click,
-            card_switch_project
+            card_switch_project,
+            clock_in,
+            clock_out,
+            break_start,
+            break_end,
+            pause_start,
+            pause_end,
+            switch_project,
+            set_miss_reason,
+            open_link
         ])
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
@@ -1459,6 +1690,51 @@ mod tests {
         w.platform.update(|s| s.idle_seconds = 130);
         w.state.presence_tick();
         assert_eq!(w.events("idle_start").len(), 1);
+    }
+
+    #[test]
+    fn the_tray_status_has_today_projects_and_the_last_miss() {
+        let w = working();
+        let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
+            "policy": { "pause_daily_max_min": 45 },
+            "policy_version": 2,
+            "timezone": "UTC",
+            "shifts": [],
+            "projects": [{ "id": "0190f5b0-0000-7000-8000-0000000000f1", "name": "Website revamp", "client": "Northwind" }]
+        }))
+        .unwrap();
+        w.state.apply_config(&config);
+        let project = uuid::Uuid::parse_str("0190f5b0-0000-7000-8000-0000000000f1").unwrap();
+        w.state.act("switch", |s| s.switch_project(Some(project)));
+
+        w.card_due();
+        w.clock.advance(chrono::Duration::seconds(91));
+        assert_eq!(w.state.card_tick(), CardAction::Hide, "a miss");
+        w.state
+            .act("pause", |s| s.start_pause_with_reason(5, Some("call")));
+        w.clock.advance(chrono::Duration::minutes(2));
+
+        let status = w.state.status();
+        assert_eq!(status.projects.len(), 1);
+        assert_eq!(
+            status.project.as_ref().map(|p| p.name.as_str()),
+            Some("Website revamp")
+        );
+        assert_eq!(status.pause_daily_cap_s, 45 * 60);
+        assert_eq!(status.pause_used_today_s, 120);
+        assert_eq!(status.pause_planned_min, Some(5));
+        assert!(status.pause_ends_at.is_some());
+        assert!(status.worked_today_s >= 91 * 60, "the shift so far counts");
+        assert!(
+            status.missed_checkin.is_some(),
+            "the miss waits for a reason"
+        );
+        assert_eq!(
+            status.last_checkin.map(|c| c.outcome),
+            Some(agent_core::contracts::CheckinOutcome::Miss)
+        );
+        let json = serde_json::to_string(&w.state.status()).unwrap();
+        assert!(!json.contains("next"), "never the next check-in time");
     }
 
     #[test]
