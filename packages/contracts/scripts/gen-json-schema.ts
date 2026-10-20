@@ -9,14 +9,14 @@ import { AgentEvent } from "../src/events.ts";
 import {
   AgentStatus,
   CardChallenge,
+  CardClickResult,
   CheckinOutcome,
+  CommandResult,
   LastCheckin,
   MissedCheckin,
-  ProjectRef,
-  CardClickResult,
-  CommandResult,
   PermissionState,
   Permissions,
+  ProjectRef,
   ShiftState,
 } from "../src/ipc.ts";
 
