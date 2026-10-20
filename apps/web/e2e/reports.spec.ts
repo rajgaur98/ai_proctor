@@ -94,8 +94,8 @@ test("a manager reads the week's report and it matches the timesheet totals, sor
     "aria-pressed",
     "true",
   );
-  await expect(page.getByLabel("From")).toHaveValue(weekFrom);
-  await expect(page.getByLabel("To")).toHaveValue(weekTo);
+  await expect(page.getByLabel("From", { exact: true })).toHaveValue(weekFrom);
+  await expect(page.getByLabel("To", { exact: true })).toHaveValue(weekTo);
 
   // A person's row carries their timesheet numbers; the viewer isn't in their own team.
   const erinRow = page
@@ -173,28 +173,34 @@ test("a manager changes the range and the team", async ({ page }) => {
 
   const lastFrom = weekStart.minus({ weeks: 1 }).toISODate() ?? "";
   await page.getByRole("button", { name: "Last week" }).click();
-  await expect(page.getByLabel("From")).toHaveValue(lastFrom);
-  await expect(page.getByLabel("To")).toHaveValue(weekStart.minus({ days: 1 }).toISODate() ?? "");
+  await expect(page.getByLabel("From", { exact: true })).toHaveValue(lastFrom);
+  await expect(page.getByLabel("To", { exact: true })).toHaveValue(
+    weekStart.minus({ days: 1 }).toISODate() ?? "",
+  );
   await expect(page.getByRole("button", { name: "Last week" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
 
   await page.getByRole("button", { name: "This month" }).click();
-  await expect(page.getByLabel("From")).toHaveValue(today.startOf("month").toISODate() ?? "");
-  await expect(page.getByLabel("To")).toHaveValue(today.endOf("month").toISODate() ?? "");
+  await expect(page.getByLabel("From", { exact: true })).toHaveValue(
+    today.startOf("month").toISODate() ?? "",
+  );
+  await expect(page.getByLabel("To", { exact: true })).toHaveValue(
+    today.endOf("month").toISODate() ?? "",
+  );
 
   // A typed range is no preset; one that ends before it starts is explained.
-  await page.getByLabel("From").fill("2026-03-22");
-  await page.getByLabel("To").fill("2026-03-16");
+  await page.getByLabel("From", { exact: true }).fill("2026-03-22");
+  await page.getByLabel("To", { exact: true }).fill("2026-03-16");
   await expect(page.getByRole("alert")).toContainText("same or later");
   await expect(page.getByRole("button", { name: "This month" })).toHaveAttribute(
     "aria-pressed",
     "false",
   );
   await expectNoA11yViolations(page);
-  await page.getByLabel("From").fill("2026-03-16");
-  await page.getByLabel("To").fill("2026-03-22");
+  await page.getByLabel("From", { exact: true }).fill("2026-03-16");
+  await page.getByLabel("To", { exact: true }).fill("2026-03-22");
   await expect(page.getByRole("rowheader", { name: "Erin Employee" })).toBeVisible();
 
   // The team filter: Max's team is his reports; someone with no reports isn't offered.
