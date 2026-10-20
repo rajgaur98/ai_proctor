@@ -57,6 +57,9 @@ where not exists (select 1 from vault.secrets where name = 'service_role_key');
 select vault.update_secret(id, '$SERVICE_ROLE_KEY') from vault.secrets where name = 'service_role_key';
 SQL
 
+# Only the miss-streak alert is under test: a late clock-in or offline alert depends
+# on the time of day the script runs, so those kinds are off for this run.
+sql -c "update public.orgs set policy = policy || '{\"alert_late_clock_in_enabled\": false, \"alert_offline_enabled\": false, \"alert_pause_over_cap_enabled\": false}'::jsonb" >/dev/null
 sql -c "delete from public.alerts; delete from public.email_outbox" >/dev/null
 curl -s -X DELETE "$MAILPIT_URL/api/v1/messages" >/dev/null
 

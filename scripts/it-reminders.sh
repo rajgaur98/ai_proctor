@@ -6,7 +6,8 @@
 # the three reminders for Erin's week of Monday 16 March 2026:
 #   2 days after submission  Max (manager)         "waiting for your approval"
 #   5 days after submission  the owner (admin)     "has waited 5 days" (notify only)
-#   end of the week, draft   Erin                  "Submit your timesheet"
+#   last shift day, draft    Erin                  "Submit your timesheet" (Friday, one
+#                                                  hour before her 17:00 shift ends)
 #
 # Needs a reset stack with this branch's migrations and an Edge runtime started
 # since send-emails last changed (stack.sh down, then up). It puts the two Vault
@@ -110,14 +111,20 @@ sleep 3
 [ "$(curl -s "$MAILPIT_URL/api/v1/messages" | jq '.messages_count')" = "2" ] || fail "a repeat run sent more mail"
 ok "a later run sends nothing again (once per timesheet)"
 
-# Employee, end of week, still a draft ------------------------------------------------------------
+# Employee, last shift day, still a draft ---------------------------------------------------------
+# Erin's seeded shifts are Monday to Friday 09:00-17:00 in Los Angeles, so the reminder is due
+# on Friday 20 March at 16:00 PDT (23:00 UTC), not on the Sunday (#177).
 sql -c "delete from public.timesheets; delete from public.reminders_sent" >/dev/null
-run_at '2026-03-22 23:00:00+00'
+run_at '2026-03-20 22:59:00+00'
+sleep 2
+[ "$(curl -s "$MAILPIT_URL/api/v1/search?query=to:erin@acme.test" | jq '.messages_count')" = "0" ] \
+  || fail "Erin was reminded before 16:00 on her last shift day"
+run_at '2026-03-20 23:00:00+00'
 wait_mail erin@acme.test 1
 mail=$(first_mail erin@acme.test)
 [ "${mail%%|*}" = "Submit your timesheet for Mon, Mar 16 to Sun, Mar 22" ] || fail "unexpected subject: ${mail%%|*}"
 case "$mail" in *"/my-timesheet"*) ;; *) fail "no timesheet link in: $mail" ;; esac
-ok "at 16:00 Los Angeles on the last day Erin gets '${mail%%|*}'"
+ok "at 16:00 Los Angeles on her last shift day (Friday) Erin gets '${mail%%|*}'"
 
 sent=$(sql -c "select count(*) from public.email_outbox where sent_at is not null and attempts = 1")
 [ "$sent" = "3" ] || fail "expected 3 outbox rows marked sent after one attempt, found $sent"
