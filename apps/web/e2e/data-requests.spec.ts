@@ -13,6 +13,17 @@ async function signInAsAdmin(page: Page) {
 }
 
 async function expectNoA11yViolations(page: Page) {
+  // A button still fading between its enabled and disabled styles fails color-contrast
+  // for a frame, so let running transitions finish before axe measures (not endless
+  // ones like a spinner, which never finish).
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Number.POSITIVE_INFINITY)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze();

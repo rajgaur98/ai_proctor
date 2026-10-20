@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { agentFor } from "./agent";
+import { timeAt } from "./helpers";
 
 const org = "00000000-0000-4000-8000-000000000001";
 const erinId = "00000000-0000-4000-8000-0000000000c1";
@@ -63,10 +64,10 @@ test("a manager views a passed check-in's captures; missing files get a placehol
   await page.goto(`/team/${erinId}`);
 
   const list = page.getByRole("region", { name: "Check-ins" });
+  // Other specs add check-ins on today: pick this one by the time it was shown.
   await list
     .getByRole("button", { name: /Passed/ })
-    .filter({ hasText: "in 3 s" })
-    .last()
+    .filter({ has: page.locator(timeAt(at)) })
     .click();
   const details = page.getByRole("region", { name: /^Check-in · / });
   await expect(details).toContainText("Your view is logged and visible to Erin Employee");

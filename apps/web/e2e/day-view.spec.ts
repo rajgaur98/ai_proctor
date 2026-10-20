@@ -49,6 +49,9 @@ async function seedDay() {
       shown.toJSDate().toISOString(),
     );
 
+  // Off shift first: a backdated clock-in is refused while Lucas is still clocked in
+  // (a spec that failed before its own clock-out leaves him so).
+  await erin("clock_out", { reason: "manual" });
   await send("clock_in", at("09:00"), { reason: "manual" });
   await checkin(
     {
