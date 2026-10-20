@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Delegation } from "../delegation/Delegation";
 import { ExportDialog } from "./ExportDialog";
+import { downloadExport } from "./exportData";
 import { LateDataBadge, SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration } from "./summary";
 import {
@@ -213,6 +214,19 @@ export function MyTimesheets() {
     mutationFn: (week: string) => ensureAndSubmit(profile.id, week, profile.timezone),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["timesheet-mine", profile.id] }),
   });
+  // Employees can export their own time (TS-20, EMP-04); the function checks and logs it.
+  const exportWeek = useMutation({
+    mutationFn: (week: string) =>
+      downloadExport({
+        view: "daily",
+        from: week,
+        to: weekDays(week).at(-1) ?? week,
+        userId: profile.id,
+        clientId: "",
+        projectId: "",
+        status: "",
+      }),
+  });
 
   return (
     <section className="flex flex-col gap-5">
@@ -223,9 +237,9 @@ export function MyTimesheets() {
           with their reasons.
         </p>
       </div>
-      {(mine.error || submit.error) && (
+      {(mine.error || submit.error || exportWeek.error) && (
         <p role="alert" className="text-sm text-warnink">
-          {(mine.error ?? submit.error)?.message}
+          {(mine.error ?? submit.error ?? exportWeek.error)?.message}
         </p>
       )}
       <div className="overflow-hidden rounded-xl border border-line bg-panel">
@@ -263,6 +277,15 @@ export function MyTimesheets() {
                   <span className="text-ink2">“{sheet.comment}”</span>
                 )}
                 <span className="ml-auto flex gap-2">
+                  <Button
+                    variant="ghost"
+                    className="h-9"
+                    aria-label={`Download ${weekLabel(w)} as CSV`}
+                    disabled={exportWeek.isPending}
+                    onClick={() => exportWeek.mutate(w)}
+                  >
+                    CSV
+                  </Button>
                   {canSubmit && (
                     <Button
                       variant="secondary"

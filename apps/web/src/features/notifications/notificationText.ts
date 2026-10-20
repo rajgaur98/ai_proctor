@@ -1,7 +1,8 @@
 // What a notification says in the list and where it leads (TS-13, TS-18). Kinds and
 // payloads are the ones the migrations write: timesheet.returned / reopened / edited
-// (weekly_timesheets, delegation), timesheet.reassigned, delegation.assigned / ended,
-// the reminders (timesheet.submit_reminder / approval_reminder / escalation) and
+// (weekly_timesheets, delegation), timesheet.reassigned, delegation.assigned / ended (also
+// when a manager or delegate is deactivated or demoted, #147), the reminders
+// (timesheet.submit_reminder / approval_reminder / escalation) and
 // timesheet.late_data (late_events).
 import type { Json } from "@ai-proctor/contracts";
 import { DateTime } from "luxon";
@@ -48,6 +49,15 @@ function range(payload: Json): string {
   return from !== null && to !== null ? `, ${from} to ${to}` : "";
 }
 
+/** A delegation that ended because the person was deactivated or made an employee (#147). */
+function endedByChange(payload: Json, reason: string): string {
+  const name = str(payload, "name") ?? "Someone";
+  const why = reason === "demoted" ? `${name} was made an employee` : `${name} was deactivated`;
+  return str(payload, "for") === "manager"
+    ? `${why}, so your delegation to them ended${range(payload)}`
+    : `${why}, so their delegation to you ended${range(payload)}`;
+}
+
 const EDITS: Record<string, string> = {
   exclude: "excluded time from",
   include: "put time back into",
@@ -77,8 +87,12 @@ export function notificationText(kind: string, payload: Json): string {
     }
     case "delegation.assigned":
       return `You are a delegate approver${range(payload)}`;
-    case "delegation.ended":
-      return `Your delegation ended${range(payload)}`;
+    case "delegation.ended": {
+      const reason = str(payload, "reason");
+      return reason === "deactivated" || reason === "demoted"
+        ? sentence(endedByChange(payload, reason))
+        : `Your delegation ended${range(payload)}`;
+    }
     case "timesheet.submit_reminder":
       return `Submit ${weekOf(payload)}`;
     case "timesheet.approval_reminder":
