@@ -9,10 +9,9 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (20 Oct, evening):** implementers on #167 Windows platform (`ai_proctor-w167`, on #165) and #145 notice acknowledgement report (`ai_proctor-n145`, on main). Merging green PRs into main one at a time (CLAUDE.md, merging).
-- **Merged on 20 Oct:** #120, #116, #117, #122, #123, #119, #151, #115, #121, #152, #157, #153, #127, #134, #131, #162, #141, #125, #163.
-- **In review:** #128 (#42) → #137 (#43) → #142 (#44), #143 (#45) → #154 (#47); #158 (#58) → #165 (#59); #129 (#51); #133 (#53); #164 (#136); #166 (#26); #170 (#132). Migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture`, `capture_view` or `agent_config` must start from the latest version. #158 and #170 both add a contract migration: the second to merge regenerates it (`pnpm contracts:migration`).
-- **Next (in order):** #46 reminders (after #137) → #52 policy settings (after #129, #137 merge) → #49 My data → #54 data requests → #124 day view design → #144 agent applies the policy → follow-ups (#126, #130, #135, #138–#140, #145–#149, #155, #156, #159–#161, #168, #169).
+- **Now (21 Oct):** implementers on #140 late data after approval, #160 Tamper reasons, #185 retention for alerts/outbox. Merging green PRs one at a time (CLAUDE.md, merging).
+- **Open PRs:** #186 (#135), #188 (#139), #192 (e2e fixes), #193 (#124), #194 (#147), #196 (#54), #197 (#146).
+- **Next:** #149, #156, #159, #161, #169, #174, #177, #189, #191, #195, #198. Blocked on Raj: #168, #175 (and the Windows/M6 items below).
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
@@ -96,6 +95,10 @@ Answered by Raj on 20 Oct 2026.
 ## Blocked on Raj
 
 Format: `- #<issue>: <exact question or action needed>`
+
+- #168: Accessibility tools that inject clicks can't answer the check-in card on Windows (the injected-click guard swallows them, ANT-02). Should admins be able to mark a person as using assistive input (flag-only instead of block, audit-logged), or should we add a keyboard path to answer the card? Until you decide, injected clicks stay blocked.
+- #175: Webcam frames keep the camera's aspect (16:9 → 320×180). CAP-06 says 320×240. Crop to 4:3 (consistent thumbnails) or keep the aspect (no cropping of the face)? Until you decide, aspect is kept.
+- #54 (#196): after a data deletion the person's name stays as a snapshot in the deletion tombstone and in the audit rows about them, as the legal record (AUD-01/03). Is that the reading you want, or should names be removed too?
 
 - #108: create a stable code-signing identity for debug builds (free Apple Development certificate via Xcode → Settings → Accounts, or a self-signed code-signing certificate in Keychain Access), so rebuilt agents keep their Screen Recording, Camera and keychain grants.
 - #12, #13, #14 (Windows halves), #56: a Windows machine or VM, or a decision that the pilot is Mac-only.
