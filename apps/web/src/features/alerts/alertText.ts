@@ -1,13 +1,26 @@
 // What an alert says in the list (ALR-01). The alert's details come from alert_eval.
 import type { Enums, Json } from "@ai-proctor/contracts";
 import { DateTime } from "luxon";
+import { asTamperReason, type TamperReason, tamperLabel } from "../../components/StatusChip";
 
 export type AlertKind = Enums<"alert_kind">;
+
+function field(details: Json, key: string): unknown {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return null;
+  return details[key];
+}
 
 function num(details: Json, key: string): number | null {
   if (typeof details !== "object" || details === null || Array.isArray(details)) return null;
   const v = details[key];
   return typeof v === "number" ? v : null;
+}
+
+/** The Tamper alert says why when it knows (needs review, never a penalty: ANT-08). */
+function tamperText(reason: TamperReason | null): string {
+  return reason
+    ? `Tamper: ${tamperLabel[reason].toLowerCase()}, needs review`
+    : "Tamper: capture blocked or agent not reporting";
 }
 
 /** One short line for the alert. */
@@ -18,7 +31,7 @@ export function alertText(kind: AlertKind, details: Json): string {
     case "offline":
       return `Offline for over ${num(details, "threshold_min") ?? "15"} min during a shift`;
     case "tamper":
-      return "Tamper: capture blocked or agent not reporting";
+      return tamperText(asTamperReason(field(details, "reason")));
     case "late_clock_in":
       return `Not clocked in ${num(details, "grace_min") ?? "15"} min after the shift started`;
     case "pause_over_cap":
