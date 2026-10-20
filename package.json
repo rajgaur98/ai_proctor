@@ -24,7 +24,8 @@
     "core:fn": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sync-fn-core.ts",
     "it:rebuild-segments": "bash scripts/it-rebuild-segments.sh",
     "it:export-my-data": "bash scripts/it-export-my-data.sh",
-    "it:export-timesheet": "bash scripts/it-export-timesheet.sh"
+    "it:export-timesheet": "bash scripts/it-export-timesheet.sh",
+    "it:user-data": "bash scripts/it-user-data.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

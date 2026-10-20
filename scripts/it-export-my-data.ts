@@ -320,10 +320,11 @@ try {
   );
   console.log("ok  the manager's export has only the manager's data");
 
-  // Audit: both exports are logged with their counts.
+  // Audit: both exports are logged with their counts. Read as the owner: the service role
+  // has no access to the audit log (#53).
   const audit = await call(
     `/rest/v1/audit_log?action=eq.my_data.exported&actor_id=eq.${ERIN}&order=id.desc&limit=1`,
-    service,
+    await signIn("admin@acme.test"),
   );
   assert.equal(audit.json.length, 1, "Erin's export is in the audit log");
   assert.equal(audit.json[0].target_user_id, ERIN);
