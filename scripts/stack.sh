@@ -12,6 +12,7 @@
 #   test    run the pgTAP tests against it
 #   dotenv  write apps/web/.env.local for this stack
 #   ports   print the port block
+#   types   regenerate packages/contracts/src/database.types.ts from this stack
 #   run CMD run CMD with this stack's env exported (AI_PROCTOR_SUPABASE_URL,
 #           AI_PROCTOR_SUPABASE_ANON_KEY, AI_PROCTOR_MAILPIT_URL, MAILPIT_URL,
 #           WEB_PORT), e.g. `scripts/stack.sh run pnpm --filter @ai-proctor/web e2e`
@@ -73,6 +74,15 @@ case "${1:-}" in
     ;;
   reset) sb db reset ;;
   test) sb test db ;;
+  types)
+    # `pnpm db:types` reads the default stack; a worktree must read its own.
+    out="$ROOT/packages/contracts/src/database.types.ts"
+    sb gen types typescript --local --schema public 2>/dev/null > "$out.tmp"
+    [ -s "$out.tmp" ] || { rm -f "$out.tmp"; echo "type generation failed: is the stack up?" >&2; exit 1; }
+    mv "$out.tmp" "$out"
+    pnpm --silent exec biome format --write "$out" >/dev/null
+    echo "wrote $out"
+    ;;
   dotenv)
     eval "$(sb status -o env 2>/dev/null | grep -E '^(API_URL|ANON_KEY)=')"
     [ -n "${API_URL:-}" ] || { echo "stack not running: scripts/stack.sh up" >&2; exit 1; }
@@ -92,7 +102,7 @@ case "${1:-}" in
     echo "worktree=$NAME block=$K api=$((BASE + 1)) db=$((BASE + 2)) mail=$((BASE + 4)) web=$WEB_PORT"
     ;;
   *)
-    sed -n '2,18p' "$0"
+    sed -n '2,19p' "$0"
     exit 2
     ;;
 esac
