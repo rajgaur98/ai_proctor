@@ -21,7 +21,10 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass};
 use objc2_app_kit::NSWorkspace;
-use objc2_application_services::{AXError, AXIsProcessTrusted, AXUIElement};
+use objc2_application_services::{
+    kAXTrustedCheckOptionPrompt, AXError, AXIsProcessTrusted, AXIsProcessTrustedWithOptions,
+    AXUIElement,
+};
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput,
     AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput,
@@ -35,7 +38,7 @@ use objc2_core_audio::{
 use objc2_core_foundation::{CFArray, CFDictionary, CFRetained, CFString, CFType, CFURL};
 use objc2_core_graphics::{
     CGDataProvider, CGDisplayBounds, CGEventSource, CGEventSourceStateID, CGEventType,
-    CGGetActiveDisplayList, CGImage, CGPreflightScreenCaptureAccess,
+    CGGetActiveDisplayList, CGImage, CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess,
     CGSessionCopyCurrentDictionary, CGWindowListCopyWindowInfo, CGWindowListOption,
 };
 use objc2_core_media::CMSampleBuffer;
@@ -112,6 +115,29 @@ struct Observer(#[allow(dead_code)] Retained<ProtocolObject<dyn NSObjectProtocol
 
 // The tokens are only held, never messaged, after registration.
 unsafe impl Send for Observer {}
+
+/// Asks macOS for Screen Recording, Camera and Accessibility, showing the system
+/// prompts. Only for trying the agent before guided onboarding (#59) exists: the
+/// app calls it in debug builds with AI_PROCTOR_DEV_REQUEST_PERMISSIONS=1.
+pub fn request_permissions() {
+    let screen = CGRequestScreenCaptureAccess();
+    tracing::info!(screen, "asked for Screen Recording");
+    if let Some(video) = unsafe { AVMediaTypeVideo } {
+        let block = RcBlock::new(|granted: objc2::runtime::Bool| {
+            tracing::info!(granted = granted.as_bool(), "asked for Camera");
+        });
+        unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(video, &block) };
+    }
+    // Opens the Accessibility pane with the app listed (browser domains, #25).
+    let key: &NSString =
+        unsafe { &*(kAXTrustedCheckOptionPrompt as *const CFString as *const NSString) };
+    let yes = NSNumber::new_bool(true);
+    let options = NSDictionary::<NSString, AnyObject>::from_slices(&[key], &[&*yes as &AnyObject]);
+    let options: &CFDictionary =
+        unsafe { &*(&*options as *const NSDictionary<NSString, AnyObject> as *const CFDictionary) };
+    let trusted = unsafe { AXIsProcessTrustedWithOptions(Some(options)) };
+    tracing::info!(trusted, "asked for Accessibility");
+}
 
 #[derive(Default)]
 pub struct MacPlatform {

@@ -722,6 +722,11 @@ pub fn run() {
             };
             let clock: Arc<dyn Clock> = Arc::new(SystemClock::default());
             let platform = agent_platform::current();
+            // Debug builds only, until guided onboarding (#59) asks properly.
+            #[cfg(debug_assertions)]
+            if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
+                agent_platform::request_permissions();
+            }
             let sink: Arc<dyn EventSink> = match &outbox {
                 Some(outbox) => Arc::new(OutboxSink { outbox: outbox.clone(), clock: clock.clone() }),
                 None => Arc::new(UnavailableSink),
