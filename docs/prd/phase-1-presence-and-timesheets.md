@@ -148,7 +148,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | CHK-21 | P0 | **Miss:** record the event **without any screenshot or webcam capture**. Store: scheduled, shown and expired timestamps; idle seconds at time of showing; device state (locked/asleep/on battery/display off). Status becomes Away |
 | CHK-22 | P0 | **Failed challenge:** treated as a miss for status and timesheet purposes, flagged separately in reports |
 | CHK-23 | P0 | Employee can add a **reason** to any missed check-in (free text + quick picks: Meeting, Phone call, Break, Away from desk, Other) from the tray app until their timesheet is submitted. Manager sees the reason next to the miss |
-| CHK-24 | P0 | Every check-in event stores `response_ms` (time from shown to click) |
+| CHK-24 | P0 | Every check-in event stores `response_ms` (time from shown to click). A miss has no click, so its `response_ms` is empty; the shown and expiry times are stored instead (#103) |
 
 **Acceptance criteria**
 - Typing continuously in an editor while a card appears does not dismiss, click or hide the card, and keystrokes continue to reach the editor.
