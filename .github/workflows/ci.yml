@@ -1,7 +1,7 @@
 name: CI
 
 # Linux jobs run on every PR, including PRs stacked on other feature branches.
-# Windows runs on PRs that touch Windows code; macOS and Windows both run on the
+# Windows runs on PRs that touch agent Rust code; macOS and Windows both run on the
 # `ci:full` label and nightly (they cost 10x and 2x the free minutes).
 on:
   pull_request:
@@ -35,6 +35,7 @@ jobs:
       windows: ${{ steps.filter.outputs.windows }}
       sync: ${{ steps.filter.outputs.sync }}
       web: ${{ steps.filter.outputs.web }}
+      functions: ${{ steps.filter.outputs.functions }}
     steps:
       - id: filter
         uses: dorny/paths-filter@v4
@@ -43,6 +44,8 @@ jobs:
             windows:
               - "**/windows/**"
               - "**/*windows*.rs"
+              # Any agent Rust can stop compiling on Windows (cfg-gated code, dead code).
+              - "apps/agent/src-tauri/**/*.rs"
               - "**/Cargo.toml"
               - "Cargo.lock"
               - "rust-toolchain.toml"
@@ -52,6 +55,9 @@ jobs:
               - "packages/**"
               - "supabase/**"
               - "pnpm-lock.yaml"
+              - ".github/workflows/ci.yml"
+            functions:
+              - "supabase/functions/**"
               - ".github/workflows/ci.yml"
             sync:
               - "apps/agent/src-tauri/core/**"
@@ -190,6 +196,22 @@ jobs:
         env:
           CI: "true"
 
+  # Edge Functions run on Deno, outside the pnpm workspace's tsc.
+  deno:
+    name: Edge Functions (deno check)
+    needs: changes
+    if: >-
+      always() && needs.changes.result != 'failure' && (
+      github.event_name != 'pull_request' || needs.changes.outputs.functions == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.3.1
+      # Not the pnpm workspace: no node_modules, and no deno.lock to write.
+      - run: deno check --node-modules-dir=none --no-lock supabase/functions/*/index.ts
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
@@ -254,7 +276,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [js, rust, db, sync-it, web-e2e, secrets, windows, macos]
+    needs: [js, rust, db, sync-it, web-e2e, deno, secrets, windows, macos]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
