@@ -20,6 +20,7 @@ const admin: NavLink[] = [
   { to: "/timesheets", label: "Timesheets" },
   { to: "/people", label: "People" },
   { to: "/policy", label: "Policy" },
+  { to: "/audit", label: "Audit log" },
 ];
 
 const employee: NavLink[] = [

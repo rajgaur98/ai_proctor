@@ -1122,6 +1122,16 @@ export type Database = {
         };
         Returns: string;
       };
+      export_audit_log: {
+        Args: {
+          p_actions?: string[];
+          p_actor_id?: string;
+          p_from?: string;
+          p_target_user_id?: string;
+          p_to?: string;
+        };
+        Returns: Json;
+      };
       register_device: {
         Args: {
           agent_version: string;
@@ -1132,6 +1142,28 @@ export type Database = {
         Returns: Record<string, unknown>;
       };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
+      search_audit_log: {
+        Args: {
+          p_actions?: string[];
+          p_actor_id?: string;
+          p_cursor_at?: string;
+          p_cursor_id?: number;
+          p_from?: string;
+          p_limit?: number;
+          p_target_user_id?: string;
+          p_to?: string;
+        };
+        Returns: {
+          action: string;
+          actor_id: string;
+          actor_name: string;
+          at: string;
+          id: number;
+          metadata: Json;
+          target_name: string;
+          target_user_id: string;
+        }[];
+      };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
       update_member: {
