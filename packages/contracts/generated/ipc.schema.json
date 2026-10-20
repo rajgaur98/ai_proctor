@@ -342,7 +342,13 @@
         "permissions": {
           "$ref": "#/definitions/Permissions"
         },
-        "webcam": {
+        "screen_required": {
+          "type": "boolean"
+        },
+        "camera_required": {
+          "type": "boolean"
+        },
+        "screenshots": {
           "type": "boolean"
         },
         "accessibility": {
@@ -369,7 +375,9 @@
       "required": [
         "platform",
         "permissions",
-        "webcam",
+        "screen_required",
+        "camera_required",
+        "screenshots",
         "accessibility",
         "domains",
         "ready",

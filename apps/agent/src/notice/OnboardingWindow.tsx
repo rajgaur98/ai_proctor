@@ -23,6 +23,7 @@ import {
   type Step,
   stepFooter,
   stepMarks,
+  testCaptureShown,
   toStep,
 } from "./onboardingModel";
 import { PermissionsStep } from "./PermissionsStep";
@@ -45,6 +46,9 @@ export function OnboardingWindow() {
   const [open, setOpen] = useState(false);
   // Only the latest test capture counts; an older one that returns late is dropped.
   const attempt = useRef(0);
+  // The latest state, for `goTo`, which must not change with every poll.
+  const latest = useRef<OnboardingState | null>(null);
+  latest.current = state;
 
   const loadNotice = useCallback(() => {
     invoke("get_notice", {}).then(setNotice, (e: unknown) => setError(String(e)));
@@ -52,6 +56,7 @@ export function OnboardingWindow() {
   const loadState = useCallback(() => {
     return invoke("onboarding_state", {}).then(
       (next) => {
+        latest.current = next;
         setState(next);
         return next;
       },
@@ -81,7 +86,9 @@ export function OnboardingWindow() {
 
   /** Moves to a step. The test images live only on step 3: leaving drops them. */
   const goTo = useCallback(
-    (next: Step) => {
+    (target: Step) => {
+      // Nothing to capture (screenshots and webcam both off): there is no Test capture step.
+      const next = target === 3 && !testCaptureShown(latest.current) ? 2 : target;
       setError(null);
       setStep(next);
       if (next === 3) {
@@ -206,7 +213,9 @@ export function OnboardingWindow() {
         else acknowledge(notice.version);
         break;
       case 2:
-        goTo(3);
+        // With nothing to capture the test step is skipped: the person is done.
+        if (testCaptureShown(state)) goTo(3);
+        else finish();
         break;
       case 3:
         if (captureFailed(capture)) goTo(2);
@@ -234,19 +243,22 @@ export function OnboardingWindow() {
   }
 
   const capturing = capture.kind === "capturing";
+  const withCapture = testCaptureShown(state);
   const primaryDisabled =
     busy ||
     (step === 2 && !canContinue(state)) ||
     (step === 3 && capturing) ||
     (step === 1 && notice === undefined);
   const footerNote =
-    step === 1 && notice ? `${stepFooter(step)} · ${noticeFooter(notice).text}` : stepFooter(step);
+    step === 1 && notice
+      ? `${stepFooter(step, withCapture)} · ${noticeFooter(notice).text}`
+      : stepFooter(step, withCapture);
 
   return (
     <main className="notice">
       <nav className="n-steps" aria-label="Setup progress">
         <ol>
-          {stepMarks(step).map((mark) => (
+          {stepMarks(step, withCapture).map((mark) => (
             <li
               key={mark.step}
               className={`n-step n-step-${mark.state}`}
