@@ -16,7 +16,7 @@ use agent_core::foreground::{clean_title, domain_of, domain_of_address};
 use agent_core::pixels::webcam_frame_ready;
 use agent_core::platform::{
     CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionState,
+    SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use block2::RcBlock;
@@ -157,6 +157,8 @@ pub fn request_accessibility() {
 #[derive(Default)]
 pub struct MacPlatform {
     asleep: Arc<AtomicBool>,
+    /// Called by the power-off observer (#159).
+    session_end: Arc<Mutex<Option<SessionEndHandler>>>,
     observing: AtomicBool,
     observers: Mutex<Vec<Observer>>,
     /// Chromium pids already asked to build their accessibility tree.
@@ -170,7 +172,8 @@ impl MacPlatform {
         platform
     }
 
-    /// Registers the NSWorkspace sleep/wake observers. Idempotent, called by `new()`.
+    /// Registers the NSWorkspace sleep/wake and power-off observers. Idempotent,
+    /// called by `new()`.
     /// Registration is thread-safe; notifications are delivered on the main run
     /// loop, so the app's main loop (Tauri's) must be running for sleep state to
     /// update. Without it `session_state` still reports Locked via the session poll.
@@ -186,6 +189,28 @@ impl MacPlatform {
             )
         };
         let mut tokens = Vec::new();
+        // Posted before the logout, restart or shutdown asks apps to quit (#159,
+        // ANT-01). It doesn't say which of the three it is; the agent doesn't need to
+        // know. Another app can still cancel the logout afterwards: the shift is
+        // then already clocked out and the person clocks in again.
+        let will_power_off = unsafe { objc2_app_kit::NSWorkspaceWillPowerOffNotification };
+        let handler = Arc::clone(&self.session_end);
+        let block = RcBlock::new(move |_: NonNull<NSNotification>| {
+            tracing::info!("the session is ending (logout, restart or shutdown)");
+            let handler = handler.lock().ok().and_then(|h| h.clone());
+            if let Some(handler) = handler {
+                handler();
+            }
+        });
+        let token = unsafe {
+            center.addObserverForName_object_queue_usingBlock(
+                Some(will_power_off),
+                None,
+                None,
+                &block,
+            )
+        };
+        tokens.push(Observer(token));
         for (name, asleep) in [(will_sleep, true), (did_wake, false)] {
             let flag = Arc::clone(&self.asleep);
             let block = RcBlock::new(move |_: NonNull<NSNotification>| {
@@ -200,7 +225,10 @@ impl MacPlatform {
         if let Ok(mut held) = self.observers.lock() {
             held.extend(tokens);
         }
-        tracing::info!(platform = "macos", "sleep/wake observers registered");
+        tracing::info!(
+            platform = "macos",
+            "sleep/wake and power-off observers registered"
+        );
     }
 }
 
@@ -345,6 +373,12 @@ impl Platform for MacPlatform {
 
     fn boot_time(&self) -> Option<DateTime<Utc>> {
         crate::launchd::boot_time()
+    }
+
+    fn on_session_end(&self, handler: SessionEndHandler) {
+        if let Ok(mut held) = self.session_end.lock() {
+            *held = Some(handler);
+        }
     }
 }
 

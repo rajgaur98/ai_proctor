@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use crate::contracts::{PermissionKind, PermissionState, Permissions};
 use crate::platform::{
     CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionState,
+    SessionEndHandler, SessionState,
 };
 use crate::watchdog::{WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState};
 
@@ -16,6 +16,16 @@ use crate::watchdog::{WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogStat
 #[derive(Debug)]
 pub struct FakePlatform {
     state: Mutex<FakeState>,
+    session_end: Mutex<Option<Handler>>,
+}
+
+/// The registered session-end handler (closures have no `Debug`).
+struct Handler(SessionEndHandler);
+
+impl std::fmt::Debug for Handler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SessionEndHandler")
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +100,21 @@ impl FakePlatform {
     pub fn new(state: FakeState) -> Self {
         Self {
             state: Mutex::new(state),
+            session_end: Mutex::new(None),
+        }
+    }
+
+    /// The OS announces a logout, restart or shutdown: calls the registered handler
+    /// (if any), as the real platforms do.
+    pub fn end_session(&self) {
+        let handler = self
+            .session_end
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|h| h.0.clone());
+        if let Some(handler) = handler {
+            handler();
         }
     }
 
@@ -230,6 +255,10 @@ impl Platform for FakePlatform {
 
     fn watchdog_installed(&self) -> bool {
         self.state.lock().unwrap().watchdog.is_some()
+    }
+
+    fn on_session_end(&self, handler: SessionEndHandler) {
+        *self.session_end.lock().unwrap() = Some(Handler(handler));
     }
 
     fn boot_time(&self) -> Option<DateTime<Utc>> {

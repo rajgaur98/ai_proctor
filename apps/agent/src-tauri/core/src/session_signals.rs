@@ -1,4 +1,4 @@
-//! Idle time, lock and sleep on Windows (#167; ACT-01). The Win32 reads and
+//! Idle time, lock, sleep and session end on Windows (#167, #159; ACT-01, ANT-01). The Win32 reads and
 //! the hidden window that receives session and power notifications live in
 //! `agent-platform`; what the numbers and messages mean is here, so it runs in CI on
 //! every OS.
@@ -6,8 +6,12 @@
 use crate::platform::SessionState;
 
 /// `WM_WTSSESSION_CHANGE` `wParam` values.
+const WTS_SESSION_LOGOFF: usize = 0x6;
 const WTS_SESSION_LOCK: usize = 0x7;
 const WTS_SESSION_UNLOCK: usize = 0x8;
+/// `WM_ENDSESSION` `lParam` flag: an installer's Restart Manager is closing the app
+/// to update it, not the session ending.
+const ENDSESSION_CLOSEAPP: usize = 0x1;
 /// `WM_POWERBROADCAST` `wParam` values.
 const PBT_APMSUSPEND: usize = 0x4;
 const PBT_APMRESUMESUSPEND: usize = 0x7;
@@ -54,6 +58,20 @@ pub fn power_event(wparam: usize) -> Option<SessionEvent> {
         PBT_APMRESUMESUSPEND | PBT_APMRESUMEAUTOMATIC => Some(SessionEvent::Resumed),
         _ => None,
     }
+}
+
+/// Whether a `WM_WTSSESSION_CHANGE` message's `wParam` says this session is being
+/// logged off (#159). It can't be cancelled, unlike the query before `WM_ENDSESSION`.
+pub fn session_logoff(wparam: usize) -> bool {
+    wparam == WTS_SESSION_LOGOFF
+}
+
+/// Whether a `WM_ENDSESSION` message really ends the session (#159). `wParam` is
+/// non-zero when it does and zero when another app vetoed `WM_QUERYENDSESSION` and
+/// the session carries on. A close for an installer update (`ENDSESSION_CLOSEAPP`)
+/// is the app being restarted, not a logout, restart or shutdown.
+pub fn ends_session(wparam: usize, lparam: usize) -> bool {
+    wparam != 0 && lparam & ENDSESSION_CLOSEAPP == 0
 }
 
 /// What the notifications have said so far.
@@ -125,6 +143,24 @@ mod tests {
         assert_eq!(session_event(0x7), Some(SessionEvent::Locked));
         assert_eq!(session_event(0x8), Some(SessionEvent::Unlocked));
         assert_eq!(session_event(0x5), None, "logon");
+    }
+
+    #[test]
+    fn a_logoff_notification_ends_the_session() {
+        assert!(session_logoff(0x6));
+        assert!(!session_logoff(0x7), "lock");
+        assert!(!session_logoff(0x4), "remote disconnect");
+    }
+
+    #[test]
+    fn end_session_counts_only_when_it_is_going_ahead() {
+        let logoff = 0x8000_0000;
+        let shutdown = 0;
+        assert!(ends_session(1, logoff));
+        assert!(ends_session(1, shutdown));
+        assert!(!ends_session(0, logoff), "another app vetoed it");
+        assert!(!ends_session(1, 0x1), "an installer closing the app");
+        assert!(ends_session(1, logoff | 0x4000_0000), "critical");
     }
 
     #[test]

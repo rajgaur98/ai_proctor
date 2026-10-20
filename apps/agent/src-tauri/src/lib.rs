@@ -9,6 +9,7 @@ mod dev;
 mod dev_control;
 mod notice_window;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -25,7 +26,7 @@ use agent_core::contracts::{
     ProjectRef, ShiftState, TestCaptureResult,
 };
 use agent_core::keystore::KeyStore;
-use agent_core::liveness::{Liveness, PreviousRun, RestartReport};
+use agent_core::liveness::{classify_exit, ExitKind, Liveness, PreviousRun, RestartReport};
 use agent_core::notice::NoticeState;
 use agent_core::onboarding::{
     self, FileOnboardingStore, MemoryOnboardingStore, Onboarding, OnboardingStore,
@@ -117,6 +118,11 @@ pub struct AgentState {
     /// Last-alive evidence for the watchdog's restart report (ANT-01); `None` when
     /// the keychain is unavailable.
     liveness: Option<Liveness>,
+    /// When the OS announced a logout, restart or shutdown (#159); how the exit that
+    /// follows is told from a kill.
+    session_end_at: Mutex<Option<chrono::DateTime<chrono::Utc>>>,
+    /// The agent is exiting on purpose (the restart for a new permission).
+    planned_exit: AtomicBool,
     /// Activity sampling (#25); sampling and titles follow the server's config.
     activity: Mutex<Sampler>,
     /// Idle, lock, sleep and call changes sent as events (STS-01).
@@ -180,6 +186,8 @@ impl AgentState {
             capture_policy: Mutex::new(capture_policy),
             permissions: Mutex::new(PermissionMonitor::default()),
             liveness,
+            session_end_at: Mutex::new(None),
+            planned_exit: AtomicBool::new(false),
             activity: Mutex::new(Sampler::new(activity_policy)),
             presence: Mutex::new(PresenceTracker::default()),
             sync_thread: Mutex::new(None),
@@ -246,6 +254,56 @@ impl AgentState {
         if let Some(liveness) = &self.liveness {
             liveness.exited(self.clock.now());
         }
+    }
+
+    /// An exit the agent chose (the restart for a new permission): `exited`, even
+    /// mid-shift, and not a quit that nothing announced.
+    fn exit_planned(&self) {
+        self.planned_exit.store(true, Ordering::SeqCst);
+        self.exited();
+    }
+
+    /// ANT-01, #159: the OS says the session is ending (logout, restart, shutdown).
+    /// A shift in any phase is clocked out with reason `session_end` (no flagged
+    /// time, no Tamper), the sync loop is woken so the events go out if the network
+    /// is still up (they are in the sealed outbox either way), and the run is marked
+    /// as ended by the session so the gap that follows is never read as a kill.
+    /// Runs on the OS's thread, inside its notification, so it only does local work.
+    fn session_ended(&self) {
+        let now = self.clock.now();
+        *self.session_end_at.lock().unwrap() = Some(now);
+        if let Err(error) =
+            self.act_checked("end the shift for the session end", |s| s.session_ended())
+        {
+            tracing::error!(%error, "clock-out for the session end not recorded");
+        }
+        if let Some(liveness) = &self.liveness {
+            liveness.session_ended(self.clock.now());
+        }
+        self.nudge_sync();
+    }
+
+    /// The exit event: marks how this run ends and says what the process exit code
+    /// should be. See `ExitKind`.
+    fn exiting(&self) -> ExitKind {
+        let kind = classify_exit(
+            self.session.lock().unwrap().shift() != ShiftState::OffShift,
+            self.planned_exit.load(Ordering::SeqCst),
+            *self.session_end_at.lock().unwrap(),
+            self.clock.now(),
+        );
+        match kind {
+            ExitKind::Normal => self.exited(),
+            ExitKind::SessionEnd => {
+                if let Some(liveness) = &self.liveness {
+                    liveness.session_ended(self.clock.now());
+                }
+            }
+            ExitKind::Interrupted => {
+                tracing::warn!("quit while clocked in; exiting so the watchdog restarts the agent");
+            }
+        }
+        kind
     }
 
     /// The tray's Quit is for off shift only: while clocked in the agent keeps
@@ -1441,7 +1499,7 @@ fn restart_plan(platform: &dyn Platform) -> Restart {
 fn restart_app(app: AppHandle) -> CommandResult {
     let state = app.state::<AgentState>();
     // A deliberate exit: the next run reads it as `exited`, not `killed` (ANT-01).
-    state.exited();
+    state.exit_planned();
     match restart_plan(state.platform.as_ref()) {
         Restart::Respawn => {
             tracing::info!("restart: starting a new process");
@@ -1694,6 +1752,7 @@ pub fn run() {
                 .with_onboarding_store(Arc::new(FileOnboardingStore::new(&data_dir))),
             );
             app.manage(OutboxState(outbox));
+            watch_for_session_end(app.handle());
             spawn_ticker(app.handle().clone());
             spawn_sync(app.handle().clone());
             card::create(app.handle())?;
@@ -1733,14 +1792,33 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building the agent")
         .run(|app, event| {
-            // Only a normal exit gets here; a kill doesn't, which is how the next run
-            // knows it was one (ANT-01).
+            // Only an exit the process chooses gets here; a kill doesn't, which is how
+            // the next run knows it was one (ANT-01). A quit while clocked in that
+            // the OS did not announce (an Apple Event quit) is made to look like one:
+            // non-zero, so the watchdog starts the agent again (#159).
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app.try_state::<AgentState>() {
-                    state.exited();
+                    if state.exiting() == ExitKind::Interrupted {
+                        std::process::exit(RESTART_EXIT_CODE);
+                    }
                 }
             }
         });
+}
+
+/// ANT-01, #159: clocks the person out and marks the exit when the OS announces a
+/// logout, restart or shutdown. Windows ends the process right after the message, so
+/// it exits here with 0 (the watchdog restarts only after a failure); macOS goes on
+/// to ask the app to quit, which the exit event then sees as the session ending.
+fn watch_for_session_end(app: &AppHandle) {
+    let handle = app.clone();
+    app.state::<AgentState>()
+        .platform
+        .on_session_end(Arc::new(move || {
+            handle.state::<AgentState>().session_ended();
+            #[cfg(windows)]
+            std::process::exit(0);
+        }));
 }
 
 /// What the watchdog starts: this executable, when it runs from an installed app
@@ -3445,6 +3523,10 @@ mod tests {
     enum Ending {
         Killed,
         Exited,
+        /// A quit while clocked in that nothing announced (an Apple Event quit).
+        Quit,
+        /// The OS announced a session end but the clock-out was not recorded.
+        SessionEndMarkedOnly,
     }
 
     fn restarted(
@@ -3493,8 +3575,13 @@ mod tests {
         }
         clock.advance(chrono::Duration::minutes(10));
         first.beat();
-        if matches!(ending, Ending::Exited) {
-            first.exited();
+        match ending {
+            Ending::Killed => {}
+            Ending::Exited => first.exited(),
+            Ending::Quit => assert_eq!(first.exiting(), ExitKind::Interrupted),
+            Ending::SessionEndMarkedOnly => {
+                first.liveness.as_ref().unwrap().session_ended(clock.now());
+            }
         }
         drop(first);
         // The next run, `gap` later.
@@ -3530,6 +3617,70 @@ mod tests {
     fn a_normal_exit_during_a_shift_is_reported_as_exited() {
         let reports = restarted(true, Ending::Exited, chrono::Duration::hours(2), None);
         assert_eq!(reports[0]["reason"], "exited");
+    }
+
+    #[test]
+    fn a_quit_while_clocked_in_that_nothing_announced_is_reported_as_killed() {
+        let reports = restarted(true, Ending::Quit, chrono::Duration::seconds(10), None);
+        assert_eq!(reports[0]["reason"], "killed");
+    }
+
+    #[test]
+    fn a_session_end_that_could_not_clock_out_is_reported_as_session_end_not_killed() {
+        let reports = restarted(
+            true,
+            Ending::SessionEndMarkedOnly,
+            chrono::Duration::hours(14),
+            None,
+        );
+        assert_eq!(reports[0]["reason"], "session_end");
+    }
+
+    #[test]
+    fn a_session_end_clocks_the_person_out_with_its_own_reason() {
+        let w = working();
+        w.clock.advance(chrono::Duration::hours(3));
+        w.state.session_ended();
+        assert_eq!(
+            w.state.session.lock().unwrap().shift(),
+            ShiftState::OffShift
+        );
+        assert_eq!(
+            w.events("clock_out"),
+            [serde_json::json!({ "reason": "session_end" })]
+        );
+        assert_eq!(w.state.exiting(), ExitKind::SessionEnd);
+    }
+
+    #[test]
+    fn the_platform_announcement_reaches_the_state() {
+        let w = working();
+        let state = Arc::new(w.state);
+        let handler_state = state.clone();
+        w.platform
+            .on_session_end(Arc::new(move || handler_state.session_ended()));
+        w.platform.end_session();
+        assert_eq!(state.session.lock().unwrap().shift(), ShiftState::OffShift);
+    }
+
+    #[test]
+    fn a_quit_off_shift_and_a_planned_restart_are_normal_exits() {
+        let w = working();
+        w.state.exit_planned();
+        assert_eq!(w.state.exiting(), ExitKind::Normal, "planned, mid-shift");
+        let w = working();
+        w.state.act("clock out", |s| s.clock_out());
+        assert_eq!(w.state.exiting(), ExitKind::Normal, "off shift");
+        let w = working();
+        assert_eq!(w.state.exiting(), ExitKind::Interrupted, "mid-shift quit");
+    }
+
+    #[test]
+    fn a_session_end_while_off_shift_records_nothing() {
+        let w = working();
+        w.state.act("clock out", |s| s.clock_out());
+        w.state.session_ended();
+        assert_eq!(w.events("clock_out").len(), 1, "only the manual one");
     }
 
     #[test]

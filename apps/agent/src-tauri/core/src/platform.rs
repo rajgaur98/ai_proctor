@@ -2,6 +2,8 @@
 //! (LLD section 01). macOS and Windows implement it in `agent-platform`; tests use
 //! `FakePlatform`.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 
 use crate::contracts::{PermissionKind, PermissionState, Permissions};
@@ -118,6 +120,9 @@ pub struct InjectedInput {
     pub count: u32,
 }
 
+/// Called when the OS announces that the person's session is ending (#159).
+pub type SessionEndHandler = Arc<dyn Fn() + Send + Sync>;
+
 pub trait Platform: Send + Sync {
     fn idle_seconds(&self) -> u64;
     fn session_state(&self) -> SessionState;
@@ -158,4 +163,11 @@ pub trait Platform: Send + Sync {
     /// When the device last started up, to tell a reboot from a kill (ANT-01).
     /// `None` when the OS can't say.
     fn boot_time(&self) -> Option<DateTime<Utc>>;
+    /// ANT-01: registers the one handler to call when the OS announces a logout,
+    /// restart or shutdown (macOS `NSWorkspaceWillPowerOff`; Windows `WM_ENDSESSION`
+    /// and the logoff session notification). The handler runs on the OS's own thread,
+    /// right then: on Windows the process can be ended as soon as it returns, so it
+    /// must clock out and mark the exit before it does, and quickly. A second call
+    /// replaces the first; an announcement the OS then takes back is not reported.
+    fn on_session_end(&self, handler: SessionEndHandler);
 }
