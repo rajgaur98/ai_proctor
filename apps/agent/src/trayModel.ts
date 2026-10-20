@@ -12,6 +12,8 @@ export interface PermissionIssue {
   kind: "screen" | "camera";
   /** Names the permission in the warning banner. */
   label: string;
+  /** Turned off by device management: the person can't grant it, so there is no Fix. */
+  restricted: boolean;
 }
 
 /** Which status chip to draw; "blocked" is the design's "Capture blocked". */
@@ -63,15 +65,24 @@ export const pauseMinutes = [5, 10, 15] as const;
 export const PAUSE_REASON_MAX = 200;
 export const MISS_NOTE_MAX = 500;
 
-const blocking = new Set(["denied", "not_determined"]);
+// The same states the agent core and the server count as Tamper (permissions::blocks).
+const blocking = new Set(["denied", "not_determined", "restricted"]);
 
 export function permissionIssues(permissions: AgentStatus["permissions"]): PermissionIssue[] {
   const issues: PermissionIssue[] = [];
   if (blocking.has(permissions.screen)) {
-    issues.push({ kind: "screen", label: "Screen recording" });
+    issues.push({
+      kind: "screen",
+      label: "Screen recording",
+      restricted: permissions.screen === "restricted",
+    });
   }
   if (blocking.has(permissions.camera)) {
-    issues.push({ kind: "camera", label: "Camera" });
+    issues.push({
+      kind: "camera",
+      label: "Camera",
+      restricted: permissions.camera === "restricted",
+    });
   }
   return issues;
 }

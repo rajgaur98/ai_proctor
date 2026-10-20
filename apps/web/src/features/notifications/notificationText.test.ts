@@ -168,6 +168,19 @@ const CASES: Case[] = [
     note: "Manager: Max Manager",
     target: { page: "week", userId: LUCAS, week: "2026-10-12" },
   },
+  {
+    kind: "timesheet.late_data",
+    payload: {
+      timesheet_id: "t1",
+      period_start: "2026-10-12",
+      period_end: "2026-10-18",
+      employee_id: LUCAS,
+      employee_name: "Lucas Martin",
+    },
+    text: "Lucas Martin's week of 12 Oct has new data after approval",
+    note: null,
+    target: { page: "week", userId: LUCAS, week: "2026-10-12" },
+  },
 ];
 
 describe("notifications", () => {
@@ -192,6 +205,7 @@ describe("notifications", () => {
         "timesheet.submit_reminder",
         "timesheet.approval_reminder",
         "timesheet.escalation",
+        "timesheet.late_data",
       ]),
     );
   });
@@ -206,6 +220,9 @@ describe("notifications", () => {
       "After a reassignment, you have work to decide on",
     );
     expect(notificationText("delegation.assigned", null)).toBe("You are a delegate approver");
+    expect(notificationText("timesheet.late_data", {})).toBe(
+      "Someone's week has new data after approval",
+    );
     expect(notificationText("delegation.ended", { reason: "demoted" })).toBe(
       "Someone was made an employee, so their delegation to you ended",
     );

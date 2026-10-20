@@ -51,3 +51,24 @@ export function SheetStatusChip({
     </span>
   );
 }
+
+/** TS-18: "3 events since Tue 17 Mar, 09:00", for an approved week that got data after approval. */
+export function lateDataSummary(sheet: Timesheet): string | null {
+  if (sheet.status !== "approved" || sheet.lateDataCount <= 0 || !sheet.lateDataAt) return null;
+  const n = sheet.lateDataCount;
+  const since = DateTime.fromISO(sheet.lateDataAt).toFormat("ccc d LLL, HH:mm");
+  return `${n} ${n === 1 ? "event" : "events"} since ${since}`;
+}
+
+/** Neutral badge in the Timesheets list: this approved week has data it doesn't include. */
+export function LateDataBadge({ sheet }: { sheet: Timesheet }) {
+  if (lateDataSummary(sheet) === null) return null;
+  return (
+    <span
+      title="New data arrived after approval"
+      className="inline-flex h-[26px] items-center rounded-full border border-line bg-sunk px-2.5 text-[12.5px] font-medium text-ink2"
+    >
+      New data
+    </span>
+  );
+}
