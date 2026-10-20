@@ -1,7 +1,7 @@
 //! Any other OS: compiles so CI can build the workspace; never shipped.
 //! Stub until the M1+ features implement each method.
 
-use agent_core::contracts::{PermissionState, Permissions};
+use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
@@ -46,6 +46,8 @@ impl Platform for UnsupportedPlatform {
             camera: PermissionState::Unsupported,
         }
     }
+
+    fn request_permission(&self, _kind: PermissionKind) {}
 
     fn is_injected(&self, _click: &Click) -> bool {
         false

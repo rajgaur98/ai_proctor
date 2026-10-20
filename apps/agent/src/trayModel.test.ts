@@ -149,10 +149,10 @@ describe("countdownAnnouncement", () => {
 describe("permissionIssues", () => {
   it("flags denied and not-determined permissions", () => {
     expect(permissionIssues({ screen: "denied", camera: "granted" })).toEqual([
-      { kind: "screen", label: "Screen recording", target: "screen_settings" },
+      { kind: "screen", label: "Screen recording" },
     ]);
     expect(permissionIssues({ screen: "granted", camera: "not_determined" })).toEqual([
-      { kind: "camera", label: "Camera", target: "camera_settings" },
+      { kind: "camera", label: "Camera" },
     ]);
     expect(permissionIssues({ screen: "denied", camera: "denied" })).toHaveLength(2);
   });

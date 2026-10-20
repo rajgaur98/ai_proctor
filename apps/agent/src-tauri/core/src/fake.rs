@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 
-use crate::contracts::{PermissionState, Permissions};
+use crate::contracts::{PermissionKind, PermissionState, Permissions};
 use crate::platform::{
     CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
@@ -25,6 +25,8 @@ pub struct FakeState {
     pub screen_share: Option<ScreenShare>,
     pub foreground: Option<Foreground>,
     pub permissions: Permissions,
+    /// The permissions `request_permission` was called for, in order.
+    pub permission_requests: Vec<PermissionKind>,
     pub displays: u32,
     /// What the screenshot does while the permission reads Granted (macOS can fail
     /// a capture after revoking while still saying "granted").
@@ -55,6 +57,7 @@ impl Default for FakeState {
                 screen: PermissionState::Granted,
                 camera: PermissionState::Granted,
             },
+            permission_requests: Vec::new(),
             displays: 1,
             screen: Ok(()),
             camera: Ok(()),
@@ -161,6 +164,10 @@ impl Platform for FakePlatform {
 
     fn permissions(&self) -> Permissions {
         self.state.lock().unwrap().permissions.clone()
+    }
+
+    fn request_permission(&self, kind: PermissionKind) {
+        self.state.lock().unwrap().permission_requests.push(kind);
     }
 
     fn is_injected(&self, _click: &Click) -> bool {

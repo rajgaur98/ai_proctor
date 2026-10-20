@@ -75,6 +75,9 @@ impl Platform for ActiveSession {
     fn permissions(&self) -> Permissions {
         self.0.permissions()
     }
+    fn request_permission(&self, kind: agent_core::contracts::PermissionKind) {
+        self.0.request_permission(kind)
+    }
     fn is_injected(&self, click: &Click) -> bool {
         self.0.is_injected(click)
     }

@@ -25,8 +25,24 @@ export PATH="$HOME/.asdf/installs/nodejs/22.21.1/bin:$PATH"
 
 if [ "$NAME" = "ai_proctor" ]; then
   K=0
+elif [ -f "$ROOT/.stack/block" ]; then
+  K=$(cat "$ROOT/.stack/block")
 else
+  # A block per worktree, claimed in a registry so two worktrees never share one
+  # (a shared block means one `reset` wipes the other's database). Start from a
+  # hash of the folder name and take the next block nobody live holds.
+  REGISTRY="$HOME/.ai_proctor-stacks"
+  mkdir -p "$REGISTRY" "$ROOT/.stack"
   K=$((1 + $(printf '%s' "$NAME" | cksum | cut -d' ' -f1) % 40))
+  for _ in $(seq 1 40); do
+    OWNER=$(cat "$REGISTRY/$K" 2>/dev/null || true)
+    if [ -z "$OWNER" ] || [ "$OWNER" = "$ROOT" ] || [ ! -d "$OWNER" ]; then
+      break
+    fi
+    K=$((K % 40 + 1))
+  done
+  echo "$ROOT" > "$REGISTRY/$K"
+  echo "$K" > "$ROOT/.stack/block"
 fi
 BASE=$((54320 + K * 20))
 WEB_PORT=$(( K == 0 ? 5173 : 6200 + K ))
