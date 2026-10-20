@@ -1,73 +1,52 @@
-// One employee's day (#33, DSH-03/05): a bar across the shift coloured by status,
-// check-in markers, and the details of a missed check-in. Today refreshes live.
-import { useQuery } from "@tanstack/react-query";
+// One employee's day (#33, #124, DSH-03/04/05), from the Claude Design DayView screen:
+// totals and a bar of time_segments with check-in markers on top, the selected
+// check-in on the left and the list of check-ins on the right. Today refreshes live.
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useMemo, useRef, useState } from "react";
-import { StatusChip, statusStyle } from "../../components/StatusChip";
+import { StatusChip } from "../../components/StatusChip";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
 import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
-import { canDecideQuery } from "../timesheets/timesheetData";
-import { CaptureViewer } from "./CaptureViewer";
+import { projectsQuery } from "../projects/projectData";
+import { canDecideQuery, weekStartQuery } from "../timesheets/timesheetData";
+import { weekStartOf } from "../timesheets/weeks";
+import { CheckinDetails } from "./CheckinDetails";
+import { deferralText, outcomeWord } from "./checkinText";
+import { DayTimeline, Marker, StatsRow } from "./DayTimeline";
+import { dayCheckinsQuery, daySegmentsQuery, rebuildDay, responseWindowQuery } from "./dayData";
+import { statCards } from "./dayStats";
 import { flagCheckinIds } from "./flagText";
 import { ManualEntries } from "./ManualEntries";
 import { dayFlagsQuery, NeedsReviewBadge, NeedsReviewPanel } from "./NeedsReview";
-import {
-  barSpan,
-  type Checkin,
-  deferralLabel,
-  localDay,
-  markerLeft,
-  type Outcome,
-  type Period,
-  segments,
-  ticks,
-  totals,
-} from "./timeline";
-
-interface CheckinRow extends Checkin {
-  respondedAt: string | null;
-  responseMs: number | null;
-  wrongClicks: number;
-  idleSAtShow: number | null;
-  deviceState: string | null;
-  missedReason: string | null;
-  missedReasonKind: string | null;
-  captures: number;
-}
+import { barSegments, barSpan, localDay, shiftText, ticks } from "./timeline";
 
 // Pages made by router.tsx's page() aren't in the typed route tree (same as the nav).
 const teamPath: string = "/team";
 
-const outcomeLabel: Record<Outcome, string> = {
-  pass: "Passed check-in",
-  miss: "Missed check-in",
-  failed: "Failed check-in",
-  deferred: "Deferred check-in",
+const roleLabel: Record<string, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  manager: "Manager",
+  employee: "Employee",
 };
 
-function deferralText(reason: string | null): string {
-  return (reason && deferralLabel[reason]) || "Held back";
-}
-
-/** What the marker button says: the outcome, the time, and for a deferral the reason. */
-function markerLabel(c: Checkin, zone: string): string {
-  const at = DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone }).toFormat("HH:mm");
-  const reason =
-    c.outcome === "deferred" ? ` (${deferralText(c.deferralReason).toLowerCase()})` : "";
-  return `${outcomeLabel[c.outcome]} at ${at}${reason}`;
-}
-
-function minutesText(m: number): string {
-  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join("");
 }
 
 export function DayPage() {
   const { userId } = useParams({ from: "/_app/team/$userId" });
   const search = useSearch({ from: "/_app/team/$userId" });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { profile } = useRouteContext({ from: "/_app" });
   const scheduleRef = useRef<HTMLDialogElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -77,7 +56,7 @@ export function DayPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, timezone, presence(status)")
+        .select("id, full_name, timezone, role, presence(status)")
         .eq("id", userId)
         .maybeSingle();
       if (error) throw error;
@@ -89,66 +68,42 @@ export function DayPage() {
   const date = search.date ?? today;
   const isToday = date === today;
   const day = useMemo(() => localDay(date, zone), [date, zone]);
+  const live = isToday ? 30_000 : false;
 
   const shifts = useQuery({ ...shiftsQuery(userId), enabled: !!person.data });
-  const activity = useQuery({
-    queryKey: ["day", userId, date, zone],
+  // The day's segments are rebuilt when the page opens (LLD section 6), then read; a
+  // failed rebuild leaves what is stored. Today is rebuilt again every minute.
+  const rebuild = useQuery({
+    queryKey: ["day-rebuild", userId, date],
     enabled: !!person.data,
-    refetchInterval: isToday ? 30_000 : false,
+    staleTime: 60_000,
+    retry: false,
+    refetchInterval: isToday ? 60_000 : false,
     queryFn: async () => {
-      const from = new Date(day.start).toISOString();
-      const to = new Date(day.end).toISOString();
-      const [periods, checkins] = await Promise.all([
-        supabase
-          .from("status_periods")
-          .select("status, start_at, end_at")
-          .eq("user_id", userId)
-          .lt("start_at", to)
-          .or(`end_at.is.null,end_at.gt.${from}`)
-          .order("start_at"),
-        supabase
-          .from("checkin_events")
-          .select(
-            "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys",
-          )
-          .eq("user_id", userId)
-          .gte("scheduled_at", from)
-          .lt("scheduled_at", to)
-          .order("scheduled_at"),
-      ]);
-      if (periods.error) throw periods.error;
-      if (checkins.error) throw checkins.error;
-      return {
-        now: Date.now(),
-        periods: periods.data.map(
-          (p): Period => ({ status: p.status, start: p.start_at, end: p.end_at }),
-        ),
-        checkins: checkins.data.map(
-          (c): CheckinRow => ({
-            id: c.id,
-            scheduledAt: c.scheduled_at,
-            shownAt: c.shown_at,
-            respondedAt: c.responded_at,
-            outcome: c.outcome,
-            deferralReason: c.deferral_reason,
-            responseMs: c.response_ms,
-            wrongClicks: c.wrong_clicks,
-            idleSAtShow: c.idle_s_at_show,
-            deviceState: c.device_state,
-            missedReason: c.missed_reason,
-            missedReasonKind: c.missed_reason_kind,
-            captures: c.object_keys.length,
-          }),
-        ),
-      };
+      const ok = await rebuildDay(userId, date);
+      await queryClient.invalidateQueries({ queryKey: daySegmentsQuery(userId, date).queryKey });
+      return ok;
     },
   });
+  const segments = useQuery({
+    ...daySegmentsQuery(userId, date),
+    enabled: !!person.data && rebuild.status !== "pending",
+    refetchInterval: live,
+  });
+  const checkinsQ = useQuery({
+    ...dayCheckinsQuery(userId, day, date, zone),
+    enabled: !!person.data,
+    refetchInterval: live,
+  });
+  const responseWindow = useQuery(responseWindowQuery).data ?? 90;
+  const projects = useQuery(projectsQuery).data;
+  const startDay = useQuery(weekStartQuery).data;
 
   // ANT-08: anti-cheat flags for the day, shown as "needs review".
   const flagsQ = useQuery({
     ...dayFlagsQuery(userId, date),
     enabled: !!person.data,
-    refetchInterval: isToday ? 30_000 : false,
+    refetchInterval: live,
   });
   const flags = flagsQ.data ?? [];
   const unreviewed = flags.filter((f) => f.reviewedAt === null).length;
@@ -156,23 +111,33 @@ export function DayPage() {
     flags.filter((f) => f.reviewedAt === null).flatMap((f) => flagCheckinIds(f.details)),
   );
 
-  const now = activity.data?.now ?? Date.now();
-  const periods = activity.data?.periods ?? [];
-  const checkins = activity.data?.checkins ?? [];
-  const span = barSpan(day, zone, shifts.data ?? [], periods, checkins, now);
-  const segs = segments(span, periods, now);
   const viewer = viewerZone();
-  const chosen = checkins.find((c) => c.id === selected) ?? null;
+  const segs = segments.data ?? [];
+  const checkins = checkinsQ.data ?? [];
+  const span = barSpan(day, zone, shifts.data ?? [], segs, checkins);
+  const bar = barSegments(span, segs);
+  const cards = statCards(segs, checkins, (ms) =>
+    DateTime.fromMillis(ms, { zone: viewer }).toFormat("HH:mm"),
+  );
+  // Without a pick, the latest check-in of the day is open.
+  const selectedId =
+    checkins.find((c) => c.id === selected)?.id ?? checkins[checkins.length - 1]?.id ?? null;
+  const chosen = checkins.find((c) => c.id === selectedId) ?? null;
+  const shown = checkins.filter((c) => c.outcome !== "deferred");
+  const passed = shown.filter((c) => c.outcome === "pass").length;
   // Nobody reviews flags about themselves.
   const canReview = profile.id !== userId;
   // The server decides who is the person's manager or active delegate (TS-12, TS-14).
   const canDecide = useQuery(canDecideQuery(userId)).data === true;
   const canSchedule = profile.role === "owner" || profile.role === "admin" || canDecide;
   const isSelf = userId === profile.id;
+  const week = weekStartOf(date, startDay ?? 1);
 
   const go = (d: string) =>
     navigate({ to: "/team/$userId", params: { userId }, search: { date: d } });
   const shift = (days: number) => go(DateTime.fromISO(date).plus({ days }).toISODate() ?? date);
+  const dayName = (days: number, format: string) =>
+    DateTime.fromISO(date).plus({ days }).toFormat(format);
 
   if (person.isPending) return <p className="text-sm text-ink2">Loading…</p>;
   if (!person.data) {
@@ -185,140 +150,107 @@ export function DayPage() {
       </p>
     );
   }
+  const name = person.data.full_name;
   const status = person.data.presence?.status;
+  const projectName = (id: string | null) =>
+    id === null ? "Unassigned" : (projects?.find((p) => p.id === id)?.name ?? "Unknown project");
 
   return (
     <section className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-end gap-4">
-        <div>
-          {profile.role !== "employee" && (
-            <Link to={teamPath} className="text-[13px] text-acctext">
+      <div className="flex flex-col gap-3.5">
+        {profile.role !== "employee" && (
+          <nav aria-label="Breadcrumb" className="flex gap-1.5 text-[13px] text-ink3">
+            <Link to={teamPath} className="text-acctext">
               Live team
             </Link>
-          )}
-          <h1 className="mt-1 text-2xl font-semibold tracking-[-0.025em]">
-            {person.data.full_name}
-          </h1>
-          <p className="mt-1 text-[13.5px] text-ink2">
-            {DateTime.fromISO(date).toFormat("cccc d LLLL yyyy")} · their time zone {zone}
-          </p>
-        </div>
-        {status && isToday && <StatusChip status={status} />}
-        {unreviewed > 0 && <NeedsReviewBadge />}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button variant="secondary" className="h-10" onClick={() => shift(-1)}>
-            Previous day
-          </Button>
-          <input
-            type="date"
-            aria-label="Day"
-            value={date}
-            max={today}
-            onChange={(e) => e.target.value && go(e.target.value)}
-            className="h-10 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]"
-          />
-          <Button variant="secondary" className="h-10" disabled={isToday} onClick={() => shift(1)}>
-            Next day
-          </Button>
-          {canSchedule && (
+            <span aria-hidden>/</span>
+            <span aria-current="page" className="text-ink2">
+              {name}
+            </span>
+          </nav>
+        )}
+        <div className="flex flex-wrap items-center gap-3.5">
+          <span
+            aria-hidden
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-line bg-sunk text-sm font-semibold text-ink2"
+          >
+            {initials(name)}
+          </span>
+          <div>
+            <h1 className="text-[22px] font-semibold tracking-[-0.02em]">{name}</h1>
+            <p className="mt-0.5 text-[13.5px] text-ink2">
+              {dayName(0, "ccc d LLL")} · {shiftText(shifts.data ?? [], date, zone)} ·{" "}
+              {roleLabel[person.data.role] ?? person.data.role}
+            </p>
+          </div>
+          {status && isToday && <StatusChip status={status} />}
+          {unreviewed > 0 && <NeedsReviewBadge />}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               className="h-10"
-              onClick={() => scheduleRef.current?.showModal()}
+              aria-label={`Previous day, ${dayName(-1, "ccc d LLL")}`}
+              onClick={() => shift(-1)}
             >
-              Schedule
+              ‹ {dayName(-1, "ccc d")}
             </Button>
-          )}
+            <input
+              type="date"
+              aria-label="Day"
+              value={date}
+              max={today}
+              onChange={(e) => e.target.value && go(e.target.value)}
+              className="h-10 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]"
+            />
+            <Button
+              variant="secondary"
+              className="h-10"
+              disabled={isToday}
+              aria-label={`Next day, ${dayName(1, "ccc d LLL")}`}
+              onClick={() => shift(1)}
+            >
+              {dayName(1, "ccc d")} ›
+            </Button>
+            {canSchedule && (
+              <Button
+                variant="secondary"
+                className="h-10"
+                onClick={() => scheduleRef.current?.showModal()}
+              >
+                Schedule
+              </Button>
+            )}
+            <Link
+              to="/timesheets/$userId"
+              params={{ userId }}
+              search={{ week }}
+              className="inline-flex h-10 items-center rounded-[9px] bg-acc px-4 text-[13.5px] font-semibold text-accink"
+            >
+              Open timesheet
+            </Link>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-xl border border-line bg-panel p-5">
-        {activity.error ? (
+      <div className="flex flex-col gap-[18px] rounded-xl border border-line bg-panel p-5">
+        {segments.error || checkinsQ.error ? (
           <p role="alert" className="text-sm text-warnink">
-            Couldn't load the day: {activity.error.message}
+            Couldn't load the day: {(segments.error ?? checkinsQ.error)?.message}
           </p>
+        ) : segments.isPending ? (
+          <p className="text-sm text-ink2">Loading the day…</p>
         ) : (
           <>
-            <div className="relative pt-7 pb-6">
-              <div
-                role="img"
-                aria-label={
-                  segs.length
-                    ? `Status over the day: ${totals(segs)
-                        .map((t) => `${statusStyle[t.status].label} ${minutesText(t.minutes)}`)
-                        .join(", ")}`
-                    : "No activity recorded on this day"
-                }
-                className="relative h-8 overflow-hidden rounded-md bg-sunk"
-              >
-                {segs.map((s) => (
-                  <span
-                    key={`${s.status}-${s.start}`}
-                    title={`${statusStyle[s.status].label}, ${DateTime.fromMillis(s.start, { zone: viewer }).toFormat("HH:mm")}–${DateTime.fromMillis(s.end, { zone: viewer }).toFormat("HH:mm")}`}
-                    className="absolute inset-y-0"
-                    style={{
-                      left: `${s.left}%`,
-                      width: `${s.width}%`,
-                      background: statusStyle[s.status].color,
-                    }}
-                  />
-                ))}
-              </div>
-              {checkins.map((c) => {
-                const left = markerLeft(span, c);
-                if (left === null) return null;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    aria-pressed={selected === c.id}
-                    aria-label={markerLabel(c, viewer)}
-                    onClick={() => setSelected(selected === c.id ? null : c.id)}
-                    className="absolute top-0 grid h-6 w-6 -translate-x-1/2 place-items-center rounded-full"
-                    style={{ left: `${left}%` }}
-                  >
-                    <Marker outcome={c.outcome} />
-                  </button>
-                );
-              })}
-              {ticks(span, viewer).map((t) => (
-                <span
-                  key={t.label}
-                  aria-hidden
-                  className="absolute bottom-0 -translate-x-1/2 font-mono text-[11px] text-ink3"
-                  style={{ left: `${t.left}%` }}
-                >
-                  {t.label}
-                </span>
-              ))}
-            </div>
-
-            <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-ink2">
-              {totals(segs).map((t) => (
-                <li key={t.status} className="flex items-center gap-2">
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 rounded-sm"
-                    style={{ background: statusStyle[t.status].color }}
-                  />
-                  {statusStyle[t.status].label} · {minutesText(t.minutes)}
-                </li>
-              ))}
-              <li className="flex items-center gap-4 text-ink3">
-                <span className="flex items-center gap-1.5">
-                  <Marker outcome="pass" /> passed
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Marker outcome="miss" /> missed
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Marker outcome="failed" /> failed
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Marker outcome="deferred" /> deferred
-                </span>
-              </li>
-            </ul>
+            <StatsRow cards={cards} />
+            <DayTimeline
+              segs={bar}
+              span={span}
+              ticks={ticks(span, viewer)}
+              checkins={checkins}
+              selectedId={selectedId}
+              onSelect={setSelected}
+              viewer={viewer}
+            />
             {isToday && <p className="text-xs text-ink3">Updates every 30 seconds.</p>}
           </>
         )}
@@ -328,43 +260,63 @@ export function DayPage() {
         <NeedsReviewPanel flags={flags} userId={userId} date={date} canReview={canReview} />
       )}
 
-      {chosen && (
-        <CheckinDetails
-          key={chosen.id}
-          c={chosen}
-          zone={zone}
-          needsReview={flaggedCheckins.has(chosen.id)}
-        />
-      )}
-
-      <div className="overflow-hidden rounded-xl border border-line bg-panel">
-        <h2 className="border-b border-line px-5 py-3 text-sm font-semibold">Check-ins</h2>
-        {checkins.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-ink2">No check-ins on this day.</p>
-        ) : (
-          <ul>
-            {checkins.map((c) => (
-              <li key={c.id} className="border-b border-line last:border-0">
-                <button
-                  type="button"
-                  onClick={() => setSelected(c.id)}
-                  className="flex w-full items-center gap-3 px-5 py-3 text-left text-[13.5px]"
-                >
-                  <Marker outcome={c.outcome} />
-                  <Time iso={c.shownAt ?? c.scheduledAt} employeeZone={zone} />
-                  <span>{outcomeLabel[c.outcome]}</span>
-                  {c.outcome === "deferred" && (
-                    <span className="text-ink3">{deferralText(c.deferralReason)}</span>
-                  )}
-                  {c.outcome === "pass" && c.responseMs !== null && (
-                    <span className="text-ink3">in {Math.round(c.responseMs / 1000)} s</span>
-                  )}
-                  {flaggedCheckins.has(c.id) && <NeedsReviewBadge />}
-                </button>
-              </li>
-            ))}
-          </ul>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {chosen && (
+          <CheckinDetails
+            key={chosen.id}
+            c={chosen}
+            zone={zone}
+            needsReview={flaggedCheckins.has(chosen.id)}
+            projectName={projectName(chosen.projectId)}
+            responseWindowS={responseWindow}
+            userId={userId}
+            week={week}
+            isSelf={isSelf}
+            personName={name}
+          />
         )}
+        <section
+          aria-labelledby="checkins-title"
+          className={`overflow-hidden rounded-xl border border-line bg-panel ${chosen ? "" : "lg:col-span-2"}`}
+        >
+          <div className="flex items-center border-b border-line px-4 py-3.5">
+            <h2 id="checkins-title" className="text-sm font-semibold">
+              Check-ins
+            </h2>
+            <span className="ml-auto text-[12.5px] text-ink3">
+              {passed} of {shown.length} passed
+            </span>
+          </div>
+          {checkins.length === 0 ? (
+            <p className="px-4 py-4 text-sm text-ink2">No check-ins on this day.</p>
+          ) : (
+            <ul>
+              {checkins.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    aria-pressed={c.id === selectedId}
+                    onClick={() => setSelected(c.id)}
+                    className={`flex min-h-11 w-full items-center gap-2.5 border-b border-line px-4 py-2 text-left text-[13px] ${c.id === selectedId ? "bg-sunk shadow-[inset_2px_0_0_var(--ink)]" : ""}`}
+                  >
+                    <Marker outcome={c.outcome} size={9} />
+                    <span className="w-11">
+                      <Time iso={c.shownAt ?? c.scheduledAt} employeeZone={zone} />
+                    </span>
+                    <span className="font-medium">{outcomeWord[c.outcome]}</span>
+                    {flaggedCheckins.has(c.id) && <NeedsReviewBadge />}
+                    <span className="ml-auto text-[12.5px] text-ink3">
+                      {c.outcome === "deferred" && deferralText(c.deferralReason)}
+                      {c.outcome === "pass" &&
+                        c.responseMs !== null &&
+                        `in ${Math.round(c.responseMs / 1000)} s`}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
 
       <ManualEntries
@@ -384,137 +336,13 @@ export function DayPage() {
           className="m-auto w-[min(560px,calc(100vw-32px))] rounded-xl border border-line bg-panel p-6 text-ink backdrop:bg-black/30"
         >
           <h2 id="schedule-title" className="mb-4 text-lg font-semibold">
-            {person.data.full_name}'s schedule
+            {name}'s schedule
           </h2>
           <ShiftEditor userId={userId} timezone={zone} />
           <Button variant="secondary" className="mt-4" onClick={() => scheduleRef.current?.close()}>
             Close
           </Button>
         </dialog>
-      )}
-    </section>
-  );
-}
-
-function Marker({ outcome }: { outcome: Outcome }) {
-  if (outcome === "pass") {
-    return (
-      <span aria-hidden className="h-3 w-3 rounded-full" style={{ background: "var(--sactive)" }} />
-    );
-  }
-  if (outcome === "miss") {
-    return (
-      <span
-        aria-hidden
-        className="h-3 w-3 rounded-full bg-panel"
-        style={{ border: "2px solid var(--saway)" }}
-      />
-    );
-  }
-  if (outcome === "deferred") {
-    // A hollow diamond: not a result, only a check-in that waited for a call or share.
-    return (
-      <span
-        aria-hidden
-        className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-panel"
-        style={{ border: "2px solid var(--smeeting)" }}
-      />
-    );
-  }
-  return (
-    <span
-      aria-hidden
-      className="grid h-3 w-3 place-items-center text-[13px] leading-none font-bold"
-      style={{ color: "var(--stamper)" }}
-    >
-      ×
-    </span>
-  );
-}
-
-// CHK-23 quick picks; the employee adds them from the tray (#37).
-const reasonLabel: Record<string, string> = {
-  meeting: "Meeting",
-  phone_call: "Phone call",
-  break: "Break",
-  away: "Away from desk",
-  other: "Other",
-};
-
-function reasonText(c: CheckinRow): string {
-  const kind = c.missedReasonKind ? (reasonLabel[c.missedReasonKind] ?? c.missedReasonKind) : null;
-  if (kind && c.missedReason) return `${kind}: ${c.missedReason}`;
-  return kind ?? c.missedReason ?? "No reason given yet";
-}
-
-function CheckinDetails({
-  c,
-  zone,
-  needsReview,
-}: {
-  c: CheckinRow;
-  zone: string;
-  needsReview: boolean;
-}) {
-  const [showCaptures, setShowCaptures] = useState(false);
-  const rows: [string, React.ReactNode][] = [
-    [
-      c.outcome === "deferred" ? "Due" : "Scheduled",
-      <Time key="s" iso={c.scheduledAt} employeeZone={zone} />,
-    ],
-  ];
-  if (c.shownAt) rows.push(["Shown", <Time key="sh" iso={c.shownAt} employeeZone={zone} />]);
-  if (c.outcome === "deferred") {
-    rows.push(
-      ["Reason", deferralText(c.deferralReason)],
-      ["Shown", "Not shown. The check-in comes once it ends, and this is not counted as missed."],
-    );
-  } else if (c.outcome === "miss") {
-    rows.push(
-      [
-        "Idle when shown",
-        c.idleSAtShow === null ? "—" : minutesText(Math.round(c.idleSAtShow / 60)),
-      ],
-      ["Device", c.deviceState ?? "—"],
-      ["Reason", reasonText(c)],
-    );
-  } else {
-    if (c.respondedAt)
-      rows.push(["Answered", <Time key="r" iso={c.respondedAt} employeeZone={zone} />]);
-    if (c.responseMs !== null)
-      rows.push(["Response time", `${(c.responseMs / 1000).toFixed(1)} s`]);
-    rows.push(["Wrong clicks", String(c.wrongClicks)]);
-    if (c.outcome === "pass") rows.push(["Captures", c.captures ? `${c.captures} files` : "None"]);
-  }
-  return (
-    <section aria-labelledby="checkin-title" className="rounded-xl border border-line bg-panel p-5">
-      <h2 id="checkin-title" className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <Marker outcome={c.outcome} />
-        {outcomeLabel[c.outcome]}
-        {needsReview && <NeedsReviewBadge />}
-      </h2>
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-[13.5px]">
-        {rows.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="text-ink3">{k}</dt>
-            <dd>{v}</dd>
-          </div>
-        ))}
-      </dl>
-      {c.outcome === "pass" && c.captures > 0 && (
-        <div className="mt-4 flex flex-col gap-3">
-          {showCaptures ? (
-            <CaptureViewer checkinId={c.id} zone={zone} />
-          ) : (
-            <Button
-              variant="secondary"
-              className="self-start"
-              onClick={() => setShowCaptures(true)}
-            >
-              View captures
-            </Button>
-          )}
-        </div>
       )}
     </section>
   );

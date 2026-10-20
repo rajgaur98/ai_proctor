@@ -1,12 +1,11 @@
-// Layout for one employee's day (#33, DSH-03/05): which span the bar covers, the
-// coloured status segments on it, and where check-in markers sit. Pure, so it's
-// tested without a browser.
+// Layout for one employee's day (#33, #124, DSH-03/05): which span the bar covers,
+// the time_segments on it (by type, flagged ones hatched), and where check-in
+// markers sit. Pure, so it's tested without a browser.
 
 import type { Enums } from "@ai-proctor/contracts";
-import { type ShiftRule, windowsBetween } from "@ai-proctor/core";
+import { type SegmentType, type ShiftRule, windowsBetween } from "@ai-proctor/core";
 import { DateTime } from "luxon";
 
-export type Status = Enums<"presence_status">;
 export type Outcome = Enums<"checkin_outcome">;
 
 /** Why a due check-in was held back (CHK-03); the database stores it as text. */
@@ -16,10 +15,17 @@ export const deferralLabel: Record<string, string> = {
   presenting: "Presenting",
 };
 
-export interface Period {
-  status: Status;
-  start: string;
-  end: string | null;
+/** One time_segments row (#41), in UTC milliseconds. */
+export interface DaySegment {
+  type: SegmentType;
+  start: number;
+  end: number;
+  /** Highlighted for the manager (idle, unverified, away, offline, over the pause cap). */
+  flagged: boolean;
+  /** A manager excluded this flagged time (TS-10). */
+  excluded: boolean;
+  /** Counted as worked time (TS-01). */
+  counted: boolean;
 }
 
 export interface Checkin {
@@ -36,10 +42,7 @@ export interface Span {
   end: number;
 }
 
-export interface Segment {
-  status: Status;
-  start: number;
-  end: number;
+export interface BarSegment extends DaySegment {
   /** Position on the bar, 0–100. */
   left: number;
   width: number;
@@ -53,24 +56,20 @@ export function localDay(isoDate: string, zone: string): Span {
 
 /**
  * The bar's span: the shifts that start or run on this day, widened to cover any
- * activity or check-in; without either, 09:00–17:00 local. Rounded out to the hour.
+ * segment or check-in; without either, 09:00–17:00 local. Rounded out to the hour.
  */
 export function barSpan(
   day: Span,
   zone: string,
   shifts: ShiftRule[],
-  periods: Period[],
+  segs: DaySegment[],
   checkins: Checkin[],
-  now: number,
 ): Span {
   const times: number[] = [];
   for (const w of windowsBetween(shifts, new Date(day.start), new Date(day.end))) {
     times.push(w.start.getTime(), w.end.getTime());
   }
-  for (const p of periods) {
-    if (p.status === "off_shift") continue;
-    times.push(Date.parse(p.start), p.end ? Date.parse(p.end) : Math.min(now, day.end));
-  }
+  for (const s of segs) times.push(s.start, s.end);
   for (const c of checkins) times.push(Date.parse(c.scheduledAt));
   const inDay = times.map((t) => Math.min(Math.max(t, day.start), day.end));
   if (inDay.length === 0) {
@@ -83,16 +82,11 @@ export function barSpan(
   return end > start ? { start, end } : { start, end: start + hour };
 }
 
-/** Status periods clipped to the span; open periods run to `now`. Off shift is left blank. */
-export function segments(span: Span, periods: Period[], now: number): Segment[] {
+/** Segments clipped to the span, with their place on the bar. Unclocked time is left blank. */
+export function barSegments(span: Span, segs: DaySegment[]): BarSegment[] {
   const width = span.end - span.start;
-  return periods
-    .filter((p) => p.status !== "off_shift")
-    .map((p) => {
-      const start = Math.max(Date.parse(p.start), span.start);
-      const end = Math.min(p.end ? Date.parse(p.end) : now, span.end);
-      return { status: p.status, start, end };
-    })
+  return segs
+    .map((s) => ({ ...s, start: Math.max(s.start, span.start), end: Math.min(s.end, span.end) }))
     .filter((s) => s.end > s.start)
     .map((s) => ({
       ...s,
@@ -109,15 +103,6 @@ export function markerLeft(span: Span, c: Checkin): number | null {
   return ((t - span.start) / (span.end - span.start)) * 100;
 }
 
-/** Minutes per status within the span, largest first. */
-export function totals(segs: Segment[]): { status: Status; minutes: number }[] {
-  const by = new Map<Status, number>();
-  for (const s of segs) by.set(s.status, (by.get(s.status) ?? 0) + (s.end - s.start) / 60_000);
-  return [...by.entries()]
-    .map(([status, minutes]) => ({ status, minutes: Math.round(minutes) }))
-    .sort((a, b) => b.minutes - a.minutes);
-}
-
 /** Hour ticks across the span, in `zone`. */
 export function ticks(span: Span, zone: string): { left: number; label: string }[] {
   const out: { left: number; label: string }[] = [];
@@ -128,10 +113,29 @@ export function ticks(span: Span, zone: string): { left: number; label: string }
     if (t.toMillis() >= span.start && t.hour % step === 0) {
       out.push({
         left: ((t.toMillis() - span.start) / (span.end - span.start)) * 100,
-        label: t.toFormat("HH:mm"),
+        // The day's end is midnight again; "00:00" twice on a full-day bar would confuse.
+        label: t.hour === 0 && t.toMillis() > span.start ? "24:00" : t.toFormat("HH:mm"),
       });
     }
     t = t.plus({ hours: 1 });
   }
   return out;
+}
+
+/** "Shift 09:00–18:00 (IST)" for the shifts that start on this day, or "No shift". */
+export function shiftText(shifts: ShiftRule[], isoDate: string, zone: string): string {
+  const day = DateTime.fromISO(isoDate, { zone });
+  const today = shifts.filter((s) => s.days.includes(day.weekday));
+  if (today.length === 0) return "No shift";
+  const times = today.map((s) => `${s.start}–${s.end}`).join(", ");
+  return `${today.length === 1 ? "Shift" : "Shifts"} ${times} (${day.toFormat("ZZZZ")})`;
+}
+
+/** Seconds per segment type across the segments, largest first. */
+export function typeTotals(segs: DaySegment[]): { type: SegmentType; seconds: number }[] {
+  const by = new Map<SegmentType, number>();
+  for (const s of segs) by.set(s.type, (by.get(s.type) ?? 0) + (s.end - s.start) / 1000);
+  return [...by.entries()]
+    .map(([type, seconds]) => ({ type, seconds }))
+    .sort((a, b) => b.seconds - a.seconds);
 }

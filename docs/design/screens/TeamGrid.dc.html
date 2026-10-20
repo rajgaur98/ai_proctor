@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:100%;background:var(--bg);color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+  <dc-import name="WebNav" active="team" role="manager" compact="{{ mobile }}" hint-size="100%,56px"></dc-import>
+
+  <sc-if value="{{ desktop }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:28px 32px 40px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:24px;font-weight:600;letter-spacing:-0.025em">Live team</div>
+          <div style="font-size:13.5px;color:var(--ink2);margin-top:4px">Design &amp; Engineering · Tue 7 Oct · shift 09:00–18:00 IST</div>
+        </div>
+        <span style="margin-left:auto;font-size:12.5px;color:var(--ink3);font-family:'Geist Mono',ui-monospace,monospace">Updated 14:31 IST</span>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px">
+          <sc-for list="{{ summary }}" as="s" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:4px;padding-left:14px;border-left:1px solid var(--line)">
+              <span style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink2)"><span style="{{ s.dot }}"></span>{{ s.label }}</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:30px;font-weight:500;letter-spacing:-0.04em;line-height:1.1">{{ s.n }}</span>
+              <span style="font-size:12px;color:var(--ink3);min-height:16px">{{ s.note }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ hasPeople }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px">
+            <sc-for list="{{ bar }}" as="b" hint-placeholder-count="6"><span style="{{ b }}"></span></sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="height:40px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;background:var(--panel);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:13.5px;cursor:pointer"><span style="color:var(--ink3)">Status</span><span style="font-weight:500">All</span><span style="width:6px;height:6px;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);transform:rotate(45deg) translateY(-2px);margin-left:4px"></span></div>
+        <div style="height:40px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;background:var(--panel);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:13.5px;cursor:pointer"><span style="color:var(--ink3)">Team</span><span style="font-weight:500">Design &amp; Engineering</span><span style="width:6px;height:6px;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);transform:rotate(45deg) translateY(-2px);margin-left:4px"></span></div>
+        <div style="margin-left:auto;height:40px;width:280px;max-width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;background:var(--panel);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:13.5px;color:var(--ink3)"><span style="width:11px;height:11px;border:1.5px solid var(--ink3);border-radius:50%;box-sizing:border-box;flex:none"></span>Search people</div>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <sc-if value="{{ hasPeople }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:minmax(200px,1.5fr) minmax(170px,1.2fr) minmax(140px,1fr) minmax(100px,0.7fr) minmax(130px,1fr) 88px;gap:16px;padding:0 20px;height:40px;align-items:center;font-size:12px;font-weight:500;color:var(--ink3);border-bottom:1px solid var(--line);background:var(--sunk)">
+            <span>Person</span><span>Status</span><span>Last check-in</span><span>Today</span><span>Project</span><span></span>
+          </div>
+          <sc-for list="{{ people }}" as="p" hint-placeholder-count="8">
+            <div style="display:grid;grid-template-columns:minmax(200px,1.5fr) minmax(170px,1.2fr) minmax(140px,1fr) minmax(100px,0.7fr) minmax(130px,1fr) 88px;gap:16px;padding:0 20px;min-height:60px;align-items:center;font-size:13.5px;border-bottom:1px solid var(--line)" style-hover="background:var(--sunk)">
+              <div style="display:flex;align-items:center;gap:11px;min-width:0">
+                <span style="width:34px;height:34px;flex:none;border-radius:50%;background:var(--sunk);border:1px solid var(--line);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--ink2)">{{ p.ini }}</span>
+                <div style="min-width:0"><div style="font-weight:500">{{ p.name }}</div><div style="font-size:12px;color:var(--ink3);margin-top:1px">{{ p.role }}</div></div>
+              </div>
+              <div><span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px 0 10px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;white-space:nowrap"><span style="{{ p.dot }}"></span><span style="font-weight:500">{{ p.label }}</span><span style="color:var(--ink3)">· {{ p.since }}</span></span></div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px">{{ p.last }}</span><span style="{{ p.resStyle }}">{{ p.res }}</span></div>
+              <div style="font-variant-numeric:tabular-nums;color:var(--ink2)">{{ p.rate }}</div>
+              <div style="color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.project }}</div>
+              <a style="justify-self:end;color:var(--acctext);font-weight:500;font-size:13px;cursor:pointer;padding:12px 0;white-space:nowrap">View day</a>
+            </div>
+          </sc-for>
+          <div style="padding:12px 20px;font-size:12px;color:var(--ink3)">“Today” is check-ins answered out of check-ins shown. Captures you open are logged and visible to the employee.</div>
+        </sc-if>
+        <sc-if value="{{ empty }}">
+          <div style="padding:72px 24px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+            <span style="width:40px;height:40px;border-radius:50%;border:1.5px dashed var(--line2);box-sizing:border-box;margin-bottom:6px"></span>
+            <div style="font-size:16px;font-weight:600">No one is on shift right now.</div>
+            <div style="font-size:13.5px;line-height:1.5;color:var(--ink2);max-width:380px">People appear here as soon as they clock in. The next shift starts Wed 8 Oct at 09:00 IST.</div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ mobile }}">
+    <div style="padding:20px 16px 28px;display:flex;flex-direction:column;gap:16px">
+      <div>
+        <div style="font-size:21px;font-weight:600;letter-spacing:-0.02em">Live team</div>
+        <div style="font-size:13px;color:var(--ink2);margin-top:3px">Design &amp; Engineering · 14:31 IST</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <sc-for list="{{ summaryM }}" as="s" hint-placeholder-count="6">
+          <div style="background:var(--panel);padding:10px 12px;display:flex;flex-direction:column;gap:2px">
+            <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2)"><span style="{{ s.dot }}"></span>{{ s.label }}</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:22px;font-weight:500;letter-spacing:-0.03em">{{ s.n }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;height:44px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;background:var(--panel);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:13.5px;color:var(--ink3)"><span style="width:11px;height:11px;border:1.5px solid var(--ink3);border-radius:50%;box-sizing:border-box"></span>Search</div>
+        <div style="height:44px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;background:var(--panel);display:flex;align-items:center;padding:0 14px;font-size:13.5px;font-weight:500">Filters</div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <sc-for list="{{ people }}" as="p" hint-placeholder-count="8">
+          <div style="padding:12px 14px;display:flex;gap:11px;border-bottom:1px solid var(--line)">
+            <span style="width:34px;height:34px;flex:none;border-radius:50%;background:var(--sunk);border:1px solid var(--line);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--ink2)">{{ p.ini }}</span>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:500;font-size:14px">{{ p.name }}</span><span style="margin-left:auto;font-size:12px;color:var(--ink3)">{{ p.project }}</span></div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px">
+                <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 8px;border:1px solid var(--line);border-radius:999px"><span style="{{ p.dot }}"></span><span style="font-weight:500">{{ p.label }}</span><span style="color:var(--ink3)">· {{ p.since }}</span></span>
+                <span style="color:var(--ink2)"><span style="font-family:'Geist Mono',ui-monospace,monospace">{{ p.last }}</span> {{ p.res }} · {{ p.rate }}</span>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;full&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;full&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;desktop&quot;,&quot;mobile&quot;],&quot;default&quot;:&quot;desktop&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const S = { active: ['Active', 'var(--sactive)', 'c'], idle: ['Idle', 'var(--sidle)', 'c'], away: ['Away', 'var(--saway)', 'c'], locked: ['Away · locked', 'var(--slocked)', 'c'], break: ['On break', 'var(--sbreak)', 'c'], paused: ['Paused', 'var(--spaused)', 'sq'], meeting: ['In meeting', 'var(--smeeting)', 'c'], offline: ['Offline', 'var(--soffline)', 'ring'], tamper: ['Capture blocked', 'var(--stamper)', 'dia'], off: ['Off shift', 'var(--soff)', 'dash'] };
+const dot = (k, size = 8) => { const [, c, sh] = S[k]; return { width: size, height: size, flex: 'none', boxSizing: 'border-box', borderRadius: sh === 'sq' ? 2 : sh === 'dia' ? 1 : '50%', background: sh === 'ring' || sh === 'dash' ? 'transparent' : c, border: sh === 'ring' ? `2px solid ${c}` : sh === 'dash' ? `1.5px dashed ${c}` : 'none', transform: sh === 'dia' ? 'rotate(45deg) scale(0.85)' : 'none' }; };
+const PEOPLE = [
+  ['Priya Sharma', 'PS', 'Product designer', 'active', '42 min', '14:21', 'passed', '9 of 10', 'Acme Redesign'],
+  ['Daniel Okafor', 'DO', 'Backend engineer', 'active', '1 h 05 min', '14:12', 'passed', '10 of 10', 'Northwind API'],
+  ['Meera Iyer', 'MI', 'Engineering lead', 'meeting', '25 min', '13:58', 'passed', '8 of 8', 'Internal'],
+  ['Lucas Martin', 'LM', 'Frontend engineer', 'away', '28 min', '14:03', 'missed', '4 of 5', 'Northwind API'],
+  ['Aisha Khan', 'AK', 'UX writer', 'break', '18 min', '13:47', 'passed', '8 of 8', 'Acme Redesign'],
+  ['Rohan Gupta', 'RG', 'Mobile engineer', 'active', '2 h 10 min', '14:30', 'passed', '10 of 10', 'Ledger Mobile'],
+  ['Emily Chen', 'EC', 'QA engineer', 'offline', '6 min', '13:40', 'passed', '6 of 7', 'Acme Redesign'],
+  ['Arjun Nair', 'AN', 'Data engineer', 'paused', '4 min', '14:09', 'passed', '9 of 9', 'Ledger Mobile']
+];
+class Component extends DCLogic {
+  renderVals() {
+    const empty = (this.props.variant ?? 'full') === 'empty';
+    const mobile = (this.props.layout ?? 'desktop') === 'mobile';
+    const people = empty ? [] : PEOPLE.map(([name, ini, role, st, since, last, res, rate, project]) => ({
+      name, ini, role, since, last, res, rate, project, label: S[st][0], dot: dot(st),
+      resStyle: res === 'missed' ? { fontSize: 12, fontWeight: 600, color: 'var(--ink)', padding: '1px 7px', borderRadius: 999, border: '1px dashed var(--ink3)' } : { fontSize: 12.5, color: 'var(--ink3)' }
+    }));
+    const onShift = { width: 8, height: 8, borderRadius: '50%', background: 'var(--ink)', flex: 'none' };
+    const summary = [
+      { label: 'On shift', n: empty ? 0 : 8, note: empty ? '' : 'of 9 scheduled', dot: onShift },
+      { label: 'Active', n: empty ? 0 : 5, note: empty ? '' : 'incl. 1 in meeting, 1 paused', dot: dot('active') },
+      { label: 'Away', n: empty ? 0 : 1, note: empty ? '' : '1 missed check-in', dot: dot('away') },
+      { label: 'On break', n: empty ? 0 : 1, note: '', dot: dot('break') },
+      { label: 'Offline', n: empty ? 0 : 1, note: empty ? '' : 'since 14:25', dot: dot('offline') }
+    ];
+    const summaryM = [summary[0], summary[1], { label: 'In meeting', n: empty ? 0 : 1, dot: dot('meeting') }, summary[2], summary[3], summary[4]];
+    const seg = (c, n, hatch) => ({ flex: n, background: c, minWidth: 4 });
+    const bar = [seg('var(--sactive)', 3), seg('var(--smeeting)', 1), seg('var(--spaused)', 1), seg('var(--saway)', 1), seg('var(--sbreak)', 1), { flex: 1, boxSizing: 'border-box', border: '2px solid var(--soffline)', borderRadius: 4 }];
+    return { people, summary, summaryM, bar, hasPeople: !empty, empty, mobile, desktop: !mobile };
+  }
+}
+</script>
+</body>
+</html>
