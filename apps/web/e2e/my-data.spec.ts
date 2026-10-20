@@ -62,6 +62,8 @@ async function seedErinDay() {
       contentType: "image/webp",
     });
   expect(error).toBeNull();
+  // A few seconds clocked in, so the day has worked time (a session under a second has none).
+  await new Promise((resolve) => setTimeout(resolve, 3000));
   await erin("clock_out", { reason: "manual" });
 
   const manager = await clientFor("manager@acme.test");
