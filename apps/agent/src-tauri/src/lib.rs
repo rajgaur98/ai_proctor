@@ -19,6 +19,7 @@ use agent_core::contracts::{
 use agent_core::keystore::KeyStore;
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
 use agent_core::platform::{CaptureError, Platform, SessionState};
+use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{
     Decision, FileScheduleStore, Outcome, Random, SchedulePolicy, Scheduler, ThreadRandom,
 };
@@ -106,6 +107,10 @@ pub struct AgentState {
     permission_watch: Mutex<PermissionWatch>,
     /// Activity sampling (#25); org settings arrive with the policy work.
     activity: Mutex<Sampler>,
+    /// Idle, lock, sleep and call changes sent as events (STS-01).
+    presence: Mutex<PresenceTracker>,
+    /// The sync thread, woken early when there's something to send right away.
+    sync_thread: Mutex<Option<std::thread::Thread>>,
     random: Arc<dyn Random>,
     /// `None` when this build has no server configured (see `account::api_config`).
     account: Option<Arc<Account>>,
@@ -134,6 +139,8 @@ impl AgentState {
             capture_policy: CapturePolicy::default(),
             permission_watch: Mutex::new(PermissionWatch::default()),
             activity: Mutex::new(Sampler::new(ActivityPolicy::default())),
+            presence: Mutex::new(PresenceTracker::default()),
+            sync_thread: Mutex::new(None),
             random: Arc::new(ThreadRandom),
             account,
             last_redirect: Mutex::new(None),
@@ -338,6 +345,46 @@ impl AgentState {
         }
     }
 
+    /// STS-01: while working, queues an event for each idle, lock, sleep or call
+    /// change and wakes the sync loop so it goes out now, not on the next tick.
+    /// Nothing on a break, a pause or off shift.
+    fn presence_tick(&self) {
+        let working = self.session.lock().unwrap().shift() == ShiftState::Working;
+        let events = {
+            let mut presence = self.presence.lock().unwrap();
+            if !working {
+                presence.reset();
+                return;
+            }
+            presence.observe(self.platform.as_ref(), self.clock.now())
+        };
+        if events.is_empty() {
+            return;
+        }
+        let Some(outbox) = &self.outbox else {
+            return;
+        };
+        for e in events {
+            tracing::info!(event = e.event_type, "state change");
+            if let Err(error) = outbox.append(
+                e.event_type,
+                e.at,
+                self.clock.mono_ms(),
+                e.payload,
+                self.clock.now(),
+            ) {
+                tracing::error!(%error, "state change not queued");
+            }
+        }
+        self.nudge_sync();
+    }
+
+    fn nudge_sync(&self) {
+        if let Some(thread) = self.sync_thread.lock().unwrap().as_ref() {
+            thread.unpark();
+        }
+    }
+
     fn challenge(&self, card: &Card) -> CardChallenge {
         CardChallenge {
             card_id: card.id.to_string(),
@@ -512,6 +559,16 @@ impl AgentState {
             "session policy updated"
         );
         self.session.lock().unwrap().set_policy(policy);
+        // Same setting the server uses for Idle (minutes; default 10).
+        if let Some(min) = config.policy["idle_threshold_min"]
+            .as_i64()
+            .filter(|m| (1..=240).contains(m))
+        {
+            self.presence
+                .lock()
+                .unwrap()
+                .set_idle_threshold(chrono::Duration::minutes(min));
+        }
     }
 
     /// Runs a transition; failures are logged and shown as a notification.
@@ -823,7 +880,9 @@ fn spawn_card_runner(app: AppHandle) {
 fn spawn_activity(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(activity::SAMPLE_EVERY);
-        app.state::<AgentState>().activity_tick();
+        let state = app.state::<AgentState>();
+        state.presence_tick();
+        state.activity_tick();
     });
 }
 
@@ -834,6 +893,7 @@ fn spawn_sync(app: AppHandle) {
         let mut backoff = Backoff::default();
         let mut last_heartbeat: Option<Instant> = None;
         let mut last_prune: Option<Instant> = None;
+        *app.state::<AgentState>().sync_thread.lock().unwrap() = Some(std::thread::current());
         loop {
             let state = app.state::<AgentState>();
             let due = last_heartbeat.is_none_or(|t| t.elapsed() >= HEARTBEAT_EVERY);
@@ -864,7 +924,8 @@ fn spawn_sync(app: AppHandle) {
                 }
                 last_prune = Some(Instant::now());
             }
-            std::thread::sleep(wait);
+            // A state change (nudge_sync) wakes it early.
+            std::thread::park_timeout(wait);
         }
     });
 }
@@ -1294,6 +1355,49 @@ mod tests {
             ShiftState::Working,
             "auto clock-in (SHF-03)"
         );
+    }
+
+    #[test]
+    fn state_changes_are_queued_while_working_only() {
+        let w = working();
+        w.platform.update(|s| s.session = SessionState::Locked);
+        w.state.presence_tick();
+        assert_eq!(w.events("lock").len(), 1, "locked while working: sent");
+        w.state.presence_tick();
+        assert_eq!(w.events("lock").len(), 1, "only on change");
+
+        w.platform.update(|s| s.session = SessionState::Active);
+        w.state.act("start a break", |s| s.start_break(None));
+        w.platform.update(|s| s.call.mic = true);
+        w.state.presence_tick();
+        assert!(
+            w.events("unlock").is_empty() && w.events("call_start").is_empty(),
+            "nothing on a break"
+        );
+
+        w.state.act("end the break", |s| s.end_break());
+        w.state.presence_tick();
+        assert_eq!(
+            w.events("call_start").len(),
+            1,
+            "reported fresh after the break"
+        );
+    }
+
+    #[test]
+    fn the_org_idle_threshold_comes_with_the_config() {
+        let w = working();
+        let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
+            "policy": { "idle_threshold_min": 2 },
+            "policy_version": 2,
+            "timezone": "UTC",
+            "shifts": []
+        }))
+        .unwrap();
+        w.state.apply_config(&config);
+        w.platform.update(|s| s.idle_seconds = 130);
+        w.state.presence_tick();
+        assert_eq!(w.events("idle_start").len(), 1);
     }
 
     #[test]
