@@ -11,11 +11,14 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use agent_core::contracts::{PermissionState, Permissions};
+use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
+    SessionState,
 };
+use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use block2::RcBlock;
+use chrono::{DateTime, Utc};
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
@@ -126,19 +129,28 @@ struct Observer(#[allow(dead_code)] Retained<ProtocolObject<dyn NSObjectProtocol
 // The tokens are only held, never messaged, after registration.
 unsafe impl Send for Observer {}
 
-/// Asks macOS for Screen Recording, Camera and Accessibility, showing the system
-/// prompts. Only for trying the agent before guided onboarding (#59) exists: the
-/// app calls it in debug builds with AI_PROCTOR_DEV_REQUEST_PERMISSIONS=1.
-pub fn request_permissions() {
+/// Shows the Screen Recording prompt (first time only; afterwards macOS just returns
+/// the current answer and the person has to use System Settings).
+fn request_screen() {
     let screen = CGRequestScreenCaptureAccess();
     tracing::info!(screen, "asked for Screen Recording");
+}
+
+/// Shows the Camera prompt while the answer is still undecided. The reply arrives
+/// later; `camera_permission()` reads it.
+fn request_camera() {
     if let Some(video) = unsafe { AVMediaTypeVideo } {
         let block = RcBlock::new(|granted: objc2::runtime::Bool| {
             tracing::info!(granted = granted.as_bool(), "asked for Camera");
         });
         unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(video, &block) };
     }
-    // Opens the Accessibility pane with the app listed (browser domains, #25).
+}
+
+/// Asks macOS for Accessibility, opening its pane with the app listed (browser
+/// domains, #25). Not part of the onboarding flow; debug builds call it with
+/// AI_PROCTOR_DEV_REQUEST_PERMISSIONS=1.
+pub fn request_accessibility() {
     let key: &NSString =
         unsafe { &*(kAXTrustedCheckOptionPrompt as *const CFString as *const NSString) };
     let yes = NSNumber::new_bool(true);
@@ -296,12 +308,39 @@ impl Platform for MacPlatform {
         }
     }
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        false
+    fn request_permission(&self, kind: PermissionKind) {
+        match kind {
+            PermissionKind::Screen => request_screen(),
+            PermissionKind::Camera => request_camera(),
+        }
+    }
+
+    // TODO(ANT-03, P1): best-effort detection of synthetic events on macOS
+    // (event-source heuristics); flag only. Until then nothing is guarded.
+    fn start_input_guard(&self, _area: ScreenRect) {}
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        InjectedInput::default()
     }
 
     fn notify(&self, title: &str, body: &str) {
         crate::macos_notify::notify(title, body);
+    }
+
+    fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError> {
+        crate::launchd::install(spec)
+    }
+
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError> {
+        crate::launchd::uninstall()
+    }
+
+    fn watchdog_installed(&self) -> bool {
+        crate::launchd::installed()
+    }
+
+    fn boot_time(&self) -> Option<DateTime<Utc>> {
+        crate::launchd::boot_time()
     }
 }
 

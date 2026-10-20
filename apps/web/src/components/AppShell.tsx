@@ -3,6 +3,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { AlertsMenu } from "../features/alerts/AlertsMenu";
+import { NotificationsMenu } from "../features/notifications/NotificationsMenu";
 import { initials, navFor } from "../lib/nav";
 import type { Profile } from "../lib/session";
 import { supabase } from "../lib/supabase";
@@ -46,6 +47,7 @@ export function AppShell({ profile, children }: { profile: Profile; children: Re
         </nav>
         <span className="flex-1" />
         <span className="hidden text-[13px] text-ink3 md:inline">{profile.orgName}</span>
+        <NotificationsMenu userId={profile.id} />
         {profile.role !== "employee" && <AlertsMenu userId={profile.id} />}
         <details className="relative">
           <summary
@@ -56,6 +58,11 @@ export function AppShell({ profile, children }: { profile: Profile; children: Re
           </summary>
           <div className="absolute right-0 z-10 mt-2 flex w-56 flex-col rounded-xl border border-line bg-panel p-1 shadow-lg">
             <span className="px-3 py-2 text-[12.5px] text-ink3">{profile.fullName}</span>
+            {profile.role !== "employee" && (
+              <Link to="/me" className="rounded-lg px-3 py-2 text-sm hover:bg-sunk">
+                My data
+              </Link>
+            )}
             <Link to="/mfa" className="rounded-lg px-3 py-2 text-sm hover:bg-sunk">
               Two-factor authentication
             </Link>

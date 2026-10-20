@@ -7,7 +7,7 @@ use std::sync::Arc;
 use agent_core::contracts::Permissions;
 use agent_core::keystore::{KeyStore, KeyStoreError};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, SessionState,
 };
 
 /// Outbox, session, schedule and install id go here instead of the app data dir.
@@ -75,11 +75,32 @@ impl Platform for ActiveSession {
     fn permissions(&self) -> Permissions {
         self.0.permissions()
     }
-    fn is_injected(&self, click: &Click) -> bool {
-        self.0.is_injected(click)
+    fn request_permission(&self, kind: agent_core::contracts::PermissionKind) {
+        self.0.request_permission(kind)
+    }
+    fn start_input_guard(&self, area: ScreenRect) {
+        self.0.start_input_guard(area)
+    }
+    fn stop_input_guard(&self) -> InjectedInput {
+        self.0.stop_input_guard()
     }
     fn notify(&self, title: &str, body: &str) {
         self.0.notify(title, body)
+    }
+    fn install_watchdog(
+        &self,
+        spec: &agent_core::watchdog::WatchdogSpec,
+    ) -> Result<agent_core::watchdog::WatchdogState, agent_core::watchdog::WatchdogError> {
+        self.0.install_watchdog(spec)
+    }
+    fn uninstall_watchdog(&self) -> Result<(), agent_core::watchdog::WatchdogError> {
+        self.0.uninstall_watchdog()
+    }
+    fn watchdog_installed(&self) -> bool {
+        self.0.watchdog_installed()
+    }
+    fn boot_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.0.boot_time()
     }
 }
 

@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(24);
+select plan(28);
 
 -- Org 1 (seed): Ada owner → Max manager → Erin, Lucas employees.
 -- Added here: Ann (admin), Mia (manager under Max) → Zoe (employee under Mia),
@@ -112,10 +112,21 @@ select ok(not public.can_approve_for(:max), 'nobody approves their own timesheet
 
 select pg_temp.act_as(:ann);
 select ok(public.can_view_user(:erin), 'an admin can view');
-select ok(not public.can_approve_for(:erin), 'but admins never approve');
+select ok(not public.can_approve_for(:erin), 'but an admin who is not the manager cannot approve');
 
+-- Direct manager of any role decides (#148): this used to exclude owners and admins.
 select pg_temp.act_as(:ada);
-select ok(not public.can_approve_for(:max), 'the owner never approves, even as direct manager');
+select ok(public.can_approve_for(:max), 'the owner can approve their direct report');
+select ok(not public.can_approve_for(:erin), 'but not a report of someone else');
+select ok(not public.can_approve_for(:ada), 'nor themselves');
+
+select pg_temp.act_as_postgres();
+update public.users set manager_id = :ann where id = :lucas;
+select pg_temp.act_as(:ann);
+select ok(public.can_approve_for(:lucas), 'an admin can approve their direct report');
+select ok(not public.can_approve_for(:ann), 'but not themselves');
+select pg_temp.act_as_postgres();
+update public.users set manager_id = :max where id = :lucas;
 
 -- Writes and stale tokens --------------------------------------------------------------
 
@@ -140,7 +151,7 @@ select pg_temp.act_as_postgres();
 select is_empty(
   $$ select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'public' and c.relkind in ('r', 'p')
-       and c.relname not in ('device_sessions', 'agent_event_rejections', 'email_outbox')
+       and c.relname not in ('device_sessions', 'agent_event_rejections', 'email_outbox', 'dirty_days', 'reminders_sent', 'retention_runs')
        and not exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) $$,
   'every public table except the internal ones (no API access at all) has a read policy'
 );

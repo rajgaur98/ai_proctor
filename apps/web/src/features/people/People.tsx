@@ -6,9 +6,17 @@ import { useRouteContext } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { initials } from "../../lib/nav";
+import { ManagerDelegation } from "../delegation/ManagerDelegation";
 import { InviteDialog } from "./InviteDialog";
 import { MemberFields } from "./MemberFields";
-import { type Member, managersOf, membersQuery, setActive, updateMember } from "./members";
+import {
+  type Member,
+  managersOf,
+  membersQuery,
+  setActive,
+  setApprovalRequired,
+  updateMember,
+} from "./members";
 import { ShiftEditor } from "./ShiftEditor";
 
 export const roleLabel: Record<Enums<"user_role">, string> = {
@@ -23,6 +31,7 @@ export function People() {
   const { data, error, isPending } = useQuery(membersQuery);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Member | null>(null);
+  const [delegating, setDelegating] = useState<Member | null>(null);
   const inviteRef = useRef<HTMLDialogElement>(null);
   const members = data ?? [];
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
@@ -105,14 +114,26 @@ export function People() {
                     {m.state ? ` · ${m.state}` : ""}
                   </td>
                   <td className="md:pr-5 md:text-right">
-                    <Button
-                      variant="secondary"
-                      className="h-9"
-                      aria-label={`Edit ${m.fullName}`}
-                      onClick={() => setEditing(m)}
-                    >
-                      Edit
-                    </Button>
+                    <span className="flex flex-wrap gap-2 md:justify-end">
+                      {m.active && m.role !== "employee" && (
+                        <Button
+                          variant="secondary"
+                          className="h-9"
+                          aria-label={`Delegation for ${m.fullName}`}
+                          onClick={() => setDelegating(m)}
+                        >
+                          Delegation
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        className="h-9"
+                        aria-label={`Edit ${m.fullName}`}
+                        onClick={() => setEditing(m)}
+                      >
+                        Edit
+                      </Button>
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -120,11 +141,12 @@ export function People() {
           </table>
         )}
         <p className="px-5 py-3 text-xs text-ink3">
-          Role, manager and location changes are recorded in the audit log.
+          Role, manager, location, approval and delegation changes are recorded in the audit log.
         </p>
       </div>
 
       <InviteDialog dialogRef={inviteRef} members={members} />
+      {delegating && <ManagerDelegation manager={delegating} onClose={() => setDelegating(null)} />}
       {editing && (
         <EditDialog
           member={editing}
@@ -152,9 +174,19 @@ function EditDialog({
   const [draft, setDraft] = useState(member);
   const done = () => {
     queryClient.invalidateQueries({ queryKey: membersQuery.queryKey });
+    // Deactivating or demoting someone ends their delegations.
+    queryClient.invalidateQueries({ queryKey: ["delegations"] });
     onClose();
   };
-  const save = useMutation({ mutationFn: () => updateMember(draft), onSuccess: done });
+  const save = useMutation({
+    mutationFn: async () => {
+      await updateMember(draft);
+      if (draft.approvalRequired !== member.approvalRequired) {
+        await setApprovalRequired(member.id, draft.approvalRequired);
+      }
+    },
+    onSuccess: done,
+  });
   const toggle = useMutation({
     mutationFn: () => setActive(member.id, !member.active),
     onSuccess: done,
@@ -187,6 +219,23 @@ function EditDialog({
           managers={managersOf(members).filter((m) => m.id !== member.id)}
           roleLocked={isSelf || member.role === "owner"}
         />
+        {member.role !== "owner" && (
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={!draft.approvalRequired}
+              onChange={(e) => setDraft({ ...draft, approvalRequired: !e.target.checked })}
+              className="mt-0.5 h-5 w-5 flex-none accent-acc"
+            />
+            <span>
+              <span className="font-medium">Approval not required</span>
+              <span className="block text-[12.5px] text-ink2">
+                Their weekly timesheet is approved as soon as they submit it. The change is recorded
+                in the audit log.
+              </span>
+            </span>
+          </label>
+        )}
         {error && (
           <p role="alert" className="text-sm text-warnink">
             {error.message}

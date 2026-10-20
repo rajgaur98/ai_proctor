@@ -13,6 +13,13 @@ const nonNegativeInt = z.int().min(0);
 /** Why a due check-in was held back: a call, a screen share or a presentation (CHK-03). */
 export const DeferralReason = z.enum(["call", "screen_share", "presenting"]);
 
+/**
+ * What is making the device count as in a call (STS rule 8): the camera or mic in use
+ * by another app, a screen share, or a full-screen presentation. Raw state only; the
+ * server decides In meeting while any source is on.
+ */
+export const CallSource = z.enum(["camera", "mic", "screen_share", "presenting"]);
+
 /** Why a capture failed; the check-in still passes (CAP-08). */
 export const CaptureFailure = z.enum(["permission_missing", "camera_busy", "no_camera", "failed"]);
 
@@ -57,6 +64,8 @@ const payloads = {
       .strictObject({ screen: CaptureFailure.optional(), webcam: CaptureFailure.optional() })
       .optional(),
     project_id: uuid.nullable().optional(),
+    // Raw anti-cheat state; the server decides what it means (ANT-08). The Windows
+    // agent adds `injected_click:<n>` when it blocked n injected clicks on the card.
     flags: z.array(z.string().max(40)).max(10),
   }),
   idle_start: z.strictObject({ since: timestamp }),
@@ -65,8 +74,8 @@ const payloads = {
   unlock: z.strictObject({}),
   sleep: z.strictObject({}),
   wake: z.strictObject({}),
-  call_start: z.strictObject({ source: z.enum(["camera", "mic"]) }),
-  call_end: z.strictObject({ source: z.enum(["camera", "mic"]) }),
+  call_start: z.strictObject({ source: CallSource }),
+  call_end: z.strictObject({ source: CallSource }),
   app_session: z.strictObject({
     app: z.string().min(1).max(200),
     title: z.string().max(500).nullable().optional(),
@@ -75,6 +84,13 @@ const payloads = {
     end: timestamp,
   }),
   permission_change: z.strictObject({ screen: PermissionState, camera: PermissionState }),
+  // The watchdog started the agent again after a run that ended during a shift (ANT-01).
+  // killed: it never exited normally; exited: a normal exit; rebooted: the device started
+  // up since. Only killed is Tamper, for the time since last_alive_at.
+  agent_restart: z.strictObject({
+    last_alive_at: timestamp,
+    reason: z.enum(["killed", "exited", "rebooted"]),
+  }),
 } as const;
 
 export type AgentEventType = keyof typeof payloads;

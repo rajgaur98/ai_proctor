@@ -1,10 +1,13 @@
 //! Any other OS: compiles so CI can build the workspace; never shipped.
 //! Stub until the M1+ features implement each method.
 
-use agent_core::contracts::{PermissionState, Permissions};
+use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
+    SessionState,
 };
+use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
+use chrono::{DateTime, Utc};
 
 #[derive(Default)]
 pub struct UnsupportedPlatform;
@@ -45,11 +48,31 @@ impl Platform for UnsupportedPlatform {
         }
     }
 
-    fn is_injected(&self, _click: &Click) -> bool {
-        false
+    fn request_permission(&self, _kind: PermissionKind) {}
+
+    fn start_input_guard(&self, _area: ScreenRect) {}
+
+    fn stop_input_guard(&self) -> InjectedInput {
+        InjectedInput::default()
     }
 
     fn notify(&self, title: &str, _body: &str) {
         tracing::debug!(title, "notification (stub)");
+    }
+
+    fn install_watchdog(&self, _spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError> {
+        Err(WatchdogError::Unsupported)
+    }
+
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError> {
+        Ok(())
+    }
+
+    fn watchdog_installed(&self) -> bool {
+        false
+    }
+
+    fn boot_time(&self) -> Option<DateTime<Utc>> {
+        None
     }
 }
