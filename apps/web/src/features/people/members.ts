@@ -13,6 +13,8 @@ export interface Member {
   state: string | null;
   timezone: string;
   active: boolean;
+  /** TS-16: false means their week is approved as soon as they submit it. */
+  approvalRequired: boolean;
 }
 
 export const membersQuery = queryOptions({
@@ -20,7 +22,9 @@ export const membersQuery = queryOptions({
   queryFn: async (): Promise<Member[]> => {
     const { data, error } = await supabase
       .from("users")
-      .select("id, full_name, email, role, manager_id, work_country, work_state, timezone, active")
+      .select(
+        "id, full_name, email, role, manager_id, work_country, work_state, timezone, active, approval_required",
+      )
       .order("full_name");
     if (error) throw error;
     return data.map((u) => ({
@@ -33,6 +37,7 @@ export const membersQuery = queryOptions({
       state: u.work_state,
       timezone: u.timezone,
       active: u.active,
+      approvalRequired: u.approval_required,
     }));
   },
 });
@@ -52,6 +57,15 @@ export async function updateMember(m: Member) {
     p_work_country: m.country,
     p_work_state: (m.country === "US" ? m.state : null) as string,
     p_timezone: m.timezone,
+  });
+  if (error) throw new Error(explain(error.message));
+}
+
+/** TS-16: audit-logged by the database. */
+export async function setApprovalRequired(id: string, required: boolean) {
+  const { error } = await supabase.rpc("set_approval_required", {
+    p_user_id: id,
+    p_required: required,
   });
   if (error) throw new Error(explain(error.message));
 }
@@ -90,6 +104,7 @@ const messages: Record<string, string> = {
   invalid_name: "Enter a name.",
   invalid_shifts: "Each shift needs at least one day and different start and end times.",
   manager_or_admin_only: "Only their manager or an admin can change this.",
+  invalid_approval: "Choose whether approval is required.",
 };
 
 export function explain(code: string): string {

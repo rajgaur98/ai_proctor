@@ -29,9 +29,11 @@ test("a manager gets the team navigation", async ({ page }) => {
   await signIn(page, "manager@acme.test");
   await expect(page).toHaveURL(/\/team$/);
   const nav = page.getByRole("navigation", { name: "Main" });
-  for (const label of ["Live team", "Timesheets", "Projects", "Policy"]) {
+  for (const label of ["Live team", "Timesheets", "Projects"]) {
     await expect(nav.getByRole("link", { name: label })).toBeVisible();
   }
+  // The policy is for owners and admins (#52).
+  await expect(nav.getByRole("link", { name: "Policy" })).toHaveCount(0);
   await expect(page.getByRole("banner").getByText("Acme Remote")).toBeVisible();
   await expectNoA11yViolations(page);
 });
