@@ -2323,6 +2323,16 @@ export type Database = {
       email_mark_sent: { Args: { p_id: string }; Returns: undefined };
       end_delegation: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
+      export_audit_log: {
+        Args: {
+          p_actions?: string[];
+          p_actor_id?: string;
+          p_from?: string;
+          p_target_user_id?: string;
+          p_to?: string;
+        };
+        Returns: Json;
+      };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
       mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
       my_delegations: {
@@ -2386,6 +2396,28 @@ export type Database = {
           p_name: string;
         };
         Returns: string;
+      };
+      search_audit_log: {
+        Args: {
+          p_actions?: string[];
+          p_actor_id?: string;
+          p_cursor_at?: string;
+          p_cursor_id?: number;
+          p_from?: string;
+          p_limit?: number;
+          p_target_user_id?: string;
+          p_to?: string;
+        };
+        Returns: {
+          action: string;
+          actor_id: string;
+          actor_name: string;
+          at: string;
+          id: number;
+          metadata: Json;
+          target_name: string;
+          target_user_id: string;
+        }[];
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
       set_approval_required: {
