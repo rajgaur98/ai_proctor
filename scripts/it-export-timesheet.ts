@@ -247,11 +247,20 @@ async function seed() {
 }
 await seed();
 
+// The log is append-only and closed to the service role (#53): an admin reads it.
+const admin = await signIn("admin@acme.test");
 const exportCount = async () =>
   (
-    (await call("/rest/v1/audit_log?action=eq.timesheet.exported&select=id", service))
-      .json as unknown[]
-  ).length;
+    await call("/rest/v1/rpc/export_audit_log", admin, {
+      body: { p_actions: ["timesheet.exported"] },
+    })
+  ).json.row_count as number;
+const lastExport = async (actor?: string) =>
+  (
+    await call("/rest/v1/rpc/search_audit_log", admin, {
+      body: { p_actions: ["timesheet.exported"], p_actor_id: actor ?? null, p_limit: 1 },
+    })
+  ).json[0];
 let audited = await exportCount();
 
 // The three views, as the manager -------------------------------------------------------------
@@ -506,12 +515,7 @@ assert.equal(
   3 + 2 + 1 + 6 + 2,
   "every export that returned a file was logged, no others",
 );
-const log = (
-  await call(
-    `/rest/v1/audit_log?action=eq.timesheet.exported&actor_id=eq.${MAX}&order=id.desc&limit=1`,
-    service,
-  )
-).json[0];
+const log = await lastExport(MAX);
 // The last of the manager's calls was the team one.
 assert.equal(log.metadata.view, "daily");
 assert.equal(log.metadata.from, "2026-01-05");
@@ -529,9 +533,7 @@ assert.equal(
   audited + 1,
   "calling the database function directly is logged too",
 );
-const last = (
-  await call(`/rest/v1/audit_log?action=eq.timesheet.exported&order=id.desc&limit=1`, service)
-).json[0];
+const last = await lastExport();
 assert.equal(last.metadata.row_count, segments.length, "the row count in the log");
 console.log("ok  audit: every export logged with its filters and row count, direct RPC calls too");
 
