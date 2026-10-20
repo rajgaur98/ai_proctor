@@ -810,6 +810,7 @@ pub fn run() {
             #[cfg(debug_assertions)]
             if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
                 agent_platform::request_permissions();
+                agent_platform::request_notification_permission();
             }
             let sink: Arc<dyn EventSink> = match &outbox {
                 Some(outbox) => Arc::new(OutboxSink { outbox: outbox.clone(), clock: clock.clone() }),
@@ -1364,6 +1365,7 @@ mod tests {
                 app: "Safari".into(),
                 title: Some("Docs".into()),
                 domain: Some("docs.example.com".into()),
+                display: None,
             })
         });
         // 09:00:00 .. 09:01:30 in 5 s steps.
