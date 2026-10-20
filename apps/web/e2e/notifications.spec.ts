@@ -1,14 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
-import { DateTime } from "luxon";
 import { clientFor } from "./agent";
-
-const ERIN = "00000000-0000-4000-8000-0000000000c1";
-const ERIN_EMAIL = "erin@acme.test";
-const MANAGER_EMAIL = "manager@acme.test";
-
-/** Erin's current week, Monday-based like the seed org, in her time zone. */
-const week = DateTime.now().setZone("America/Los_Angeles").startOf("week").toISODate() ?? "";
+import {
+  ERIN,
+  ERIN_EMAIL,
+  MANAGER_EMAIL,
+  resetErinWeeks,
+  submitErinWeek,
+  erinWeek as week,
+} from "./helpers";
 
 async function signIn(page: Page, email: string, landing: RegExp) {
   await page.goto("/sign-in");
@@ -27,24 +27,10 @@ async function expectNoA11yViolations(page: Page) {
 
 /** Erin submits her week and the manager returns it with a comment. */
 async function returnedWeek(comment: string) {
-  const erin = await clientFor(ERIN_EMAIL);
-  const manager = await clientFor(MANAGER_EMAIL);
-  const ensured = await erin.rpc("ensure_timesheet", { p_user_id: ERIN, p_period_start: week });
-  if (ensured.error) throw ensured.error;
-  const id = ensured.data;
   // Whatever earlier specs left: approved weeks reopen, submitted ones return, then submit.
-  const sheet = await manager.from("timesheets").select("status").eq("id", id).single();
-  if (sheet.error) throw sheet.error;
-  if (sheet.data.status === "approved") {
-    const r = await manager.rpc("reopen_timesheet", { p_id: id, p_reason: "e2e reset" });
-    if (r.error) throw r.error;
-  }
-  if (sheet.data.status === "approved" || sheet.data.status === "submitted") {
-    const r = await manager.rpc("return_timesheet", { p_id: id, p_comment: "e2e reset" });
-    if (r.error) throw r.error;
-  }
-  const submitted = await erin.rpc("submit_timesheet", { p_id: id });
-  if (submitted.error) throw submitted.error;
+  await resetErinWeeks();
+  const id = await submitErinWeek();
+  const manager = await clientFor(MANAGER_EMAIL);
   const returned = await manager.rpc("return_timesheet", { p_id: id, p_comment: comment });
   if (returned.error) throw returned.error;
 }
