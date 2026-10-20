@@ -133,7 +133,7 @@ apps/agent/
 
 ### Email and alerts (ALR-01, ALR-02)
 
-**Alerts.** `alert_eval` (pg_cron, every minute) writes `alerts` rows for the employee's direct manager and the manager's active delegates: N consecutive misses, offline during a shift, Tamper, late clock-in, pause over the daily cap. One condition raises one alert per episode. Each kind has `alert_<kind>_enabled` (default on) in `orgs.policy`, plus `alert_consecutive_misses` (3), `alert_offline_min` (15) and `alert_late_clock_in_min` (15); the full list is in the header of `supabase/migrations/*_manager_alerts.sql`. The dashboard shows them in a bell in the top bar.
+**Alerts.** `alert_eval` (pg_cron, every minute) writes `alerts` rows for the employee's direct manager and the manager's active delegates: N consecutive misses, offline during a shift, Tamper, late clock-in, pause over the daily cap. One condition raises one alert per episode. Each kind has `alert_<kind>_enabled` (default on) in `orgs.policy`, plus `alert_consecutive_misses` (3), `alert_offline_min` (15) and `late_clock_in_min` (15); the full list is in the header of `supabase/migrations/*_manager_alerts.sql`. The dashboard shows them in a bell in the top bar.
 
 **Email batching.** `alert_eval` also queues emails in `email_outbox`: at most one per recipient, employee and alert type per hour. Alerts raised inside that hour are held and go out together in the next email.
 

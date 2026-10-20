@@ -244,7 +244,9 @@ impl Platform for MacPlatform {
         let front = NSWorkspace::sharedWorkspace().frontmostApplication()?;
         let app = front.localizedName()?.to_string();
         let pid = front.processIdentifier();
-        let title = foreground_title(&window_list(), pid);
+        let windows = window_list();
+        let title = foreground_title(&windows, pid);
+        let display = foreground_display(&windows, &display_bounds(), pid);
         let bundle = front
             .bundleIdentifier()
             .map(|id| id.to_string())
@@ -254,7 +256,12 @@ impl Platform for MacPlatform {
         } else {
             None
         };
-        Some(Foreground { app, title, domain })
+        Some(Foreground {
+            app,
+            title,
+            domain,
+            display,
+        })
     }
 
     /// One frame per display. Blocks until done (up to 5 s): call from a worker
@@ -291,8 +298,8 @@ impl Platform for MacPlatform {
         false
     }
 
-    fn notify(&self, title: &str, _body: &str) {
-        tracing::debug!(title, "notification (stub)");
+    fn notify(&self, title: &str, body: &str) {
+        crate::macos_notify::notify(title, body);
     }
 }
 
@@ -357,6 +364,22 @@ fn foreground_title(windows: &[WindowInfo], pid: i32) -> Option<String> {
         .map(|w| w.title.trim())
         .find(|t| !t.is_empty())
         .map(|t| t.chars().take(MAX_TITLE_CHARS).collect())
+}
+
+/// The display (1-based, in `display_bounds` order) holding the centre of the app's
+/// front window: the first layer-0 window of `pid` with a size, front to back. Its
+/// title is not needed, so this works without Screen Recording. `None` when the app
+/// has no such window or the centre is on no display.
+fn foreground_display(windows: &[WindowInfo], displays: &[Rect], pid: i32) -> Option<u32> {
+    let window = windows.iter().find(|w| {
+        w.owner_pid == pid && w.layer == 0 && w.bounds.width > 0.0 && w.bounds.height > 0.0
+    })?;
+    let cx = window.bounds.x + window.bounds.width / 2.0;
+    let cy = window.bounds.y + window.bounds.height / 2.0;
+    displays
+        .iter()
+        .position(|d| cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height)
+        .map(|i| i as u32 + 1)
 }
 
 /// True for the browsers we read a domain from, by bundle identifier.
@@ -556,10 +579,13 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
         Err(_) => return Err(CaptureError::Failed("shareable content timed out".into())),
     };
 
-    let displays = unsafe { content.displays() };
+    // Ordered by display ID, like `display_bounds`, so `screen-N` and the display
+    // `foreground()` reports for an excluded app (CAP-04) are the same screen.
+    let mut displays: Vec<_> = unsafe { content.displays() }.iter().collect();
     if displays.is_empty() {
         return Err(CaptureError::Failed("no displays".into()));
     }
+    displays.sort_by_key(|d| unsafe { d.displayID() });
     // Start every display, keep filter and configuration alive until it completes.
     let mut pending = Vec::new();
     for (index, display) in displays.iter().enumerate() {
@@ -567,7 +593,7 @@ fn capture_screens(max_width: u32) -> Result<Vec<Frame>, CaptureError> {
         let filter = unsafe {
             SCContentFilter::initWithDisplay_excludingWindows(
                 SCContentFilter::alloc(),
-                &display,
+                display,
                 &NSArray::new(),
             )
         };
@@ -976,12 +1002,16 @@ fn window_list() -> Vec<WindowInfo> {
         .collect()
 }
 
+/// Bounds of the active displays, ordered by display ID (the order `capture_screens`
+/// numbers them in).
 fn display_bounds() -> Vec<Rect> {
     let mut ids = [0u32; 16];
     let mut count = 0u32;
     unsafe { CGGetActiveDisplayList(16, ids.as_mut_ptr(), &mut count) };
-    ids[..(count as usize).min(ids.len())]
-        .iter()
+    let count = (count as usize).min(ids.len());
+    let ids = &mut ids[..count];
+    ids.sort_unstable();
+    ids.iter()
         .map(|id| {
             let r = CGDisplayBounds(*id);
             Rect {
@@ -1251,6 +1281,111 @@ mod tests {
         assert_eq!(
             foreground_title(&windows, 10).as_deref(),
             Some("Report.docx")
+        );
+    }
+
+    #[test]
+    fn foreground_display_is_the_one_holding_the_front_window_centre() {
+        let displays = [MAIN, SECOND];
+        let on_main = Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let on_second = Rect {
+            x: 2000.0,
+            y: 50.0,
+            width: 600.0,
+            height: 400.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, on_main)], &displays, 10),
+            Some(1)
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, on_second)], &displays, 10),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn foreground_display_uses_the_centre_of_a_window_spanning_displays() {
+        let displays = [MAIN, SECOND];
+        // Mostly on the second display: centre x = 1800 + 500 = 2300.
+        let mostly_second = Rect {
+            x: 1800.0,
+            y: 0.0,
+            width: 1000.0,
+            height: 500.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, mostly_second)], &displays, 10),
+            Some(2)
+        );
+        // Mostly on the main display: centre x = 1000 + 300 = 1300.
+        let mostly_main = Rect {
+            x: 1000.0,
+            y: 0.0,
+            width: 600.0,
+            height: 500.0,
+        };
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, mostly_main)], &displays, 10),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn foreground_display_takes_the_apps_frontmost_normal_window() {
+        let displays = [MAIN, SECOND];
+        let on_main = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let on_second = Rect {
+            x: 2000.0,
+            y: 0.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let windows = [
+            window(11, "Other app", 0, on_main),
+            window(10, "Menu", 25, on_main),
+            window(10, "", 0, Rect::default()),
+            window(10, "", 0, on_second),
+            window(10, "Older", 0, on_main),
+        ];
+        assert_eq!(foreground_display(&windows, &displays, 10), Some(2));
+    }
+
+    #[test]
+    fn foreground_display_is_none_when_unknown() {
+        let displays = [MAIN, SECOND];
+        let nowhere = Rect {
+            x: 9000.0,
+            y: 9000.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        assert_eq!(foreground_display(&[], &displays, 10), None);
+        assert_eq!(
+            foreground_display(&[window(11, "A", 0, MAIN)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 25, MAIN)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, nowhere)], &displays, 10),
+            None
+        );
+        assert_eq!(
+            foreground_display(&[window(10, "A", 0, MAIN)], &[], 10),
+            None
         );
     }
 

@@ -1,6 +1,7 @@
 // Test helper: acts as an employee's agent by calling the real sync RPCs.
 import { readFileSync } from "node:fs";
-import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@ai-proctor/contracts";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 function env(): { url: string; anonKey: string } {
   const file = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
@@ -36,4 +37,20 @@ export async function agentFor(email: string) {
     if (error) throw error;
     return reply;
   };
+}
+
+/** Runs `f` with a client signed in as `email` (seed password), failing on errors. */
+export async function asEmployee(
+  email: string,
+  f: (db: SupabaseClient<Database>) => PromiseLike<{ error: unknown }>,
+) {
+  const { url, anonKey } = env();
+  const db = createClient<Database>(url, anonKey, { auth: { persistSession: false } });
+  const { error: signInError } = await db.auth.signInWithPassword({
+    email,
+    password: "password123",
+  });
+  if (signInError) throw signInError;
+  const { error } = await f(db);
+  if (error) throw error;
 }

@@ -15,7 +15,7 @@
 --                                     (status rule 3) during a shift before alerting
 --   alert_tamper_enabled              boolean, default true
 --   alert_late_clock_in_enabled       boolean, default true
---   alert_late_clock_in_min           int, default 15, clamped 5..60 (PRD section 6)
+--   late_clock_in_min           int, default 15, clamped 5..60 (PRD section 6; shared with reports, #47)
 --   alert_pause_over_cap_enabled      boolean, default true
 -- The pause cap itself is BRK-06's pause_daily_max_min (breaks_and_pause_caps).
 --
@@ -322,7 +322,7 @@ begin
     join public.orgs o on o.id = u.org_id
     join public.shifts sh on sh.user_id = u.id
     cross join lateral (
-      select internal.alert_policy_int(o.policy, 'alert_late_clock_in_min', 15, 5, 60) as grace
+      select internal.alert_policy_int(o.policy, 'late_clock_in_min', 15, 5, 60) as grace
     ) g
     cross join lateral (
       select unnest(array[(p_now at time zone sh.timezone)::date - 1,

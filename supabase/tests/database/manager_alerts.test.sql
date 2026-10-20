@@ -275,7 +275,7 @@ select is(pg_temp.n('late_clock_in'), 0, 'already clocked in before the shift st
 
 select pg_temp.reset();
 select pg_temp.shift(interval '30 minutes', interval '3 hours');
-select pg_temp.policy('{"alert_late_clock_in_min": 45}');
+select pg_temp.policy('{"late_clock_in_min": 45}');
 select internal.alert_eval();
 select is(pg_temp.n('late_clock_in'), 0, 'the grace is configurable (45 min)');
 select pg_temp.policy('{"alert_late_clock_in_enabled": false}');
