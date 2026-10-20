@@ -54,10 +54,10 @@ test("a manager sees an injected-click flag as needs review and marks it reviewe
   await expect(panel).toContainText("don't change status, hours or the timesheet");
 
   // Only the affected check-in carries the badge.
-  const list = page.getByRole("list").filter({ hasText: "Passed check-in" });
+  const list = page.getByRole("region", { name: "Check-ins" });
   await expect(list.getByText("Needs review")).toHaveCount(1);
   await expect(
-    list.getByRole("button", { name: /Passed check-in/ }).filter({ hasText: "Needs review" }),
+    list.getByRole("button", { name: /Passed/ }).filter({ hasText: "Needs review" }),
   ).toHaveCount(1);
   // The day carries one too, next to the name.
   await expect(page.getByText("Needs review", { exact: true })).toHaveCount(3);

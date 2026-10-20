@@ -12,14 +12,15 @@ import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Time, viewerZone } from "../../lib/time";
 import { CaptureViewer } from "../day/CaptureViewer";
-import { Marker, outcomeLabel } from "../day/DayPage";
+import { outcomeLabel } from "../day/checkinText";
+import { Marker } from "../day/DayTimeline";
 import { barSpan, deferralLabel, localDay, ticks } from "../day/timeline";
 import { shiftsQuery } from "../people/ShiftEditor";
 import { projectsQuery } from "../projects/projectData";
 import { exportMyData } from "./exportData";
 import {
   appLabel,
-  asPeriods,
+  asTimelineSegments,
   filesOf,
   imagesExpired,
   type MissReasonKind,
@@ -80,7 +81,7 @@ export function MyData() {
 
   const segs = segments.data ?? [];
   const list = checkins.data ?? [];
-  const span = barSpan(day, zone, shifts.data ?? [], asPeriods(segs), list, now);
+  const span = barSpan(day, zone, shifts.data ?? [], asTimelineSegments(segs), list);
   const placed = placeSegments(span, segs);
   const legend = typeTotals(span, segs);
   const shiftWindow = windowsBetween(shifts.data ?? [], new Date(day.start), new Date(day.end))[0];

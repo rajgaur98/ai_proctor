@@ -56,40 +56,44 @@ test("a manager opens an employee's day and reads a missed and a deferred check-
   await page.getByRole("link", { name: "View day for Erin Employee" }).click();
 
   await expect(page.getByRole("heading", { name: "Erin Employee" })).toBeVisible();
-  await expect(page.getByRole("img", { name: /Status over the day: Active/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /^Time over the day: / })).toBeVisible();
   // Markers this close overlap on the bar; the list below reaches each one.
   await expect(page.getByRole("button", { name: /^Missed check-in at / }).last()).toBeVisible();
-  const list = page.getByRole("list").filter({ hasText: "Missed check-in" });
+  const list = page.getByRole("region", { name: "Check-ins" });
   // Newest last: earlier runs may have left check-ins on today.
   await list
-    .getByRole("button", { name: /Missed check-in/ })
+    .getByRole("button", { name: /Missed/ })
     .last()
     .click();
-  const details = page.getByRole("region", { name: "Missed check-in" });
-  await expect(details).toContainText("Idle when shown");
+  const details = page.getByRole("region", { name: /^Missed check-in · / });
+  await expect(details).toContainText("Idle before check-in");
   await expect(details).toContainText("7 min");
-  await expect(details).toContainText("Meeting: Client call");
+  await expect(details).toContainText("Meeting");
+  await expect(details).toContainText("“Client call”");
+  await expect(details).toContainText("Review in timesheet");
 
   // A deferral has its own marker and row, with the reason, and is not a miss.
   await expect(
     page.getByRole("button", { name: /^Deferred check-in at \d\d:\d\d \(screen shared\)$/ }).last(),
   ).toBeVisible();
   await list
-    .getByRole("button", { name: /Deferred check-in/ })
+    .getByRole("button", { name: /Deferred/ })
     .filter({ hasText: "Screen shared" })
     .last()
     .click();
-  const deferred = page.getByRole("region", { name: "Deferred check-in" });
+  const deferred = page.getByRole("region", { name: /^Deferred check-in · / });
   await expect(deferred).toContainText("Reason");
   await expect(deferred).toContainText("Screen shared");
   await expect(deferred).toContainText("not counted as missed");
 
   await list
-    .getByRole("button", { name: /Passed check-in/ })
+    .getByRole("button", { name: /Passed/ })
     .filter({ hasText: "in 4 s" })
     .last()
     .click();
-  await expect(page.getByRole("region", { name: "Passed check-in" })).toContainText("4.2 s");
+  const passed = page.getByRole("region", { name: /^Check-in · / });
+  await expect(passed).toContainText("Passed · 4.2 s");
+  await expect(passed).toContainText("Answered in");
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])

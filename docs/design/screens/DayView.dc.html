@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:100%;background:var(--bg);color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+  <dc-import name="WebNav" active="team" role="manager" hint-size="100%,56px"></dc-import>
+  <div style="padding:24px 32px 40px;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:13px;color:var(--ink3);display:flex;gap:6px"><a style="color:var(--acctext);cursor:pointer">Live team</a><span>/</span><span style="color:var(--ink2)">Lucas Martin</span></div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="width:44px;height:44px;border-radius:50%;background:var(--sunk);border:1px solid var(--line);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--ink2)">LM</span>
+        <div>
+          <div style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Lucas Martin</div>
+          <div style="font-size:13.5px;color:var(--ink2);margin-top:2px">Tue 7 Oct · Shift 09:00–18:00 (IST) · Frontend engineer</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button style="height:40px;padding:0 14px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:500;cursor:pointer">‹ Mon 6</button>
+          <button style="height:40px;padding:0 14px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:500;cursor:pointer">Wed 8 ›</button>
+          <button style="height:40px;padding:0 16px;border-radius:9px;border:none;background:var(--acc);color:var(--accink);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer">Open timesheet</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ stats }}" as="s" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:3px;padding-left:14px;border-left:1px solid var(--line)">
+            <span style="font-size:12.5px;color:var(--ink2)">{{ s.label }}</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:20px;font-weight:500;letter-spacing:-0.03em">{{ s.v }}</span>
+            <span style="font-size:12px;color:var(--ink3)">{{ s.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="position:relative;height:16px;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">
+          <sc-for list="{{ hours }}" as="h" hint-placeholder-count="10"><span style="{{ h.style }}">{{ h.t }}</span></sc-for>
+        </div>
+        <div style="position:relative">
+          <div style="display:flex;gap:1px;height:40px;border-radius:7px;overflow:hidden;background:var(--line)">
+            <sc-for list="{{ segs }}" as="g" hint-placeholder-count="14"><span title="{{ g.title }}" style="{{ g.style }}"></span></sc-for>
+          </div>
+          <span style="{{ selLine }}"></span>
+        </div>
+        <div style="position:relative;height:30px">
+          <sc-for list="{{ marks }}" as="m" hint-placeholder-count="9">
+            <button onClick="{{ m.pick }}" title="{{ m.t }}" style="{{ m.hit }}"><span style="{{ m.style }}"></span></button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--ink2)">
+        <sc-for list="{{ legend }}" as="l" hint-placeholder-count="9">
+          <span style="display:flex;align-items:center;gap:7px"><span style="{{ l.style }}"></span>{{ l.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:17px;font-weight:600;letter-spacing:-0.015em">{{ v.title }}</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 9px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;font-weight:500"><span style="{{ v.dot }}"></span>{{ v.chip }}</span>
+          <sc-if value="{{ v.hasCapture }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-left:auto;display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:12.5px;font-weight:500">
+              <span style="padding:6px 12px;background:var(--sunk)">Display 1</span><span style="padding:6px 12px;color:var(--ink2);border-left:1px solid var(--line2)">Display 2</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ v.hasCapture }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:start">
+            <div style="aspect-ratio:16/10;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:repeating-linear-gradient(135deg,var(--sunk) 0 7px,var(--panel) 7px 14px);display:flex;align-items:flex-end;padding:10px"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">screenshot · display 1 · {{ v.time }}</span></div>
+            <sc-if value="{{ v.hasCam }}" hint-placeholder-val="{{ true }}">
+              <div style="aspect-ratio:4/3;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:repeating-linear-gradient(135deg,var(--sunk) 0 7px,var(--panel) 7px 14px);display:flex;align-items:flex-end;padding:10px"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">webcam frame</span></div>
+            </sc-if>
+            <sc-if value="{{ v.noCam }}">
+              <div style="aspect-ratio:4/3;box-sizing:border-box;border:1.5px dashed var(--line2);border-radius:8px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:14px;font-size:12.5px;line-height:1.4;color:var(--ink2)"><span style="font-weight:600;color:var(--ink)">No webcam frame</span><span>The camera was in use by Zoom. The screenshot was still taken.</span></div>
+            </sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;font-size:13px">
+            <div><div style="font-size:12px;color:var(--ink3)">Shown</div><div style="font-family:'Geist Mono',ui-monospace,monospace;margin-top:3px">{{ v.time }}</div></div>
+            <div><div style="font-size:12px;color:var(--ink3)">Answered in</div><div style="font-family:'Geist Mono',ui-monospace,monospace;margin-top:3px">{{ v.rt }}</div></div>
+            <div><div style="font-size:12px;color:var(--ink3)">Active app</div><div style="margin-top:3px;font-weight:500">{{ v.app }}</div></div>
+            <div><div style="font-size:12px;color:var(--ink3)">Project</div><div style="margin-top:3px;font-weight:500">{{ v.project }}</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;background:var(--accsoft);font-size:13px;color:var(--ink)">
+            <span style="width:16px;height:16px;flex:none;border-radius:50%;border:1.5px solid var(--acctext);box-sizing:border-box;font-size:10px;font-weight:700;color:var(--acctext);display:flex;align-items:center;justify-content:center">i</span>
+            <span><span style="font-weight:600">Your view is logged and visible to Lucas.</span> He sees who opened each capture and when.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ v.isMiss }}">
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px">
+            <div style="padding:12px 14px"><div style="font-size:12px;color:var(--ink3)">Shown</div><div style="font-family:'Geist Mono',ui-monospace,monospace;margin-top:3px">14:03:12</div></div>
+            <div style="padding:12px 14px;border-left:1px solid var(--line)"><div style="font-size:12px;color:var(--ink3)">Response window</div><div style="margin-top:3px">90 s · no answer</div></div>
+            <div style="padding:12px 14px;border-top:1px solid var(--line)"><div style="font-size:12px;color:var(--ink3)">Idle before check-in</div><div style="margin-top:3px"><span style="font-family:'Geist Mono',ui-monospace,monospace">11 min</span> <span style="color:var(--ink2)">· since 13:52</span></div></div>
+            <div style="padding:12px 14px;border-top:1px solid var(--line);border-left:1px solid var(--line)"><div style="font-size:12px;color:var(--ink3)">Screen</div><div style="margin-top:3px">Locked <span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--ink2)">14:05–14:34</span></div></div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--sunk)">
+            <span style="font-size:12px;color:var(--ink3)">Employee's reason · added by Lucas at 14:36</span>
+            <span style="font-size:16px;font-weight:500">“Phone call with client”</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--ink2)">
+            <span>No captures: screenshots and webcam frames are only taken when a check-in is passed.</span>
+            <a style="margin-left:auto;color:var(--acctext);font-weight:500;cursor:pointer">Review in timesheet →</a>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <div style="padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--line)"><span style="font-size:14px;font-weight:600">Check-ins</span><span style="margin-left:auto;font-size:12.5px;color:var(--ink3)">7 of 9 passed</span></div>
+        <sc-for list="{{ list }}" as="c" hint-placeholder-count="9">
+          <button onClick="{{ c.pick }}" style="{{ c.row }}">
+            <span style="{{ c.dot }}"></span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px;width:44px;text-align:left">{{ c.t }}</span>
+            <span style="font-size:13px;font-weight:500;text-align:left">{{ c.label }}</span>
+            <span style="margin-left:auto;font-size:12.5px;color:var(--ink3)">{{ c.app }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1000},&quot;selected&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;pass&quot;,&quot;miss&quot;],&quot;default&quot;:&quot;pass&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const SEGS = [['verified', 90], ['meeting', 45], ['verified', 35], ['pause', 15], ['verified', 35], ['idle', 12], ['verified', 8], ['break', 45], ['verified', 7], ['idle', 11], ['unverified', 31], ['verified', 86], ['meeting', 30], ['verified', 90]];
+const hatch = c => `repeating-linear-gradient(135deg, ${c} 0 4px, color-mix(in oklch, ${c} 35%, var(--panel)) 4px 8px)`;
+const SEG_BG = { verified: 'var(--sactive)', meeting: 'var(--smeeting)', idle: hatch('var(--sidle)'), unverified: hatch('var(--saway)'), pause: 'var(--spaused)', break: 'var(--sbreak)' };
+const SEG_LABEL = { verified: 'Verified', meeting: 'Meeting', idle: 'Idle (flagged)', unverified: 'Unverified (flagged)', pause: 'Pause', break: 'Break' };
+const CI = [
+  ['09:41', 41, 'pass', 'VS Code', 'Northwind API', '1.8 s'], ['10:42', 102, 'pass', 'Figma', 'Northwind API', '2.4 s'], ['11:34', 154, 'pass', 'Chrome · Jira', 'Northwind API', '3.1 s'],
+  ['12:20', 200, 'failed', 'Zoom', 'Northwind API', '2.0 s'], ['14:03', 303, 'miss', '—', '—', '—'], ['14:58', 358, 'pass', 'VS Code', 'Northwind API', '1.6 s'],
+  ['15:47', 407, 'pass', 'Terminal', 'Northwind API', '2.2 s'], ['16:51', 471, 'pass', 'VS Code', 'Acme Redesign', '1.9 s'], ['17:36', 516, 'pass', 'Slack', 'Acme Redesign', '2.7 s']
+];
+const mk = (type, s = 10) => type === 'pass' ? { width: s, height: s, borderRadius: '50%', background: 'var(--sactive)', boxShadow: '0 0 0 2px var(--panel)', flex: 'none', display: 'block' }
+  : type === 'miss' ? { width: s, height: s, boxSizing: 'border-box', borderRadius: '50%', border: '2px solid var(--ink)', background: 'var(--panel)', flex: 'none', display: 'block' }
+  : { width: s - 1, height: s - 1, borderRadius: 1, background: 'var(--stamper)', transform: 'rotate(45deg)', boxShadow: '0 0 0 2px var(--panel)', flex: 'none', display: 'block' };
+class Component extends DCLogic {
+  state = { sel: null };
+  renderVals() {
+    const sel = this.state.sel ?? ((this.props.selected ?? 'pass') === 'miss' ? 4 : 1);
+    const pct = m => `${(m / 540) * 100}%`;
+    const hours = Array.from({ length: 10 }, (_, i) => ({ t: String(9 + i).padStart(2, '0') + ':00', style: { position: 'absolute', left: pct(i * 60), transform: i === 0 ? 'none' : i === 9 ? 'translateX(-100%)' : 'translateX(-50%)' } }));
+    const segs = SEGS.map(([k, n]) => ({ title: SEG_LABEL[k], style: { flex: n, background: SEG_BG[k], display: 'block' } }));
+    const marks = CI.map(([t, m, type], i) => ({
+      t, pick: () => this.setState({ sel: i }),
+      hit: { position: 'absolute', left: pct(m), top: 0, transform: 'translateX(-50%)', width: 28, height: 30, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, outline: i === sel ? '1.5px solid var(--ink)' : 'none', outlineOffset: -4 },
+      style: mk(type)
+    }));
+    const legend = [...['verified', 'meeting', 'idle', 'unverified', 'pause', 'break'].map(k => ({ label: SEG_LABEL[k], style: { width: 18, height: 10, borderRadius: 2, background: SEG_BG[k], display: 'block' } })),
+      { label: 'Check-in passed', style: mk('pass', 9) }, { label: 'Missed', style: mk('miss', 9) }, { label: 'Capture failed', style: mk('failed', 9) }];
+    const [t, m, type, app, project, rt] = CI[sel];
+    const v = type === 'miss'
+      ? { title: 'Missed check-in · 14:03', chip: 'Missed', dot: mk('miss', 9), isMiss: true, hasCapture: false }
+      : { title: `Check-in · ${t}`, chip: type === 'pass' ? `Passed · ${rt}` : 'Capture failed', dot: mk(type, 9), isMiss: false, hasCapture: true, hasCam: type === 'pass', noCam: type === 'failed', time: `${t}:18`, rt, app, project };
+    const list = CI.map(([t, , type, app], i) => ({
+      t, app, label: type === 'pass' ? 'Passed' : type === 'miss' ? 'Missed' : 'Capture failed', dot: mk(type, 9), pick: () => this.setState({ sel: i }),
+      row: { width: '100%', display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '0 16px', border: 'none', borderBottom: '1px solid var(--line)', background: i === sel ? 'var(--sunk)' : 'transparent', boxShadow: i === sel ? 'inset 2px 0 0 var(--ink)' : 'none', color: 'var(--ink)', fontFamily: 'inherit', cursor: 'pointer' }
+    }));
+    return {
+      hours, segs, marks, legend, v, list,
+      selLine: { position: 'absolute', top: -3, bottom: -3, left: pct(m), width: 2, marginLeft: -1, background: 'var(--ink)', borderRadius: 1, pointerEvents: 'none' },
+      stats: [
+        { label: 'Verified', v: '7 h 06 min', note: 'incl. 1 h 15 min in meetings' },
+        { label: 'Flagged', v: '54 min', note: 'idle 23 min · unverified 31 min' },
+        { label: 'Pause', v: '15 min', note: '1 pause' },
+        { label: 'Break', v: '45 min', note: '13:00–13:45' },
+        { label: 'Check-ins', v: '7 of 9', note: '1 missed · 1 capture failed' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
