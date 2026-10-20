@@ -1,6 +1,7 @@
 // Side panels of the timesheet page (#43): the week's manual entry requests with
 // the manager's decision (reusing #42's decide RPC), and the manager's edits with
-// their reasons, which the employee sees (TS-13).
+// their reasons, which the employee sees (TS-13), and the employee's own project
+// changes on a draft week (#139, PRJ-04).
 import { useMutation } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useId, useState } from "react";
@@ -171,6 +172,7 @@ const editTitle: Record<SheetEdit["kind"], string> = {
   include: "Put excluded time back",
   project: "Changed project",
   adjust: "Added or adjusted time",
+  employee_project: "Employee changed project",
 };
 
 export function EditsList({
@@ -179,12 +181,15 @@ export function EditsList({
   editorName,
   projectName,
   heading,
+  viewerIsEmployee = false,
 }: {
   edits: SheetEdit[];
   zone: string;
   editorName: (id: string | null) => string;
   projectName: (id: string | null) => string;
   heading: string;
+  /** The viewer is the person the week is about: their own edits read "You …". */
+  viewerIsEmployee?: boolean;
 }) {
   return (
     <section
@@ -204,8 +209,11 @@ export function EditsList({
               className="flex flex-col gap-1 border-b border-line pb-3 text-[13px] last:border-0 last:pb-0"
             >
               <span className="font-medium">
-                {editTitle[e.kind]}
-                {e.kind === "project" && ` to ${projectName(e.projectId)}`}
+                {e.kind === "employee_project" && viewerIsEmployee
+                  ? "You changed project"
+                  : editTitle[e.kind]}
+                {(e.kind === "project" || e.kind === "employee_project") &&
+                  ` to ${projectName(e.projectId)}`}
               </span>
               <span className="font-mono text-[12.5px] text-ink2">
                 {DateTime.fromISO(e.startAt, { zone: "local" }).toFormat("ccc d")} ·{" "}
