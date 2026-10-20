@@ -1,73 +1,118 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { columnsOf, csvCell, toCsv } from "./csv.ts";
+import { type CsvCell, columnsOf, csvCell, recordsToCsv, toCsv } from "./csv.ts";
+
+/** A strict RFC 4180 reader (CRLF rows, quoted cells), to check what toCsv writes. */
+function parse(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (c === "\r" && text[i + 1] === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      i++;
+    } else cell += c;
+  }
+  return rows;
+}
 
 describe("csvCell", () => {
-  it("writes plain values as they are", () => {
-    expect(csvCell("hello")).toBe("hello");
-    expect(csvCell(42)).toBe("42");
-    expect(csvCell(-3.5)).toBe("-3.5");
-    expect(csvCell(true)).toBe("true");
-    expect(csvCell(null)).toBe("");
-    expect(csvCell(undefined)).toBe("");
+  it("leaves plain text alone", () => {
+    expect(csvCell("Erin Employee")).toBe("Erin Employee");
+    expect(csvCell("7.43")).toBe("7.43");
   });
 
-  it("quotes commas, quotes and line breaks", () => {
-    expect(csvCell("a,b")).toBe('"a,b"');
+  it("quotes commas, quotes and line breaks, doubling quotes", () => {
+    expect(csvCell("Acme, Inc.")).toBe('"Acme, Inc."');
     expect(csvCell('say "hi"')).toBe('"say ""hi"""');
-    expect(csvCell("one\ntwo")).toBe('"one\ntwo"');
-    expect(csvCell("one\r\ntwo")).toBe('"one\r\ntwo"');
+    expect(csvCell("a\nb")).toBe('"a\nb"');
+    expect(csvCell("a\r\nb")).toBe('"a\r\nb"');
   });
 
-  it("guards text that a spreadsheet would run as a formula", () => {
-    expect(csvCell("=SUM(A1:A9)")).toBe("'=SUM(A1:A9)");
-    expect(csvCell("+1")).toBe("'+1");
-    expect(csvCell("-1+1")).toBe("'-1+1");
-    expect(csvCell("@cmd")).toBe("'@cmd");
-    expect(csvCell("\tTab")).toBe("'\tTab");
+  it("defuses formulas with a leading apostrophe", () => {
+    for (const bad of ["=1+1", "+1", "-1", "@SUM(A1)", "\t=1", "\rx", " =cmd|' /C calc'!A0"]) {
+      expect(csvCell(bad).replace(/^"/, "").startsWith("'")).toBe(true);
+    }
     expect(csvCell('=HYPERLINK("http://x","y")')).toBe(`"'=HYPERLINK(""http://x"",""y"")"`);
   });
 
-  it("does not guard numbers or text that merely contains those characters", () => {
-    expect(csvCell(-1)).toBe("-1");
-    expect(csvCell("a=b")).toBe("a=b");
-    expect(csvCell("2026-10-20")).toBe("2026-10-20");
-  });
-
-  it("writes objects and arrays as JSON", () => {
-    expect(csvCell(["a", "b"])).toBe('"[""a"",""b""]"');
-    expect(csvCell({ k: 1 })).toBe('"{""k"":1}"');
+  it("writes numbers, booleans and empties as they are", () => {
+    expect(csvCell(-5)).toBe("-5");
+    expect(csvCell(0.5)).toBe("0.5");
+    expect(csvCell(true)).toBe("true");
+    expect(csvCell(null)).toBe("");
+    expect(csvCell(undefined)).toBe("");
+    expect(csvCell(Number.NaN)).toBe("");
   });
 });
 
 describe("toCsv", () => {
-  it("writes a header and a row per object, with CRLF", () => {
-    const csv = toCsv(
-      ["id", "note"],
-      [
-        { id: 1, note: "ok" },
-        { id: 2, note: "=bad" },
-      ],
+  it("ends every row with CRLF and writes nothing for no rows", () => {
+    expect(toCsv([["a", "b"], ["c"]])).toBe("a,b\r\nc\r\n");
+    expect(toCsv([])).toBe("");
+  });
+
+  const risky = fc
+    .array(fc.constantFrom(..."ab ,\"\r\n=+-@\t'é1".split("")), { maxLength: 12 })
+    .map((cs) => cs.join(""));
+  const cell: fc.Arbitrary<CsvCell> = fc.oneof(risky, fc.string({ maxLength: 12 }));
+
+  it("reads back to the same cells, formula guard aside", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.array(cell, { minLength: 1, maxLength: 5 }), { maxLength: 6 }),
+        (rows) => {
+          const expected = rows.map((r) =>
+            r.map((c) => {
+              const out = csvCell(c);
+              return out.startsWith('"') ? out.slice(1, -1).replace(/""/g, '"') : out;
+            }),
+          );
+          expect(parse(toCsv(rows))).toEqual(expected);
+        },
+      ),
     );
-    expect(csv).toBe("id,note\r\n1,ok\r\n2,'=bad\r\n");
   });
 
-  it("leaves missing keys empty and ignores keys outside the columns", () => {
-    expect(toCsv(["a", "b"], [{ a: 1, c: 3 }])).toBe("a,b\r\n1,\r\n");
-  });
-
-  it("is just the header for no rows", () => {
-    expect(toCsv(["a"], [])).toBe("a\r\n");
+  it("never lets a text cell start with a formula character", () => {
+    fc.assert(
+      fc.property(risky, (text) => {
+        const [[out]] = [parse(toCsv([[text]]))[0] ?? [""]];
+        expect(out).not.toMatch(/^[=+\-@\t\r]/);
+        // Nothing but the apostrophe is added, and only when needed.
+        expect(out === text || out === `'${text}`).toBe(true);
+      }),
+    );
   });
 });
 
-describe("columnsOf", () => {
-  it("takes keys in first-seen order across rows", () => {
-    expect(
-      columnsOf([
-        { a: 1, b: 2 },
-        { c: 3, a: 4 },
-      ]),
-    ).toEqual(["a", "b", "c"]);
-    expect(columnsOf([])).toEqual([]);
+describe("recordsToCsv", () => {
+  it("writes a header, then each object's values in column order, with JSON for objects", () => {
+    const rows = [
+      { a: 1, b: "=SUM(A1)", c: { x: 1 } },
+      { a: null, b: "plain", c: [1, 2] },
+    ];
+    expect(recordsToCsv(columnsOf(rows), rows)).toBe(
+      'a,b,c\r\n1,\'=SUM(A1),"{""x"":1}"\r\n,plain,"[1,2]"\r\n',
+    );
+  });
+
+  it("collects columns a later row adds", () => {
+    expect(columnsOf([{ a: 1 }, { b: 2, a: 3 }])).toEqual(["a", "b"]);
   });
 });

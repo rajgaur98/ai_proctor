@@ -20,7 +20,7 @@
 // ../_shared/core is generated from packages/core (`pnpm core:fn`).
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
 import { Zip, ZipDeflate, ZipPassThrough } from "npm:fflate@0.8.2";
-import { columnsOf, toCsv } from "../_shared/core/csv.ts";
+import { columnsOf, recordsToCsv } from "../_shared/core/csv.ts";
 
 const MAX_IMAGE_BYTES = 200 * 1024 * 1024;
 const PAGE = 1000;
@@ -276,7 +276,7 @@ async function exportData(me: SupabaseClient, admin: SupabaseClient, userId: str
     });
     texts.push({
       name: `data/${name}.csv`,
-      data: encoder.encode(toCsv(columnsOf(rows), rows)),
+      data: encoder.encode(recordsToCsv(columnsOf(rows), rows)),
     });
   }
 
