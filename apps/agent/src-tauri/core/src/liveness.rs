@@ -9,6 +9,12 @@
 //! No network involved: an agent that is running but offline keeps writing
 //! last-alive, never restarts, and reports nothing here. That is how the server tells
 //! "offline" from "killed".
+//!
+//! A logout, restart or shutdown is not a kill (#159). The OS announces it first, the
+//! agent clocks the person out and marks the run as ended by the session, so the gap
+//! that follows is never Tamper. A quit that did not come with that announcement
+//! (an Apple Event, `osascript`) while clocked in is the same act as stopping the
+//! agent from the tray, which is refused, so it counts as a kill: see `classify_exit`.
 
 use std::sync::{Arc, Mutex};
 
@@ -22,14 +28,25 @@ pub const ALIVE_EVERY: Duration = Duration::seconds(15);
 
 const LAST_ALIVE: &str = "last_alive";
 const CLEAN_EXIT: &str = "clean_exit";
+/// `CLEAN_EXIT` values: a plain normal exit, and one the OS asked for (logout,
+/// restart, shutdown). Anything else is no exit at all.
+const EXITED: &str = "1";
+const SESSION_END: &str = "session_end";
+
+/// How long an announced session end stays valid. A logout another app cancels
+/// leaves the agent running; a quit this much later is not part of it.
+pub const SESSION_END_VALID_FOR: Duration = Duration::minutes(5);
 
 /// How the previous run ended, as the contract names it (`agent_restart.reason`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RestartReason {
     /// It stopped without exiting normally: a kill, a crash.
     Killed,
-    /// It exited normally (the OS asked it to quit, or a logout).
+    /// It exited normally (a planned restart, or a quit while off shift).
     Exited,
+    /// The OS ended the session (logout, restart, shutdown) and the agent said so
+    /// before it went.
+    SessionEnd,
     /// The device started up again since the last-alive time.
     Rebooted,
 }
@@ -39,16 +56,26 @@ impl RestartReason {
         match self {
             Self::Killed => "killed",
             Self::Exited => "exited",
+            Self::SessionEnd => "session_end",
             Self::Rebooted => "rebooted",
         }
     }
+}
+
+/// How the previous run ended, as far as it could say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// It never marked an exit.
+    Abruptly,
+    Exited,
+    SessionEnd,
 }
 
 /// What the previous run left in the store.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PreviousRun {
     pub last_alive_at: DateTime<Utc>,
-    pub clean_exit: bool,
+    pub ended: Ended,
 }
 
 /// The `agent_restart` event for a run that follows `previous`.
@@ -62,10 +89,12 @@ impl RestartReport {
     pub fn new(previous: &PreviousRun, boot_time: Option<DateTime<Utc>>) -> Self {
         let reason = if boot_time.is_some_and(|boot| boot > previous.last_alive_at) {
             RestartReason::Rebooted
-        } else if previous.clean_exit {
-            RestartReason::Exited
         } else {
-            RestartReason::Killed
+            match previous.ended {
+                Ended::SessionEnd => RestartReason::SessionEnd,
+                Ended::Exited => RestartReason::Exited,
+                Ended::Abruptly => RestartReason::Killed,
+            }
         };
         Self {
             last_alive_at: previous.last_alive_at,
@@ -98,13 +127,17 @@ impl Liveness {
             .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
             .map(|t| PreviousRun {
                 last_alive_at: t.with_timezone(&Utc),
-                clean_exit: outbox.state(CLEAN_EXIT).ok().flatten().as_deref() == Some("1"),
+                ended: match outbox.state(CLEAN_EXIT).ok().flatten().as_deref() {
+                    Some(EXITED) => Ended::Exited,
+                    Some(SESSION_END) => Ended::SessionEnd,
+                    _ => Ended::Abruptly,
+                },
             });
         let liveness = Self {
             outbox,
             last_beat: Mutex::new(None),
         };
-        liveness.write(now, false);
+        liveness.write(now, None);
         (liveness, previous)
     }
 
@@ -117,15 +150,21 @@ impl Liveness {
             }
             *last = Some(now);
         }
-        self.write(now, false);
+        self.write(now, None);
     }
 
     /// A normal exit: the next run reads it as `exited`, not `killed`.
     pub fn exited(&self, now: DateTime<Utc>) {
-        self.write(now, true);
+        self.write(now, Some(EXITED));
     }
 
-    fn write(&self, now: DateTime<Utc>, clean: bool) {
+    /// The OS is ending the session (logout, restart, shutdown): the next run reads
+    /// it as `session_end`, never `killed` (#159).
+    pub fn session_ended(&self, now: DateTime<Utc>) {
+        self.write(now, Some(SESSION_END));
+    }
+
+    fn write(&self, now: DateTime<Utc>, exit: Option<&str>) {
         *self.last_beat.lock().unwrap() = Some(now);
         let result = self
             .outbox
@@ -133,13 +172,45 @@ impl Liveness {
                 LAST_ALIVE,
                 &now.to_rfc3339_opts(SecondsFormat::Millis, true),
             )
-            .and_then(|()| {
-                self.outbox
-                    .set_state(CLEAN_EXIT, if clean { "1" } else { "0" })
-            });
+            .and_then(|()| self.outbox.set_state(CLEAN_EXIT, exit.unwrap_or("0")));
         if let Err(error) = result {
             tracing::error!(%error, "last-alive time not saved");
         }
+    }
+}
+
+/// How a run that is exiting counts. Only an exit that reaches the app's exit event
+/// is classified; a kill never does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExitKind {
+    /// Off shift, or a restart the agent asked for itself: marked `exited`, exit 0.
+    Normal,
+    /// The OS announced a logout, restart or shutdown (#159): marked `session_end`,
+    /// exit 0 so the watchdog does not start a new run in a session that is going.
+    SessionEnd,
+    /// A quit while clocked in that nothing announced: an Apple Event or `osascript`
+    /// quit on macOS, a window close on Windows. The tray refuses Quit mid-shift
+    /// because stopping the agent then is what Tamper (ANT-01) is for, so this is
+    /// not marked and the exit is non-zero: the watchdog starts the agent again and
+    /// the next run reports `killed`. Needs review, never a penalty (ANT-08).
+    Interrupted,
+}
+
+/// What an exit counts as. `planned`: the agent is exiting on purpose (the restart
+/// for a new permission). `session_end_at`: when the OS announced the end of the
+/// session, if it did; it only counts for `SESSION_END_VALID_FOR`.
+pub fn classify_exit(
+    on_shift: bool,
+    planned: bool,
+    session_end_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> ExitKind {
+    if session_end_at.is_some_and(|at| now - at < SESSION_END_VALID_FOR) {
+        ExitKind::SessionEnd
+    } else if planned || !on_shift {
+        ExitKind::Normal
+    } else {
+        ExitKind::Interrupted
     }
 }
 
@@ -217,7 +288,7 @@ mod tests {
     fn a_device_that_started_up_since_is_rebooted_not_killed() {
         let previous = PreviousRun {
             last_alive_at: t("2026-10-20T17:00:00Z"),
-            clean_exit: false,
+            ended: Ended::Abruptly,
         };
         let boot = Some(t("2026-10-21T08:30:00Z"));
         assert_eq!(
@@ -261,5 +332,92 @@ mod tests {
             store.state(LAST_ALIVE).unwrap().as_deref(),
             Some("2026-10-20T08:00:00.000Z")
         );
+    }
+
+    #[test]
+    fn a_session_end_is_reported_as_session_end_not_killed() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let (alive, _) = Liveness::start(outbox(dir.path()), t("2026-10-20T09:00:00Z"));
+            alive.session_ended(t("2026-10-20T17:00:00Z"));
+        }
+        let (_, previous) = Liveness::start(outbox(dir.path()), t("2026-10-21T08:00:00Z"));
+        let report = RestartReport::new(&previous.unwrap(), None);
+        assert_eq!(report.reason, RestartReason::SessionEnd);
+        assert_eq!(
+            report.payload(),
+            json!({ "last_alive_at": "2026-10-20T17:00:00.000Z", "reason": "session_end" })
+        );
+    }
+
+    #[test]
+    fn a_shutdown_followed_by_a_boot_is_rebooted() {
+        let previous = PreviousRun {
+            last_alive_at: t("2026-10-20T17:00:00Z"),
+            ended: Ended::SessionEnd,
+        };
+        let boot = Some(t("2026-10-21T08:30:00Z"));
+        assert_eq!(
+            RestartReport::new(&previous, boot).reason,
+            RestartReason::Rebooted
+        );
+    }
+
+    #[test]
+    fn a_session_end_does_not_linger_into_the_next_run() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let (alive, _) = Liveness::start(outbox(dir.path()), t("2026-10-20T09:00:00Z"));
+            alive.session_ended(t("2026-10-20T17:00:00Z"));
+        }
+        {
+            let (_, _) = Liveness::start(outbox(dir.path()), t("2026-10-21T08:00:00Z"));
+        }
+        let (_, previous) = Liveness::start(outbox(dir.path()), t("2026-10-21T09:00:00Z"));
+        assert_eq!(previous.unwrap().ended, Ended::Abruptly);
+    }
+
+    const NOW: &str = "2026-10-20T17:00:00Z";
+
+    #[test]
+    fn a_logout_while_clocked_in_is_a_session_end() {
+        let announced = Some(t("2026-10-20T16:59:59Z"));
+        assert_eq!(
+            classify_exit(true, false, announced, t(NOW)),
+            ExitKind::SessionEnd
+        );
+    }
+
+    #[test]
+    fn a_session_end_wins_over_a_planned_exit() {
+        let announced = Some(t(NOW));
+        assert_eq!(
+            classify_exit(true, true, announced, t(NOW)),
+            ExitKind::SessionEnd
+        );
+    }
+
+    #[test]
+    fn a_quit_while_clocked_in_that_nothing_announced_is_interrupted() {
+        assert_eq!(
+            classify_exit(true, false, None, t(NOW)),
+            ExitKind::Interrupted
+        );
+    }
+
+    #[test]
+    fn a_cancelled_logout_does_not_excuse_a_later_quit() {
+        let announced = Some(t("2026-10-20T16:50:00Z"));
+        assert_eq!(
+            classify_exit(true, false, announced, t(NOW)),
+            ExitKind::Interrupted,
+            "ten minutes on, the announcement has expired"
+        );
+    }
+
+    #[test]
+    fn a_quit_off_shift_or_a_planned_restart_is_normal() {
+        assert_eq!(classify_exit(false, false, None, t(NOW)), ExitKind::Normal);
+        assert_eq!(classify_exit(true, true, None, t(NOW)), ExitKind::Normal);
     }
 }

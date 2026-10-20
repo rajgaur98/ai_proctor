@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionState,
+    SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{
     self, WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState, LABEL, SUPERVISED_ARG,
@@ -295,6 +295,10 @@ impl Platform for WindowsPlatform {
 
     fn watchdog_installed(&self) -> bool {
         task::exists()
+    }
+
+    fn on_session_end(&self, handler: SessionEndHandler) {
+        session::set_end_handler(handler);
     }
 
     fn boot_time(&self) -> Option<DateTime<Utc>> {
