@@ -1492,6 +1492,7 @@ mod tests {
                 app: "Xcode".into(),
                 title: None,
                 domain: None,
+                display: None,
             })
         });
         for _ in 0..4 {
