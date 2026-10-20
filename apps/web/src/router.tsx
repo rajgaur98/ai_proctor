@@ -9,6 +9,7 @@ import {
 import { AppShell } from "./components/AppShell";
 import { DayPage } from "./features/day/DayPage";
 import { People } from "./features/people/People";
+import { Projects } from "./features/projects/Projects";
 import { LiveTeam } from "./features/team/LiveTeam";
 import { homeFor, navFor } from "./lib/nav";
 import { currentSession, needsMfa, type Profile, profileQuery } from "./lib/session";
@@ -134,7 +135,7 @@ const routeTree = rootRoute.addChildren([
     page("/team", "Live team", 32, LiveTeam),
     dayRoute,
     page("/timesheets", "Timesheets", 43),
-    page("/projects", "Projects", 38),
+    page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
     page("/policy", "Policy", 52),
     page("/me", "My data", 49),

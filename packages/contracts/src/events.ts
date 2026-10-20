@@ -31,6 +31,8 @@ const payloads = {
   break_end: z.strictObject({}),
   pause_start: z.strictObject({
     planned_min: z.union([z.literal(5), z.literal(10), z.literal(15)]),
+    // Private to the employee: managers and admins cannot read it (BRK-03).
+    reason: z.string().max(200).optional(),
   }),
   pause_end: z.strictObject({}),
   project_switch: z.strictObject({ project_id: uuid.nullable() }),

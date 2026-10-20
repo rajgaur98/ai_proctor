@@ -241,6 +241,10 @@
                       "const": 15
                     }
                   ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 200
                 }
               },
               "required": ["planned_min"],

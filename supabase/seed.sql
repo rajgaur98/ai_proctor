@@ -62,3 +62,18 @@ values
 
 insert into public.presence (user_id, org_id)
 select id, org_id from public.users;
+
+-- A client with a billable project for both employees, and an internal one for Erin.
+insert into public.clients (id, org_id, name)
+values ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-000000000001', 'Northwind');
+insert into public.projects (id, org_id, client_id, name, billable)
+values
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-000000000001',
+   '00000000-0000-4000-8000-0000000000e1', 'Website revamp', true),
+  ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-000000000001',
+   null, 'Internal', false);
+insert into public.project_members (project_id, user_id, org_id)
+values
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000c2', '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-000000000001');
