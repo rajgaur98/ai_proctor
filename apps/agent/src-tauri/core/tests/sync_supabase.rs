@@ -141,4 +141,17 @@ fn queued_events_and_captures_reach_supabase() {
         syncer.clock_offset().num_seconds().abs() < 5,
         "local stack shares this clock"
     );
+
+    // AGT-04/05: the config carries the notice; acknowledging the current version
+    // (a no-op if the seed already did) leaves this person acknowledged.
+    let notice = syncer
+        .config()
+        .unwrap()
+        .notice
+        .expect("the org has a notice");
+    syncer.api().acknowledge_notice(notice.id).unwrap();
+    syncer.api().acknowledge_notice(notice.id).unwrap();
+    let after = syncer.config().unwrap().notice.unwrap();
+    assert!(after.acknowledged, "{after:?}");
+    assert_eq!(after.acknowledged_version, Some(after.version));
 }
