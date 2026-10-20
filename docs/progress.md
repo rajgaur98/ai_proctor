@@ -9,10 +9,18 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now:** —
-- **Next (in order):** #98 runtime fixes from the device test → #99 agent e2e harness → #101 state-change events → M1 follow-ups (#100, #102, #104, #105, #106, #103 default) → M3 (#35, #36, #38, #39, #37) → M4 (#40 → #41 → #42, #43, #44, #45, #46, #47) → M5 (#48, #49, #50, #51, #52, #53, #54) → M6 not blocked (#58, #59, #107) → #26.
+- **Now (20 Oct, afternoon):** implementers on #47 reports (`ai_proctor-r47`, on #45) and #58 watchdog + tamper (`ai_proctor-w58`, on #48). Merging the green PRs into main one at a time (see CLAUDE.md on merging).
+- **Merged today:** #120 (#118), #116 (#105), #117 (#39), #122 (#40), #123 (#104/#106), #119 (#99), #151 (main fix).
+- **In review:** #115 (#38) → #121 (#35/#36) → #127 (#37) → #141 (#48, has #131 merged) and #131 (#102); #134 (#50, on #121); #125 (#41) → #128 (#42) → #137 (#43) → #142 (#44), #143 (#45); #129 (#51); #133 (#53). Later migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture`, `capture_view` or `agent_config` must start from the latest version.
+- **Next (in order):** #46 reminders (needs #43 + #50) → #52 policy settings (after the policy-key PRs merge) → #59 onboarding → #49 My data → #54 data requests → #124 → follow-ups (#126, #130, #132, #135, #136, #138–#150) → #107 → #26.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
-- **Device checks for Raj:** batched at the bottom of this block as they come up.
+- **Device checks for Raj:** batched here as they come up.
+  1. Chromium (Brave, Chrome) and Safari domains with Accessibility granted (#114).
+  2. Notification permission prompt and banners (#123).
+  3. Two displays: an excluded app on one display blanks only that display (#123).
+  4. Screen sharing holds the card (CHK-03); with #102, a deferred marker shows on the day page.
+  5. Invite flow on device: invite email → join → agent sign-in.
+  6. Tray popover (#127): clock in with a project, break, pause with a note, extend, switch project, miss a card and give a reason; time today ticks, pause left drops.
 
 ## Build order
 
@@ -127,7 +135,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 ## Environment notes
 
 - Development machine: Raj's Mac, local Claude desktop session. Keep it awake during long runs (`caffeinate -dims`).
-- CI budget: private repo, 2,000 free Actions minutes/month; macOS counts 10×, Windows 2×. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
+- CI budget: the repo is public since 20 Oct, so standard runners are free (it was private with 2,000 minutes/month; macOS counts 10×, Windows 2×, which ran out). Going private again brings the limit back. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
 - Homebrew refuses formula builds because the Command Line Tools are outdated (it wants the Xcode 27 version; fixing needs `sudo`). Full Xcode 26.6 works for Rust builds. The Supabase CLI comes from the `supabase` npm devDependency instead of Homebrew (#9).
 - Local Supabase runs with analytics (Logflare + Vector) off: they failed health checks on Docker Desktop and aren't needed.
 - Rust comes from Homebrew's `rustup` (proxies in `/opt/homebrew/opt/rustup/bin`, not on the default PATH); Node 22 from asdf. See the Commands section of `CLAUDE.md`.
