@@ -313,6 +313,7 @@ export type Database = {
           id: string;
           idle_s_at_show: number | null;
           missed_reason: string | null;
+          missed_reason_kind: string | null;
           object_keys: string[];
           org_id: string;
           outcome: Database["public"]["Enums"]["checkin_outcome"];
@@ -336,6 +337,7 @@ export type Database = {
           id: string;
           idle_s_at_show?: number | null;
           missed_reason?: string | null;
+          missed_reason_kind?: string | null;
           object_keys?: string[];
           org_id: string;
           outcome: Database["public"]["Enums"]["checkin_outcome"];
@@ -358,6 +360,7 @@ export type Database = {
           id?: string;
           idle_s_at_show?: number | null;
           missed_reason?: string | null;
+          missed_reason_kind?: string | null;
           object_keys?: string[];
           org_id?: string;
           outcome?: Database["public"]["Enums"]["checkin_outcome"];
@@ -1375,6 +1378,10 @@ export type Database = {
           p_name: string;
         };
         Returns: string;
+      };
+      set_miss_reason: {
+        Args: { p_checkin_id: string; p_kind: string; p_note?: string };
+        Returns: undefined;
       };
       set_project_members: {
         Args: { p_project_id: string; p_user_ids: string[] };

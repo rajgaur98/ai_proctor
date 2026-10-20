@@ -25,3 +25,6 @@ playwright-report/
 # Claude Code local state (autonomous-mode switch, stop-guard counters)
 .claude/autonomy/
 .claude/settings.local.json
+
+# Per-worktree Supabase stack (scripts/stack.sh)
+.stack/

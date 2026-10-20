@@ -30,6 +30,7 @@ interface CheckinRow extends Checkin {
   idleSAtShow: number | null;
   deviceState: string | null;
   missedReason: string | null;
+  missedReasonKind: string | null;
   captures: number;
 }
 
@@ -43,14 +44,15 @@ const outcomeLabel: Record<Outcome, string> = {
   deferred: "Deferred check-in",
 };
 
-function reasonText(reason: string | null): string {
+function deferralText(reason: string | null): string {
   return (reason && deferralLabel[reason]) || "Held back";
 }
 
 /** What the marker button says: the outcome, the time, and for a deferral the reason. */
 function markerLabel(c: Checkin, zone: string): string {
   const at = DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone }).toFormat("HH:mm");
-  const reason = c.outcome === "deferred" ? ` (${reasonText(c.deferralReason).toLowerCase()})` : "";
+  const reason =
+    c.outcome === "deferred" ? ` (${deferralText(c.deferralReason).toLowerCase()})` : "";
   return `${outcomeLabel[c.outcome]} at ${at}${reason}`;
 }
 
@@ -103,7 +105,7 @@ export function DayPage() {
         supabase
           .from("checkin_events")
           .select(
-            "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, object_keys",
+            "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys",
           )
           .eq("user_id", userId)
           .gte("scheduled_at", from)
@@ -130,6 +132,7 @@ export function DayPage() {
             idleSAtShow: c.idle_s_at_show,
             deviceState: c.device_state,
             missedReason: c.missed_reason,
+            missedReasonKind: c.missed_reason_kind,
             captures: c.object_keys.length,
           }),
         ),
@@ -317,7 +320,7 @@ export function DayPage() {
                   <Time iso={c.shownAt ?? c.scheduledAt} employeeZone={zone} />
                   <span>{outcomeLabel[c.outcome]}</span>
                   {c.outcome === "deferred" && (
-                    <span className="text-ink3">{reasonText(c.deferralReason)}</span>
+                    <span className="text-ink3">{deferralText(c.deferralReason)}</span>
                   )}
                   {c.outcome === "pass" && c.responseMs !== null && (
                     <span className="text-ink3">in {Math.round(c.responseMs / 1000)} s</span>
@@ -384,6 +387,21 @@ function Marker({ outcome }: { outcome: Outcome }) {
   );
 }
 
+// CHK-23 quick picks; the employee adds them from the tray (#37).
+const reasonLabel: Record<string, string> = {
+  meeting: "Meeting",
+  phone_call: "Phone call",
+  break: "Break",
+  away: "Away from desk",
+  other: "Other",
+};
+
+function reasonText(c: CheckinRow): string {
+  const kind = c.missedReasonKind ? (reasonLabel[c.missedReasonKind] ?? c.missedReasonKind) : null;
+  if (kind && c.missedReason) return `${kind}: ${c.missedReason}`;
+  return kind ?? c.missedReason ?? "No reason given yet";
+}
+
 function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
   const [showCaptures, setShowCaptures] = useState(false);
   const rows: [string, React.ReactNode][] = [
@@ -395,7 +413,7 @@ function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
   if (c.shownAt) rows.push(["Shown", <Time key="sh" iso={c.shownAt} employeeZone={zone} />]);
   if (c.outcome === "deferred") {
     rows.push(
-      ["Reason", reasonText(c.deferralReason)],
+      ["Reason", deferralText(c.deferralReason)],
       ["Shown", "Not shown. The check-in comes once it ends, and this is not counted as missed."],
     );
   } else if (c.outcome === "miss") {
@@ -405,7 +423,7 @@ function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
         c.idleSAtShow === null ? "—" : minutesText(Math.round(c.idleSAtShow / 60)),
       ],
       ["Device", c.deviceState ?? "—"],
-      ["Reason", c.missedReason ?? "No reason given yet"],
+      ["Reason", reasonText(c)],
     );
   } else {
     if (c.respondedAt)
