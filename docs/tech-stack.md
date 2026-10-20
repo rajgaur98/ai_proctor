@@ -131,6 +131,29 @@ apps/agent/
 | Edge Functions (Deno, TS) | `rebuild-segments`, `send-emails` (Resend), `export-timesheet` (CSV + XLSX via SheetJS), `capture-url`, `retention-purge` (deletes storage objects through the Storage API, then rows) |
 | Backups | Supabase Pro daily backups, plus a weekly `pg_dump` to R2 from a scheduled GitHub Action as an off-platform copy |
 
+### Email and alerts (ALR-01, ALR-02)
+
+**Alerts.** `alert_eval` (pg_cron, every minute) writes `alerts` rows for the employee's direct manager and the manager's active delegates: N consecutive misses, offline during a shift, Tamper, late clock-in, pause over the daily cap. One condition raises one alert per episode. Each kind has `alert_<kind>_enabled` (default on) in `orgs.policy`, plus `alert_consecutive_misses` (3), `alert_offline_min` (15) and `alert_late_clock_in_min` (15); the full list is in the header of `supabase/migrations/*_manager_alerts.sql`. The dashboard shows them in a bell in the top bar.
+
+**Email batching.** `alert_eval` also queues emails in `email_outbox`: at most one per recipient, employee and alert type per hour. Alerts raised inside that hour are held and go out together in the next email.
+
+**Sending.** `send_emails` (pg_cron, every minute) calls the `send-emails` Edge Function through `pg_net` when mail is due. It claims rows, sends through Resend's HTTP API and retries with backoff (1, 2, 4, 8 min, then gives up after 5 attempts; `last_error` says why).
+
+| Where | Name | Value |
+|---|---|---|
+| Vault (database) | `project_url`, `service_role_key` | Project URL and service-role key; the cron jobs read them. Set once per environment (`select vault.create_secret(...)` in the SQL editor); never in a migration or the seed |
+| Edge Function secrets | `RESEND_API_KEY` | Resend API key (sending access) |
+| Edge Function secrets | `EMAIL_FROM` | `AI Proctor <alerts@your-domain>`, an address on a domain verified in Resend |
+| Edge Function secrets | `DASHBOARD_URL` | Dashboard base URL for links in the mail |
+
+Set the function secrets with `supabase secrets set RESEND_API_KEY=... EMAIL_FROM=... DASHBOARD_URL=...`. Without `RESEND_API_KEY` (local) the function posts to the stack's Mailpit instead (`MAILPIT_URL`, default `http://inbucket:8025`), so alerts can be read in its inbox. `scripts/it-send-emails.sh` checks the whole path on a local stack.
+
+**Resend as Supabase Auth SMTP** (invites, magic links, password resets). `supabase/config.toml` has an `[auth.email.smtp]` block (`smtp.resend.com`, port 465, user `resend`, password from `env(RESEND_API_KEY)`, sender from `env(EMAIL_FROM_ADDRESS)`), switched off so local sign-in mail keeps going to Mailpit. For a hosted project:
+
+1. In Resend, verify the sending domain (SPF, DKIM) and create an API key.
+2. Turn the block on for that project: either Auth > SMTP Settings in the dashboard (host `smtp.resend.com`, port 465, user `resend`, password = the API key, sender = an address on the verified domain), or `enabled = true` in a `[remotes.<name>]` override pushed with `supabase config push`, with `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` in the environment of that command. Keys are never committed.
+3. Raise `[auth.rate_limit] email_sent` (2 an hour with the built-in mailer) to match the pilot, e.g. 30.
+
 ---
 
 ## 5. Dashboard

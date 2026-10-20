@@ -738,6 +738,7 @@ pub trait Platform: Send + Sync {
           <tbody>
             <tr><td><code>offline_sweep</code></td><td>Every 1 min</td><td>Clocked-in users with <code>last_seen</code> older than 3 min become Offline</td></tr>
             <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
+            <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Calls <code>rebuild-segments</code> when <code>dirty_days</code> is not empty</td></tr>
             <tr><td><code>reminders</code></td><td>Hourly</td><td>Submit and approval reminders, admin escalations</td></tr>
             <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
@@ -871,7 +872,8 @@ pub trait Platform: Send + Sync {
         </ul></div>
         <div class="t-card"><div class="name">dirty_days · alerts · audit_log</div><ul>
           <li>dirty_days: <b>(user_id, day)</b> rebuild queue</li>
-          <li>alerts: type · payload · sent_at</li>
+          <li>alerts: user_id · recipient_id · kind · episode · details · triggered_at · read_at · email_id</li>
+          <li>email_outbox: to · template · payload · batch_key · attempts · sent_at</li>
           <li>audit_log <em>(append-only)</em>: actor_id · action · target · metadata · at</li>
         </ul></div>
       </div>
