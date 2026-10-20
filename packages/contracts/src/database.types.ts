@@ -1110,6 +1110,59 @@ export type Database = {
           },
         ];
       };
+      notifications: {
+        Row: {
+          created_at: string;
+          id: string;
+          kind: string;
+          org_id: string;
+          payload: NonNullable<Json>;
+          read_at: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          kind: string;
+          org_id: string;
+          payload?: NonNullable<Json>;
+          read_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          kind?: string;
+          org_id?: string;
+          payload?: NonNullable<Json>;
+          read_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       orgs: {
         Row: {
           created_at: string;
@@ -1570,6 +1623,184 @@ export type Database = {
           },
         ];
       };
+      timesheet_edits: {
+        Row: {
+          created_at: string;
+          detail: NonNullable<Json>;
+          editor_id: string | null;
+          end_at: string;
+          id: string;
+          kind: string;
+          org_id: string;
+          project_id: string | null;
+          reason: string | null;
+          seq: number;
+          start_at: string;
+          timesheet_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          detail?: NonNullable<Json>;
+          editor_id?: string | null;
+          end_at: string;
+          id?: string;
+          kind: string;
+          org_id: string;
+          project_id?: string | null;
+          reason?: string | null;
+          seq?: never;
+          start_at: string;
+          timesheet_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          detail?: NonNullable<Json>;
+          editor_id?: string | null;
+          end_at?: string;
+          id?: string;
+          kind?: string;
+          org_id?: string;
+          project_id?: string | null;
+          reason?: string | null;
+          seq?: never;
+          start_at?: string;
+          timesheet_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_edits_editor_id_fkey";
+            columns: ["editor_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_editor_id_fkey";
+            columns: ["editor_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_timesheet_id_fkey";
+            columns: ["timesheet_id"];
+            isOneToOne: false;
+            referencedRelation: "timesheets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      timesheets: {
+        Row: {
+          approved_at: string | null;
+          approver_id: string | null;
+          comment: string | null;
+          created_at: string;
+          id: string;
+          org_id: string;
+          period_start: string;
+          returned_at: string | null;
+          status: string;
+          submitted_at: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          approved_at?: string | null;
+          approver_id?: string | null;
+          comment?: string | null;
+          created_at?: string;
+          id?: string;
+          org_id: string;
+          period_start: string;
+          returned_at?: string | null;
+          status?: string;
+          submitted_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          approved_at?: string | null;
+          approver_id?: string | null;
+          comment?: string | null;
+          created_at?: string;
+          id?: string;
+          org_id?: string;
+          period_start?: string;
+          returned_at?: string | null;
+          status?: string;
+          submitted_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "timesheets_approver_id_fkey";
+            columns: ["approver_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheets_approver_id_fkey";
+            columns: ["approver_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheets_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheets_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheets_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       users: {
         Row: {
           active: boolean;
@@ -1772,6 +2003,17 @@ export type Database = {
         };
         Returns: undefined;
       };
+      adjust_time: {
+        Args: {
+          p_end_at: string;
+          p_entry_id?: string;
+          p_project_id: string;
+          p_reason: string;
+          p_start_at: string;
+          p_timesheet_id: string;
+        };
+        Returns: string;
+      };
       agent_config: { Args: { p_device_id: string }; Returns: Json };
       agent_events: { Args: { device_id: string; events: Json }; Returns: Json };
       agent_heartbeat: {
@@ -1786,7 +2028,9 @@ export type Database = {
         };
         Returns: Json;
       };
+      approve_timesheet: { Args: { p_id: string }; Returns: undefined };
       can_approve_for: { Args: { target: string }; Returns: boolean };
+      can_decide_timesheet: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
       cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
@@ -1802,6 +2046,17 @@ export type Database = {
       decide_manual_entry: {
         Args: { p_approve: boolean; p_id: string; p_note?: string };
         Returns: undefined;
+      };
+      edit_segment: {
+        Args: {
+          p_end_at: string;
+          p_kind: string;
+          p_project_id?: string;
+          p_reason?: string;
+          p_start_at: string;
+          p_timesheet_id: string;
+        };
+        Returns: string;
       };
       email_claim: {
         Args: { p_limit?: number };
@@ -1827,7 +2082,9 @@ export type Database = {
       };
       email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
       email_mark_sent: { Args: { p_id: string }; Returns: undefined };
+      ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
+      mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
@@ -1839,6 +2096,7 @@ export type Database = {
         };
         Returns: Record<string, unknown>;
       };
+      reopen_timesheet: { Args: { p_id: string; p_reason: string }; Returns: undefined };
       replace_day_segments: {
         Args: { p_day: string; p_loaded_at?: string; p_segments: Json; p_user_id: string };
         Returns: number;
@@ -1847,6 +2105,7 @@ export type Database = {
         Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };
         Returns: string;
       };
+      return_timesheet: { Args: { p_comment: string; p_id: string }; Returns: undefined };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       save_client: {
         Args: { p_archived?: boolean; p_id: string; p_name: string };
@@ -1873,6 +2132,42 @@ export type Database = {
       };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
+      submit_timesheet: { Args: { p_id: string }; Returns: string };
+      timesheet_breakdown: {
+        Args: { p_from: string; p_to: string; p_user_id: string };
+        Returns: {
+          counted: boolean;
+          day: string;
+          excluded: boolean;
+          flagged: boolean;
+          project_id: string;
+          seconds: number;
+          type: string;
+        }[];
+      };
+      timesheet_flagged_segments: {
+        Args: { p_from: string; p_to: string; p_user_id: string };
+        Returns: {
+          day: string;
+          decision: string;
+          end_at: string;
+          excluded: boolean;
+          excluded_reason: string;
+          id: string;
+          project_id: string;
+          start_at: string;
+          type: string;
+        }[];
+      };
+      timesheet_totals: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          excluded_s: number;
+          flagged_s: number;
+          user_id: string;
+          worked_s: number;
+        }[];
+      };
       update_member: {
         Args: {
           p_full_name: string;

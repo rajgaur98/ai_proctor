@@ -71,7 +71,7 @@ async function rebuildDay(admin: SupabaseClient, userId: string, day: string): P
     p_loaded_at: loaded_at,
   });
   if (replaced.error) return { user_id: userId, day, error: replaced.error.message };
-  // null: the day is locked in a submitted or approved timesheet; left as it is.
+  // null: the day is locked in an approved timesheet (#43); left as it is.
   return replaced.data === null
     ? { user_id: userId, day, locked: true }
     : { user_id: userId, day, segments: replaced.data as number };
