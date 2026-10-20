@@ -1362,6 +1362,7 @@ export type Database = {
           project_id: string | null;
           since: string;
           status: Database["public"]["Enums"]["presence_status"];
+          tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id: string;
         };
         ComputedFields: never;
@@ -1377,6 +1378,7 @@ export type Database = {
           project_id?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
+          tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id: string;
         };
         Update: {
@@ -1391,6 +1393,7 @@ export type Database = {
           project_id?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
+          tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id?: string;
         };
         Relationships: [
@@ -1692,6 +1695,7 @@ export type Database = {
           end_at: string | null;
           id: string;
           org_id: string;
+          reason: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at: string;
           status: Database["public"]["Enums"]["presence_status"];
           user_id: string;
@@ -1701,6 +1705,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id: string;
+          reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at: string;
           status: Database["public"]["Enums"]["presence_status"];
           user_id: string;
@@ -1709,6 +1714,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id?: string;
+          reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at?: string;
           status?: Database["public"]["Enums"]["presence_status"];
           user_id?: string;
@@ -2153,6 +2159,7 @@ export type Database = {
           scheduled_today: boolean | null;
           since: string | null;
           status: Database["public"]["Enums"]["presence_status"] | null;
+          tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
           timezone: string | null;
           user_id: string | null;
         };
@@ -2620,6 +2627,7 @@ export type Database = {
         | "idle"
         | "active";
       region_preset: "us" | "eu" | "india";
+      tamper_reason: "capture_blocked" | "agent_stopped" | "no_heartbeat";
       user_role: "owner" | "admin" | "manager" | "employee";
     };
     CompositeTypes: {
@@ -2754,6 +2762,7 @@ export const Constants = {
         "active",
       ],
       region_preset: ["us", "eu", "india"],
+      tamper_reason: ["capture_blocked", "agent_stopped", "no_heartbeat"],
       user_role: ["owner", "admin", "manager", "employee"],
     },
   },

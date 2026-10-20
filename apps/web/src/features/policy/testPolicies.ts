@@ -26,6 +26,7 @@ export const us: Policy = {
   alert_tamper_enabled: true,
   alert_late_clock_in_enabled: true,
   alert_pause_over_cap_enabled: true,
+  reminders_enabled: true,
   image_retention_days: 30,
   event_retention_months: 12,
   timesheet_retention_years: 3,
