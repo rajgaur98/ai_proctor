@@ -84,6 +84,7 @@ Answered by Raj on 20 Oct 2026.
 
 Format: `- #<issue>: <exact question or action needed>`
 
+- **GitHub Actions stopped running jobs (20 Oct):** "recent account payments have failed or your spending limit needs to be increased". Fix billing / raise the Actions limit for `rajgaur98`, or approve making the macOS and Windows jobs run only on `main`. Until then PRs can't merge on green CI.
 - #108: create a stable code-signing identity for debug builds (free Apple Development certificate via Xcode → Settings → Accounts, or a self-signed code-signing certificate in Keychain Access), so rebuilt agents keep their Screen Recording, Camera and keychain grants.
 - #12, #13, #14 (Windows halves), #56: a Windows machine or VM, or a decision that the pilot is Mac-only.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
