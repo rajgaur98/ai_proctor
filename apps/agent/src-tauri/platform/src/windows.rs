@@ -1,7 +1,17 @@
-//! Windows (windows-rs: Graphics.Capture, Media Foundation, Win32 hooks, WTS).
-//! Stub until the M1+ features implement each method.
+//! Windows (windows-rs). Presence signals (idle, lock/sleep, camera/mic, sharing)
+//! and capture (Desktop Duplication, Media Foundation) are real (#167); the pieces
+//! live in `windows/`, the decision rules in `agent_core` so they test on every OS.
+//! Nothing here has run on a Windows device yet: see the device checklist on the
+//! PR. Notifications stay a stub.
 
-use std::sync::Mutex;
+mod com;
+mod consent;
+mod foreground;
+mod screen;
+mod session;
+mod webcam;
+
+use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
@@ -12,6 +22,10 @@ use agent_core::watchdog::{
     self, WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState, LABEL, SUPERVISED_ARG,
 };
 use chrono::{DateTime, Utc};
+
+/// How long a capture may take before the caller gets `Failed`, so a stuck driver
+/// cannot hang the check-in.
+const CAPTURE_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// The registry read behind `permissions()` is reused this long: status is asked for
 /// several times a second and each read starts two `reg.exe` processes.
@@ -24,7 +38,9 @@ pub struct WindowsPlatform {
 
 impl WindowsPlatform {
     pub fn new() -> Self {
-        tracing::info!(platform = "windows", "platform stub in use");
+        // Without the listener the lock state is polled and sleep is not reported.
+        let listening = session::start_listener();
+        tracing::info!(platform = "windows", listening, "platform ready");
         Self::default()
     }
 
@@ -33,42 +49,69 @@ impl WindowsPlatform {
         let mut cache = self.camera.lock().unwrap();
         if let Some((at, state)) = cache.as_ref() {
             if at.elapsed() < CAMERA_CACHE {
-                return state.clone();
+                return *state;
             }
         }
         let state = registry::camera_permission();
-        *cache = Some((Instant::now(), state.clone()));
+        *cache = Some((Instant::now(), state));
         state
     }
 }
 
+/// Runs `work` on a thread of its own and waits `CAPTURE_TIMEOUT` for it. A capture
+/// stuck in a driver call is abandoned (its thread ends whenever the call returns).
+fn with_timeout<T: Send + 'static>(
+    what: &str,
+    work: impl FnOnce() -> Result<T, CaptureError> + Send + 'static,
+) -> Result<T, CaptureError> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name(format!("ai-proctor-{what}"))
+        .spawn(move || {
+            let _ = tx.send(work());
+        })
+        .map_err(|e| CaptureError::Failed(format!("{what} thread: {e}")))?;
+    rx.recv_timeout(CAPTURE_TIMEOUT)
+        .unwrap_or_else(|_| Err(CaptureError::Failed(format!("{what} timed out"))))
+}
+
 impl Platform for WindowsPlatform {
     fn idle_seconds(&self) -> u64 {
-        0
+        session::idle()
     }
 
     fn session_state(&self) -> SessionState {
-        SessionState::Active
+        session::state()
     }
 
     fn call_state(&self) -> CallState {
-        CallState::default()
+        consent::call_state()
     }
 
     fn screen_share(&self) -> Option<ScreenShare> {
-        None
+        foreground::screen_share()
     }
 
+    /// Frontmost window's app (the executable's name), its title and, for browsers,
+    /// the page's domain. Never prompts: Windows has no permission for any of it.
     fn foreground(&self) -> Option<Foreground> {
-        None
+        foreground::foreground()
     }
 
-    fn capture_screens(&self, _max_width: u32) -> Result<Vec<Frame>, CaptureError> {
-        Err(CaptureError::Unsupported)
+    /// One frame per monitor. Blocks until done (up to 8 s): call from a worker
+    /// thread, not the UI thread.
+    fn capture_screens(&self, max_width: u32) -> Result<Vec<Frame>, CaptureError> {
+        with_timeout("screens", move || screen::capture(max_width))
     }
 
-    fn capture_webcam(&self, _width: u32, _height: u32) -> Result<Frame, CaptureError> {
-        Err(CaptureError::Unsupported)
+    /// One webcam frame, at most `width` wide. Blocks until done (up to 8 s) with the
+    /// camera light on meanwhile: call from a worker thread. Without the camera
+    /// privacy switches on it fails with `PermissionMissing` before opening the camera.
+    fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError> {
+        if self.camera_permission() != PermissionState::Granted {
+            return Err(CaptureError::PermissionMissing);
+        }
+        with_timeout("webcam", move || webcam::capture(width, height))
     }
 
     /// Capturing the screen needs no permission on Windows; the camera follows the
