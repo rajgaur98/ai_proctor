@@ -11,18 +11,20 @@ use std::time::{Duration, Instant};
 use account::Account;
 use agent_core::activity::{self, ActivityPolicy, Sampler};
 use agent_core::auth::{AuthError, REDIRECT_URL};
-use agent_core::capture::{self, CapturePolicy, Captured};
+use agent_core::capture::{self, CapturePolicy};
 use agent_core::checkin::{deferred_payload, Card, CardPolicy, ClickResult, Finished};
 use agent_core::clock::{Clock, SystemClock};
 use agent_core::config::ProjectConfig;
 use agent_core::contracts::{
     AgentStatus, CardChallenge, CardClickResult, CheckinOutcome, CommandResult, LastCheckin,
-    MissedCheckin, NoticeContent, PermissionState, ProjectRef, ShiftState,
+    MissedCheckin, NoticeContent, Permissions, ProjectRef, ShiftState,
 };
 use agent_core::keystore::KeyStore;
+use agent_core::liveness::{Liveness, PreviousRun, RestartReport};
 use agent_core::notice::NoticeState;
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
-use agent_core::platform::{CaptureError, Platform, SessionState};
+use agent_core::permissions::{PermissionMonitor, Required};
+use agent_core::platform::{Platform, SessionState};
 use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{
     Decision, FileScheduleStore, Outcome, Random, SchedulePolicy, Scheduler, ThreadRandom,
@@ -31,6 +33,7 @@ use agent_core::session::{
     EventSink, FileSessionStore, OutboxSink, Session, SessionPolicy, TransitionError,
 };
 use agent_core::sync::{Backoff, Heartbeat, SyncError};
+use agent_core::watchdog::WatchdogSpec;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WindowEvent};
@@ -56,10 +59,6 @@ const CARD_TICK: Duration = Duration::from_millis(250);
 /// The card stays up briefly after the click so the result can be read.
 const PASS_LINGER: Duration = Duration::from_millis(800);
 
-/// CAP-08: this many permission failures in a row report the permission as
-/// missing (Tamper on the server, STS rule 2).
-const PERMISSION_FAILURES_FOR_TAMPER: u32 = 2;
-
 /// What a click on the card did. A pass comes back unqueued: its captures are
 /// taken off the UI thread (`finish_pass`).
 #[derive(Debug, PartialEq)]
@@ -78,14 +77,6 @@ impl ClickReply {
             pass: None,
         }
     }
-}
-
-/// Consecutive capture permission failures, and what was last reported.
-#[derive(Debug, Default)]
-struct PermissionWatch {
-    screen_failures: u32,
-    camera_failures: u32,
-    reported_missing: bool,
 }
 
 /// What the card runner should do with the window.
@@ -108,7 +99,11 @@ pub struct AgentState {
     card: Mutex<Option<Card>>,
     card_policy: CardPolicy,
     capture_policy: CapturePolicy,
-    permission_watch: Mutex<PermissionWatch>,
+    /// Capture permissions: reported on change, asked about while missing (AGT-07).
+    permissions: Mutex<PermissionMonitor>,
+    /// Last-alive evidence for the watchdog's restart report (ANT-01); `None` when
+    /// the keychain is unavailable.
+    liveness: Option<Liveness>,
     /// Activity sampling (#25); org settings arrive with the policy work.
     activity: Mutex<Sampler>,
     /// Idle, lock, sleep and call changes sent as events (STS-01).
@@ -146,6 +141,13 @@ impl AgentState {
         if account.is_some() {
             session.set_collection_allowed(false);
         }
+        let (liveness, previous_run) = match &outbox {
+            Some(outbox) => {
+                let (liveness, previous) = Liveness::start(outbox.clone(), clock.now());
+                (Some(liveness), previous)
+            }
+            None => (None, None),
+        };
         let state = Self {
             platform,
             clock,
@@ -156,7 +158,8 @@ impl AgentState {
             // Org card settings arrive with the policy work; defaults until then.
             card_policy: CardPolicy::default(),
             capture_policy: CapturePolicy::default(),
-            permission_watch: Mutex::new(PermissionWatch::default()),
+            permissions: Mutex::new(PermissionMonitor::default()),
+            liveness,
             activity: Mutex::new(Sampler::new(ActivityPolicy::default())),
             presence: Mutex::new(PresenceTracker::default()),
             sync_thread: Mutex::new(None),
@@ -170,7 +173,58 @@ impl AgentState {
             notice: Mutex::new(NoticeState::default()),
         };
         state.sync_schedule();
+        if let Some(previous) = previous_run {
+            state.report_restart(&previous);
+        }
         state
+    }
+
+    /// ANT-01: this run follows one that ended during a shift. Says how it ended
+    /// and when it was last seen alive; the server decides whether that gap is
+    /// Tamper. A run that ended off shift has nothing to explain.
+    fn report_restart(&self, previous: &PreviousRun) {
+        if self.session.lock().unwrap().shift() == ShiftState::OffShift {
+            return;
+        }
+        let report = RestartReport::new(previous, self.platform.boot_time());
+        tracing::warn!(
+            last_alive_at = %report.last_alive_at,
+            reason = report.reason.as_str(),
+            "restarted during a shift"
+        );
+        let Some(outbox) = &self.outbox else {
+            return;
+        };
+        let now = self.clock.now();
+        if let Err(error) = outbox.append(
+            "agent_restart",
+            now,
+            self.clock.mono_ms(),
+            report.payload(),
+            now,
+        ) {
+            tracing::error!(%error, "restart not queued");
+        }
+    }
+
+    /// Writes the last-alive time (at most every 15 s); the ticker calls this.
+    fn beat(&self) {
+        if let Some(liveness) = &self.liveness {
+            liveness.beat(self.clock.now());
+        }
+    }
+
+    /// A normal exit: the next run reads it as `exited`, not `killed`.
+    fn exited(&self) {
+        if let Some(liveness) = &self.liveness {
+            liveness.exited(self.clock.now());
+        }
+    }
+
+    /// The tray's Quit is for off shift only: while clocked in the agent keeps
+    /// running, so stopping it mid-shift is always a kill (ANT-01).
+    fn quit_allowed(&self) -> bool {
+        self.session.lock().unwrap().shift() == ShiftState::OffShift
     }
 
     /// Working arms the next check-in; a break, a pause or clock-out cancels it
@@ -234,6 +288,7 @@ impl AgentState {
                     at: iso(at),
                 }),
             notice,
+            permissions: Some(self.effective_permissions()),
         };
         agent_core::status::agent_status(
             self.platform.as_ref(),
@@ -340,7 +395,12 @@ impl AgentState {
             webcam_error = ?captured.webcam_error,
             "captured"
         );
-        self.watch_permissions(&captured);
+        self.permissions.lock().unwrap().capture_finished(
+            (self.capture_policy.screenshots != capture::ScreenshotMode::Off)
+                .then_some(&captured.screen_error),
+            self.capture_policy.webcam.then_some(&captured.webcam_error),
+        );
+        self.permission_tick();
         captured.attach(&mut finished.payload);
         let Some(id) = self.queue(finished) else {
             return;
@@ -354,48 +414,56 @@ impl AgentState {
         }
     }
 
-    /// CAP-08: a capture that fails for lack of permission twice in a row reports
-    /// the permission missing (`permission_change`), which the server turns into
-    /// Tamper; the next good capture reports it back. Covers macOS keeping a stale
-    /// "granted" after Screen Recording is revoked (spike #13).
-    fn watch_permissions(&self, captured: &Captured) {
-        let mut watch = self.permission_watch.lock().unwrap();
-        let count = |failures: &mut u32, error: &Option<CaptureError>| match error {
-            Some(CaptureError::PermissionMissing) => *failures += 1,
-            Some(_) => {}
-            None => *failures = 0,
+    /// The permissions as far as the agent can tell: the OS's answer, corrected by
+    /// captures that failed for lack of permission (CAP-08).
+    fn effective_permissions(&self) -> Permissions {
+        self.permissions
+            .lock()
+            .unwrap()
+            .effective(self.platform.permissions())
+    }
+
+    /// AGT-07: reports the capture permissions when they change, and asks the
+    /// person to fix a missing one while they work. Reporting is raw state; the
+    /// server turns a missing permission into Tamper while clocked in (STS rule 2).
+    fn permission_tick(&self) {
+        let (shift, signed_in) = {
+            let session = self.session.lock().unwrap();
+            (session.shift(), session.signed_in())
         };
-        if self.capture_policy.screenshots != capture::ScreenshotMode::Off {
-            count(&mut watch.screen_failures, &captured.screen_error);
+        let poll = self.permissions.lock().unwrap().poll(
+            self.platform.as_ref(),
+            Required {
+                camera: self.capture_policy.webcam,
+            },
+            signed_in,
+            shift,
+            self.clock.now(),
+        );
+        if let Some(permissions) = poll.report {
+            self.report_permissions(&permissions);
         }
-        if self.capture_policy.webcam {
-            count(&mut watch.camera_failures, &captured.webcam_error);
+        if let Some(prompt) = poll.prompt {
+            tracing::warn!(title = %prompt.title, "asking the person to fix a permission");
+            self.platform.notify(&prompt.title, &prompt.body);
         }
-        let screen_missing = watch.screen_failures >= PERMISSION_FAILURES_FOR_TAMPER;
-        let camera_missing = watch.camera_failures >= PERMISSION_FAILURES_FOR_TAMPER;
-        let missing = screen_missing || camera_missing;
-        if missing == watch.reported_missing {
+    }
+
+    fn report_permissions(&self, permissions: &Permissions) {
+        let Some(outbox) = &self.outbox else {
+            self.permissions.lock().unwrap().report_failed();
             return;
-        }
-        let mut permissions = self.platform.permissions();
-        if screen_missing {
-            permissions.screen = PermissionState::Denied;
-        }
-        if camera_missing {
-            permissions.camera = PermissionState::Denied;
-        }
-        tracing::warn!(?permissions, "capture permissions changed");
-        let payload = serde_json::to_value(&permissions).unwrap_or_default();
-        if let Some(outbox) = &self.outbox {
-            let now = self.clock.now();
-            if let Err(error) =
-                outbox.append("permission_change", now, self.clock.mono_ms(), payload, now)
-            {
+        };
+        tracing::info!(?permissions, "capture permissions");
+        let now = self.clock.now();
+        let payload = serde_json::to_value(permissions).unwrap_or_default();
+        match outbox.append("permission_change", now, self.clock.mono_ms(), payload, now) {
+            Ok(_) => self.nudge_sync(),
+            Err(error) => {
                 tracing::error!(%error, "permission change not queued");
-                return;
+                self.permissions.lock().unwrap().report_failed();
             }
         }
-        watch.reported_missing = missing;
     }
 
     /// ACT-01: samples the frontmost app while working (and unlocked); anything
@@ -608,8 +676,10 @@ impl AgentState {
         self.platform.notify("Signed out of AI Proctor", body);
     }
 
-    /// Signed out: the next person starts without an acknowledged notice.
+    /// Signed out: the next person starts without an acknowledged notice, and gets
+    /// this device's permissions reported afresh.
     fn forget_notice(&self) {
+        self.permissions.lock().unwrap().reset();
         self.notice.lock().unwrap().clear();
         if self.account.is_some() {
             self.session.lock().unwrap().set_collection_allowed(false);
@@ -674,7 +744,7 @@ impl AgentState {
                 idle_s: self.platform.idle_seconds(),
                 locked: self.platform.session_state() != SessionState::Active,
                 in_call: self.platform.call_state().in_call(),
-                permissions: serde_json::to_value(self.platform.permissions()).unwrap_or_default(),
+                permissions: serde_json::to_value(self.effective_permissions()).unwrap_or_default(),
             }),
         }
     }
@@ -1148,10 +1218,19 @@ pub fn run() {
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
             std::fs::create_dir_all(&log_dir)?;
-            // Leaked on purpose: the guard must live as long as the process.
             let guard = agent_core::logging::init(&log_dir).map_err(|e| e.to_string())?;
-            Box::leak(Box::new(guard));
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "agent started");
+
+            let platform = agent_platform::current();
+            // ANT-01: before anything is opened, so a copy started by the watchdog
+            // never shares the encrypted queue with this one.
+            if ensure_watchdog(platform.as_ref()) {
+                tracing::info!("the watchdog started its own copy; this one exits");
+                drop(guard);
+                std::process::exit(0);
+            }
+            // Leaked on purpose: the guard must live as long as the process.
+            Box::leak(Box::new(guard));
 
             let data_dir = app.path().app_data_dir()?;
             let outbox = match open_outbox(&data_dir) {
@@ -1165,7 +1244,6 @@ pub fn run() {
                 }
             };
             let clock: Arc<dyn Clock> = Arc::new(SystemClock::default());
-            let platform = agent_platform::current();
             // Debug builds only, until guided onboarding (#59) asks properly.
             #[cfg(debug_assertions)]
             if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
@@ -1234,14 +1312,72 @@ pub fn run() {
             });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running the agent");
+        .build(tauri::generate_context!())
+        .expect("error while building the agent")
+        .run(|app, event| {
+            // Only a normal exit gets here; a kill doesn't, which is how the next run
+            // knows it was one (ANT-01).
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<AgentState>() {
+                    state.exited();
+                }
+            }
+        });
+}
+
+/// What the watchdog starts: this executable, when it runs from an installed app
+/// (a macOS .app in a stable place, not `tauri dev`'s binary or a translocated copy).
+fn watchdog_spec() -> Option<WatchdogSpec> {
+    let executable = std::env::current_exe().ok()?;
+    let installed = if cfg!(target_os = "macos") {
+        executable
+            .to_string_lossy()
+            .contains(".app/Contents/MacOS/")
+    } else {
+        !executable.components().any(|c| c.as_os_str() == "target")
+    };
+    (installed && agent_core::watchdog::stable_executable(&executable))
+        .then_some(WatchdogSpec { executable })
+}
+
+/// ANT-01: registers the helper that restarts the agent if it is killed. Every
+/// launch, harmlessly. Returns true when the watchdog has started its own copy and
+/// this process should exit. `AI_PROCTOR_WATCHDOG=off` removes the helper instead,
+/// for trying the agent by hand.
+fn ensure_watchdog(platform: &dyn Platform) -> bool {
+    let remove = std::env::var("AI_PROCTOR_WATCHDOG").as_deref() == Ok("off");
+    ensure_watchdog_with(platform, watchdog_spec(), remove)
+}
+
+fn ensure_watchdog_with(platform: &dyn Platform, spec: Option<WatchdogSpec>, remove: bool) -> bool {
+    if remove {
+        match platform.uninstall_watchdog() {
+            Ok(()) => tracing::warn!("watchdog removed (AI_PROCTOR_WATCHDOG=off)"),
+            Err(error) => tracing::warn!(%error, "watchdog not removed"),
+        }
+        return false;
+    }
+    let Some(spec) = spec else {
+        tracing::info!("no watchdog: not running from an installed app");
+        return false;
+    };
+    match platform.install_watchdog(&spec) {
+        Ok(state) => {
+            tracing::info!(?state, "watchdog ready");
+            state.handed_over
+        }
+        Err(error) => {
+            tracing::warn!(%error, "watchdog not installed; a killed agent stays down");
+            false
+        }
+    }
 }
 
 fn spawn_ticker(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(TICK);
         let state = app.state::<AgentState>();
+        state.beat();
         let before = state.status();
         state.act("update the shift", |s| s.tick());
         let after = state.status();
@@ -1274,6 +1410,7 @@ fn spawn_activity(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(activity::SAMPLE_EVERY);
         let state = app.state::<AgentState>();
+        state.permission_tick();
         state.presence_tick();
         state.activity_tick();
     });
@@ -1339,9 +1476,16 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             match event.id.as_ref() {
                 "clock_in" => state.act("clock in", |s| s.clock_in(None)),
                 "clock_out" => state.act("clock out", |s| s.clock_out()),
-                "quit" => {
+                "quit" if state.quit_allowed() => {
                     tracing::info!("quit from tray menu");
                     app.exit(0);
+                }
+                "quit" => {
+                    tracing::info!("quit refused while clocked in");
+                    state.platform.notify(
+                        "Clock out before you quit",
+                        "AI Proctor keeps running while you're clocked in. Clock out first, then quit.",
+                    );
                 }
                 _ => {}
             }
@@ -1700,8 +1844,12 @@ mod tests {
         assert_eq!(w.outbox.stats().unwrap().uploads, 2);
     }
 
+    fn permission_reports(w: &Working) -> Vec<serde_json::Value> {
+        w.events("permission_change")
+    }
+
     #[test]
-    fn a_failed_capture_still_passes_and_repeated_permission_failures_report_it() {
+    fn a_failed_capture_still_passes_and_a_revoked_permission_is_reported() {
         let w = working();
         w.platform
             .update(|s| s.permissions.screen = PermissionState::Denied);
@@ -1710,26 +1858,144 @@ mod tests {
         assert_eq!(first["outcome"], "pass");
         assert_eq!(first["capture_errors"]["screen"], "permission_missing");
         assert_eq!(first["object_keys"], serde_json::json!(["webcam.webp"]));
-        assert!(
-            w.events("permission_change").is_empty(),
-            "once isn't repeated"
+        assert_eq!(
+            permission_reports(&w),
+            [serde_json::json!({ "screen": "denied", "camera": "granted" })]
         );
 
         w.pass();
-        let changes = w.events("permission_change");
-        assert_eq!(
-            changes,
-            [serde_json::json!({ "screen": "denied", "camera": "granted" })]
-        );
-        w.pass();
-        assert_eq!(w.events("permission_change").len(), 1, "reported once");
+        w.state.permission_tick();
+        assert_eq!(permission_reports(&w).len(), 1, "reported once");
 
         w.platform
             .update(|s| s.permissions.screen = PermissionState::Granted);
+        w.state.permission_tick();
+        let reports = permission_reports(&w);
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports[1]["screen"], "granted", "reported back");
+    }
+
+    #[test]
+    fn a_permission_revoked_between_check_ins_is_reported_by_the_next_look() {
+        let w = working();
+        w.state.permission_tick();
+        assert_eq!(
+            permission_reports(&w),
+            [serde_json::json!({ "screen": "granted", "camera": "granted" })],
+            "the first look after launch reports what there is"
+        );
+        w.platform
+            .update(|s| s.permissions.camera = PermissionState::Denied);
+        w.state.permission_tick();
+        w.state.permission_tick();
+        assert_eq!(
+            permission_reports(&w)[1],
+            serde_json::json!({ "screen": "granted", "camera": "denied" })
+        );
+        assert_eq!(permission_reports(&w).len(), 2);
+        assert_eq!(
+            w.state.status().permissions.camera,
+            PermissionState::Denied,
+            "the tray warns too"
+        );
+    }
+
+    #[test]
+    fn a_stale_granted_is_overridden_by_two_failed_captures() {
+        let w = working();
+        // macOS still says "granted" after Screen Recording is revoked (spike #13).
+        w.platform
+            .update(|s| s.screen = Err(agent_core::platform::CaptureError::PermissionMissing));
         w.pass();
-        let changes = w.events("permission_change");
-        assert_eq!(changes.len(), 2);
-        assert_eq!(changes[1]["screen"], "granted", "reported back");
+        assert_eq!(
+            permission_reports(&w),
+            [serde_json::json!({ "screen": "granted", "camera": "granted" })],
+            "one failure isn't enough"
+        );
+        w.pass();
+        let reports = permission_reports(&w);
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports[1]["screen"], "denied");
+        assert_eq!(w.state.status().permissions.screen, PermissionState::Denied);
+        w.pass();
+        assert_eq!(permission_reports(&w).len(), 2, "reported once");
+
+        w.platform.update(|s| s.screen = Ok(()));
+        w.pass();
+        let reports = permission_reports(&w);
+        assert_eq!(reports.len(), 3);
+        assert_eq!(reports[2]["screen"], "granted", "reported back");
+    }
+
+    #[test]
+    fn a_missing_permission_prompts_while_working_and_not_too_often() {
+        let w = working();
+        w.platform
+            .update(|s| s.permissions.screen = PermissionState::Denied);
+        w.state.permission_tick();
+        let prompts = |w: &Working| {
+            w.platform
+                .snapshot()
+                .notifications
+                .iter()
+                .filter(|(title, _)| title == "Screen Recording is off")
+                .count()
+        };
+        assert_eq!(prompts(&w), 1);
+        w.clock.advance(chrono::Duration::minutes(5));
+        w.state.permission_tick();
+        assert_eq!(prompts(&w), 1, "not again after 5 minutes");
+        w.clock.advance(chrono::Duration::minutes(11));
+        w.state.permission_tick();
+        assert_eq!(prompts(&w), 2, "again after a quarter of an hour");
+
+        w.state.act("start a break", |s| s.start_break(None));
+        w.clock.advance(chrono::Duration::minutes(20));
+        w.state.permission_tick();
+        assert_eq!(prompts(&w), 2, "a break collects nothing and asks nothing");
+    }
+
+    #[test]
+    fn the_next_person_to_sign_in_gets_the_permissions_reported_for_them() {
+        let w = working();
+        w.state.permission_tick();
+        assert_eq!(permission_reports(&w).len(), 1);
+        w.state.sign_out();
+        w.state.session.lock().unwrap().sign_in();
+        w.state.permission_tick();
+        assert_eq!(permission_reports(&w).len(), 2);
+    }
+
+    #[test]
+    fn nothing_is_reported_while_signed_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let outbox = Arc::new(Outbox::open(&dir.path().join("outbox"), &[1u8; 32]).unwrap());
+        let clock = Arc::new(FakeClock::at("2026-10-19T09:00:00Z"));
+        let platform = Arc::new(FakePlatform::default());
+        let session = Session::new(
+            SessionPolicy::default(),
+            clock.clone(),
+            platform.clone(),
+            Arc::new(UnavailableSink),
+            Arc::new(FileSessionStore::new(dir.path())),
+        );
+        let scheduler = Scheduler::new(
+            SchedulePolicy::default(),
+            clock.clone(),
+            platform.clone(),
+            Arc::new(ThreadRandom),
+            Arc::new(FileScheduleStore::new(dir.path())),
+        );
+        let state = AgentState::new(
+            platform,
+            clock,
+            session,
+            scheduler,
+            Some(outbox.clone()),
+            None,
+        );
+        state.permission_tick();
+        assert!(outbox.pending(10).unwrap().is_empty());
     }
 
     #[test]
@@ -2192,5 +2458,200 @@ mod tests {
             state.acknowledge_notice(1).unwrap_err(),
             "This copy of AI Proctor has no server set up."
         );
+    }
+
+    // --- Watchdog and restart report (ANT-01) ---------------------------------------
+
+    fn bundled_spec() -> WatchdogSpec {
+        WatchdogSpec {
+            executable: "/Applications/AI Proctor.app/Contents/MacOS/ai-proctor-agent".into(),
+        }
+    }
+
+    #[test]
+    fn the_watchdog_is_installed_once_and_left_alone_afterwards() {
+        let platform = FakePlatform::default();
+        assert!(!ensure_watchdog_with(
+            &platform,
+            Some(bundled_spec()),
+            false
+        ));
+        assert_eq!(platform.snapshot().watchdog, Some(bundled_spec()));
+        assert!(!ensure_watchdog_with(
+            &platform,
+            Some(bundled_spec()),
+            false
+        ));
+        assert!(platform.watchdog_installed());
+    }
+
+    #[test]
+    fn the_first_run_hands_over_to_the_watchdogs_copy_and_a_supervised_one_stays() {
+        let first_run = FakePlatform::default();
+        first_run.update(|s| s.hands_over = true);
+        assert!(ensure_watchdog_with(
+            &first_run,
+            Some(bundled_spec()),
+            false
+        ));
+
+        let supervised = FakePlatform::default();
+        supervised.update(|s| {
+            s.hands_over = true;
+            s.supervised = true;
+        });
+        assert!(!ensure_watchdog_with(
+            &supervised,
+            Some(bundled_spec()),
+            false
+        ));
+    }
+
+    #[test]
+    fn a_dev_binary_gets_no_watchdog_and_a_failed_install_does_not_stop_the_agent() {
+        let platform = FakePlatform::default();
+        assert!(!ensure_watchdog_with(&platform, None, false));
+        assert!(!platform.watchdog_installed());
+
+        platform.update(|s| {
+            s.hands_over = true;
+            s.watchdog_error = Some(agent_core::watchdog::WatchdogError::Failed("denied".into()));
+        });
+        assert!(
+            !ensure_watchdog_with(&platform, Some(bundled_spec()), false),
+            "carries on as it is"
+        );
+    }
+
+    #[test]
+    fn the_off_switch_removes_the_watchdog() {
+        let platform = FakePlatform::default();
+        ensure_watchdog_with(&platform, Some(bundled_spec()), false);
+        assert!(!ensure_watchdog_with(&platform, Some(bundled_spec()), true));
+        assert!(!platform.watchdog_installed());
+    }
+
+    #[test]
+    fn the_executable_must_be_an_installed_app() {
+        // Under `cargo test` the binary is in target/, never a bundle.
+        assert_eq!(watchdog_spec(), None);
+    }
+
+    /// A run that was clocked in and ended `ago` before the next one starts.
+    /// `exit`: how it ended.
+    enum Ending {
+        Killed,
+        Exited,
+    }
+
+    fn restarted(
+        shift_on: bool,
+        ending: Ending,
+        gap: chrono::Duration,
+        boot_time: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Vec<serde_json::Value> {
+        let dir = tempfile::tempdir().unwrap();
+        let clock = Arc::new(FakeClock::at("2026-10-20T09:00:00Z"));
+        let outbox = Arc::new(Outbox::open(&dir.path().join("outbox"), &[1u8; 32]).unwrap());
+        let platform = Arc::new(FakePlatform::default());
+        let sink: Arc<dyn EventSink> = Arc::new(OutboxSink {
+            outbox: outbox.clone(),
+            clock: clock.clone(),
+        });
+        let make_state = |clock: Arc<FakeClock>| {
+            let session = Session::new(
+                SessionPolicy::default(),
+                clock.clone(),
+                platform.clone(),
+                sink.clone(),
+                Arc::new(FileSessionStore::new(dir.path())),
+            );
+            let scheduler = Scheduler::new(
+                SchedulePolicy::default(),
+                clock.clone(),
+                platform.clone(),
+                Arc::new(ThreadRandom),
+                Arc::new(FileScheduleStore::new(dir.path())),
+            );
+            AgentState::new(
+                platform.clone(),
+                clock,
+                session,
+                scheduler,
+                Some(outbox.clone()),
+                None,
+            )
+        };
+        // The first run: signs in, maybe clocks in, then ends.
+        let first = make_state(clock.clone());
+        first.session.lock().unwrap().sign_in();
+        if shift_on {
+            first.act("clock in", |s| s.clock_in(None));
+        }
+        clock.advance(chrono::Duration::minutes(10));
+        first.beat();
+        if matches!(ending, Ending::Exited) {
+            first.exited();
+        }
+        drop(first);
+        // The next run, `gap` later.
+        platform.update(|s| s.boot_time = boot_time);
+        clock.advance(gap);
+        let second = make_state(clock.clone());
+        assert_eq!(
+            second.session.lock().unwrap().shift() != ShiftState::OffShift,
+            shift_on
+        );
+        outbox
+            .pending(100)
+            .unwrap()
+            .into_iter()
+            .filter(|e| e.event_type == "agent_restart")
+            .map(|e| e.payload)
+            .collect()
+    }
+
+    #[test]
+    fn a_kill_during_a_shift_is_reported_with_when_the_agent_was_last_alive() {
+        let reports = restarted(true, Ending::Killed, chrono::Duration::seconds(40), None);
+        assert_eq!(
+            reports,
+            [serde_json::json!({
+                "last_alive_at": "2026-10-20T09:10:00.000Z",
+                "reason": "killed"
+            })]
+        );
+    }
+
+    #[test]
+    fn a_normal_exit_during_a_shift_is_reported_as_exited() {
+        let reports = restarted(true, Ending::Exited, chrono::Duration::hours(2), None);
+        assert_eq!(reports[0]["reason"], "exited");
+    }
+
+    #[test]
+    fn a_device_that_started_up_since_is_reported_as_rebooted() {
+        let boot = Some("2026-10-20T09:30:00Z".parse().unwrap());
+        let reports = restarted(true, Ending::Killed, chrono::Duration::hours(1), boot);
+        assert_eq!(reports[0]["reason"], "rebooted");
+    }
+
+    #[test]
+    fn nothing_is_reported_when_the_run_before_was_off_shift() {
+        assert!(restarted(false, Ending::Killed, chrono::Duration::minutes(5), None).is_empty());
+    }
+
+    #[test]
+    fn the_first_run_ever_reports_nothing() {
+        let w = working();
+        assert!(w.events("agent_restart").is_empty());
+    }
+
+    #[test]
+    fn quitting_is_refused_while_clocked_in_and_allowed_off_shift() {
+        let w = working();
+        assert!(!w.state.quit_allowed());
+        w.state.act("clock out", |s| s.clock_out());
+        assert!(w.state.quit_allowed());
     }
 }

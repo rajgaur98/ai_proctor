@@ -15,7 +15,9 @@ use agent_core::contracts::{PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
+use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use block2::RcBlock;
+use chrono::{DateTime, Utc};
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
@@ -291,6 +293,22 @@ impl Platform for MacPlatform {
 
     fn notify(&self, title: &str, _body: &str) {
         tracing::debug!(title, "notification (stub)");
+    }
+
+    fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError> {
+        crate::launchd::install(spec)
+    }
+
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError> {
+        crate::launchd::uninstall()
+    }
+
+    fn watchdog_installed(&self) -> bool {
+        crate::launchd::installed()
+    }
+
+    fn boot_time(&self) -> Option<DateTime<Utc>> {
+        crate::launchd::boot_time()
     }
 }
 

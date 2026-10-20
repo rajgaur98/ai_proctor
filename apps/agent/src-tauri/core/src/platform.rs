@@ -2,7 +2,10 @@
 //! (LLD section 01). macOS and Windows implement it in `agent-platform`; tests use
 //! `FakePlatform`.
 
+use chrono::{DateTime, Utc};
+
 use crate::contracts::Permissions;
+use crate::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 
 /// Whether the user's session is usable right now.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -104,4 +107,14 @@ pub trait Platform: Send + Sync {
     fn is_injected(&self, click: &Click) -> bool;
     /// OS notification (CHK-13 optional check-in notification).
     fn notify(&self, title: &str, body: &str);
+    /// ANT-01: registers the helper the OS runs to start the agent again if it is
+    /// killed (macOS LaunchAgent, Windows scheduled task). Safe to call at every
+    /// launch: an existing registration with the same content is left alone.
+    fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError>;
+    /// Removes the helper (uninstall, or a dev build trying the agent without one).
+    fn uninstall_watchdog(&self) -> Result<(), WatchdogError>;
+    fn watchdog_installed(&self) -> bool;
+    /// When the device last started up, to tell a reboot from a kill (ANT-01).
+    /// `None` when the OS can't say.
+    fn boot_time(&self) -> Option<DateTime<Utc>>;
 }

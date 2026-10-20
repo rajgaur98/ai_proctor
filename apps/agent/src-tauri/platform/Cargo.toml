@@ -9,6 +9,7 @@ description = "Platform implementations: macOS (objc2) and Windows (windows-rs)"
 [dependencies]
 agent-core.workspace = true
 tracing.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

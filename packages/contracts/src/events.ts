@@ -75,6 +75,13 @@ const payloads = {
     end: timestamp,
   }),
   permission_change: z.strictObject({ screen: PermissionState, camera: PermissionState }),
+  // The watchdog started the agent again after a run that ended during a shift (ANT-01).
+  // killed: it never exited normally; exited: a normal exit; rebooted: the device started
+  // up since. Only killed is Tamper, for the time since last_alive_at.
+  agent_restart: z.strictObject({
+    last_alive_at: timestamp,
+    reason: z.enum(["killed", "exited", "rebooted"]),
+  }),
 } as const;
 
 export type AgentEventType = keyof typeof payloads;

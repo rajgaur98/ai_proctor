@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use agent_core::checkin::deferred_payload;
 use agent_core::clock::{Clock, SystemClock};
+use agent_core::liveness::{PreviousRun, RestartReport};
 use agent_core::outbox::Outbox;
 use agent_core::scheduler::{Deferral, DeferralReason};
 use agent_core::sync::{
@@ -96,8 +97,29 @@ fn queued_events_and_captures_reach_supabase() {
             now,
         )
         .unwrap();
+    // The watchdog's restart report and a permission report (ANT-01, AGT-07): the
+    // real payloads must pass the server's schema and projection.
+    let restart = RestartReport::new(
+        &PreviousRun {
+            last_alive_at: now - chrono::Duration::seconds(90),
+            clean_exit: false,
+        },
+        None,
+    );
     outbox
-        .append("clock_out", now, 4, json!({ "reason": "manual" }), now)
+        .append("agent_restart", now, 4, restart.payload(), now)
+        .unwrap();
+    outbox
+        .append(
+            "permission_change",
+            now,
+            5,
+            json!({ "screen": "granted", "camera": "granted" }),
+            now,
+        )
+        .unwrap();
+    outbox
+        .append("clock_out", now, 6, json!({ "reason": "manual" }), now)
         .unwrap();
 
     let syncer = Syncer::new(
@@ -114,7 +136,7 @@ fn queued_events_and_captures_reach_supabase() {
     let stats = syncer.sync_once().unwrap();
     assert_eq!(
         (stats.accepted, stats.rejected, stats.uploaded),
-        (4, 0, 1),
+        (6, 0, 1),
         "{stats:?}"
     );
     assert_eq!(outbox.stats().unwrap().pending_events, 0);
