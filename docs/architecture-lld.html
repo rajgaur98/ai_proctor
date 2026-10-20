@@ -392,7 +392,7 @@ footer { color: var(--muted); font-size: 13px; }
           <thead><tr><th>Module</th><th>Owns</th></tr></thead>
           <tbody>
             <tr><td><code>policy</code></td><td>Org policy cached on disk with its version. Replaced when a heartbeat reply carries a newer version.</td></tr>
-            <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events, and closes an <code>app_session</code> on every foreground change.</td></tr>
+            <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events (camera, mic, screen share and presentation each start and end a call, so In meeting holds while any is on), and closes an <code>app_session</code> on every foreground change.</td></tr>
             <tr><td><code>session</code></td><td>Shift state machine (section 2). Auto clock-in on first input inside the shift; auto clock-out after 30 min without input past shift end.</td></tr>
             <tr><td><code>scheduler</code></td><td>Draws <code>next_at</code> uniformly in [min, max] and writes it to disk before arming, so a restart keeps the same time. Applies deferral and lock rules. A due check-in held for a call, share or presentation leaves one <code>deferred</code> check-in (due time and <code>deferral_reason</code> call | screen_share | presenting; no capture); the card still follows once the hold ends.</td></tr>
             <tr><td><code>checkin</code></td><td>Builds the challenge (target number, three shuffled buttons), validates clicks in Rust, rejects injected clicks, records <code>response_ms</code> and the outcome.</td></tr>
@@ -691,7 +691,7 @@ pub trait Platform: Send + Sync {
           <tr><td><code>checkin</code></td><td>see example above</td><td><code>checkin_events</code> row; presence Active or Away</td></tr>
           <tr><td><code>idle_start</code> / <code>idle_end</code></td><td>since</td><td><code>status_periods</code>; presence Idle</td></tr>
           <tr><td><code>lock</code> / <code>unlock</code> / <code>sleep</code> / <code>wake</code></td><td>none</td><td>Presence Away (Locked)</td></tr>
-          <tr><td><code>call_start</code> / <code>call_end</code></td><td>source (camera, mic)</td><td>Presence In meeting</td></tr>
+          <tr><td><code>call_start</code> / <code>call_end</code></td><td>source (camera, mic, screen_share, presenting)</td><td>Presence In meeting while any source is on; a call and a share overlapping are one Meeting period</td></tr>
           <tr><td><code>app_session</code></td><td>app, title?, domain?, start, end</td><td><code>activity_sessions</code> (title dropped if policy says so)</td></tr>
           <tr><td><code>permission_change</code></td><td>screen, camera</td><td>Tamper (capture blocked) while missing</td></tr>
         </tbody>

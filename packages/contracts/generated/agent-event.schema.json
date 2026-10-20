@@ -759,7 +759,7 @@
               "properties": {
                 "source": {
                   "type": "string",
-                  "enum": ["camera", "mic"]
+                  "enum": ["camera", "mic", "screen_share", "presenting"]
                 }
               },
               "required": ["source"],
@@ -801,7 +801,7 @@
               "properties": {
                 "source": {
                   "type": "string",
-                  "enum": ["camera", "mic"]
+                  "enum": ["camera", "mic", "screen_share", "presenting"]
                 }
               },
               "required": ["source"],

@@ -98,6 +98,16 @@ describe("AgentEvent", () => {
     expect(pause({ planned_min: 5, reason: "x".repeat(201) })).toBe(false);
   });
 
+  it("takes camera, mic, screen share and presenting as call sources (STS rule 8)", () => {
+    const call = (type: "call_start" | "call_end", source: string) =>
+      AgentEvent.safeParse({ ...base, type, payload: { source } }).success;
+    for (const source of ["camera", "mic", "screen_share", "presenting"]) {
+      expect(call("call_start", source)).toBe(true);
+      expect(call("call_end", source)).toBe(true);
+    }
+    expect(call("call_start", "speaker")).toBe(false);
+  });
+
   it("rejects unknown payload fields", () => {
     expect(() => AgentEvent.parse({ ...base, type: "lock", payload: { extra: 1 } })).toThrow();
   });

@@ -73,6 +73,19 @@ fn queued_events_and_captures_reach_supabase() {
     outbox
         .append("checkin", now, 2, deferred_payload(&deferral, None), now)
         .unwrap();
+    // A screen share, then a presentation switched to while it runs (STS rule 8): the
+    // call events the presence tracker sends for them must pass the server's schema
+    // and projection.
+    for (event_type, source) in [
+        ("call_start", "screen_share"),
+        ("call_start", "presenting"),
+        ("call_end", "screen_share"),
+        ("call_end", "presenting"),
+    ] {
+        outbox
+            .append(event_type, now, 2, json!({ "source": source }), now)
+            .unwrap();
+    }
     let checkin = outbox
         .append(
             "checkin",
@@ -114,7 +127,7 @@ fn queued_events_and_captures_reach_supabase() {
     let stats = syncer.sync_once().unwrap();
     assert_eq!(
         (stats.accepted, stats.rejected, stats.uploaded),
-        (4, 0, 1),
+        (8, 0, 1),
         "{stats:?}"
     );
     assert_eq!(outbox.stats().unwrap().pending_events, 0);
