@@ -11,12 +11,14 @@ export interface NavLink {
 const manager: NavLink[] = [
   { to: "/team", label: "Live team" },
   { to: "/timesheets", label: "Timesheets" },
+  { to: "/reports", label: "Reports" },
   { to: "/projects", label: "Projects" },
 ];
 
 const admin: NavLink[] = [
   { to: "/team", label: "Live team" },
   { to: "/timesheets", label: "Timesheets" },
+  { to: "/reports", label: "Reports" },
   { to: "/people", label: "People" },
   { to: "/projects", label: "Projects" },
   { to: "/policy", label: "Policy" },

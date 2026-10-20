@@ -49,8 +49,8 @@ test("a manager exports the week as CSV from the Timesheets tab, and it is audit
   await expectNoA11yViolations(page);
 
   // The dialog opens on the week the tab shows.
-  const from = await dialog.getByLabel("From").inputValue();
-  const to = await dialog.getByLabel("To").inputValue();
+  const from = await dialog.getByLabel("From", { exact: true }).inputValue();
+  const to = await dialog.getByLabel("To", { exact: true }).inputValue();
   expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   await dialog.getByLabel("View").selectOption("project");
 
@@ -78,8 +78,8 @@ test("a range that ends before it starts is explained and nothing is exported", 
   await page.goto("/timesheets");
   await page.getByRole("button", { name: "Export CSV" }).click();
   const dialog = page.getByRole("dialog", { name: "Export CSV" });
-  await dialog.getByLabel("From").fill("2026-03-22");
-  await dialog.getByLabel("To").fill("2026-03-16");
+  await dialog.getByLabel("From", { exact: true }).fill("2026-03-22");
+  await dialog.getByLabel("To", { exact: true }).fill("2026-03-16");
   await dialog.getByRole("button", { name: "Download CSV" }).click();
   await expect(dialog.getByRole("alert")).toContainText("same or later");
   await expectNoA11yViolations(page);
