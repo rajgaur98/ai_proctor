@@ -1,5 +1,5 @@
-// send-emails (#50; ALR-01, ALR-02, LLD jobs table): delivers the emails waiting in
-// email_outbox. Called every minute by the send_emails cron job (internal.send_emails_kick,
+// send-emails (#50, #46; ALR-01, ALR-02, TS-17, LLD jobs table): delivers the emails
+// waiting in email_outbox (alerts, and the reminder_* timesheet reminders). Called every minute by the send_emails cron job (internal.send_emails_kick,
 // through pg_net) with the service-role key as the bearer token; nobody else may call it.
 //
 // It claims due rows with email_claim (which counts the attempt and sets the retry
@@ -143,8 +143,77 @@ function alertMessage(row: OutboxRow, dashboardUrl: string): Message {
   return { subject, text, html };
 }
 
+/** "Mon 12 Oct" for a plain date (YYYY-MM-DD). */
+function day(d: unknown): string {
+  const t = new Date(`${String(d)}T00:00:00Z`);
+  if (Number.isNaN(t.getTime())) return String(d);
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(t);
+}
+
+/**
+ * The timesheet reminders (TS-17, #46): reminder_submit (to the employee),
+ * reminder_approval (to the manager or delegate) and reminder_escalation (to admins,
+ * notify only). The payload is written by internal.queue_reminder.
+ */
+function reminderMessage(row: OutboxRow, dashboardUrl: string): Message {
+  const p = row.payload;
+  const base = dashboardUrl.replace(/\/$/, "");
+  const name = String(p.employee_name ?? "An employee");
+  const range = `${day(p.period_start)} to ${day(p.period_end)}`;
+  const zone = String(p.recipient_timezone ?? "UTC");
+  const greeting = `Hi ${String(p.recipient_name ?? "there")},`;
+  const review = `${base}/timesheets/${encodeURIComponent(String(p.employee_id))}?week=${encodeURIComponent(String(p.period_start))}`;
+
+  let subject: string;
+  let lines: string[];
+  let link: string;
+  let action: string;
+  if (row.template === "reminder_submit") {
+    subject = `Submit your timesheet for ${range}`;
+    lines = [`Your week from ${range} is over. Check your time and submit it for approval.`];
+    link = `${base}/my-timesheet`;
+    action = "Open my timesheet";
+  } else if (row.template === "reminder_approval") {
+    subject = `${name}'s timesheet is waiting for your approval`;
+    lines = [
+      `${name} submitted the week from ${range} on ${when(p.submitted_at, zone)}. It is still waiting for you to approve or return it.`,
+    ];
+    link = review;
+    action = `Review ${name}'s week`;
+  } else {
+    const manager = p.manager_name ? String(p.manager_name) : "Their manager";
+    subject = `${name}'s timesheet has waited 5 days for approval`;
+    lines = [
+      `${name} submitted the week from ${range} on ${when(p.submitted_at, zone)}. ${manager} has not approved or returned it yet.`,
+      "This is a notice only. Admins can't approve timesheets, so there is nothing to do except check with the manager.",
+    ];
+    link = review;
+    action = `View ${name}'s week`;
+  }
+
+  const text = [greeting, "", ...lines, "", `${action}: ${link}`].join("\n");
+  const html = [
+    `<p>${escapeHtml(greeting)}</p>`,
+    ...lines.map((l) => `<p>${escapeHtml(l)}</p>`),
+    `<p><a href="${escapeHtml(link)}">${escapeHtml(action)}</a></p>`,
+  ].join("\n");
+  return { subject, text, html };
+}
+
 function render(row: OutboxRow, dashboardUrl: string): Message {
   if (row.template === "alert") return alertMessage(row, dashboardUrl);
+  if (
+    row.template === "reminder_submit" ||
+    row.template === "reminder_approval" ||
+    row.template === "reminder_escalation"
+  ) {
+    return reminderMessage(row, dashboardUrl);
+  }
   throw new Error(`unknown template: ${row.template}`);
 }
 
