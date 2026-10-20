@@ -516,7 +516,9 @@ export type Database = {
       delegations: {
         Row: {
           created_at: string;
+          created_by: string | null;
           delegate_id: string;
+          ended_at: string | null;
           ends_on: string;
           id: string;
           manager_id: string;
@@ -526,7 +528,9 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           created_at?: string;
+          created_by?: string | null;
           delegate_id: string;
+          ended_at?: string | null;
           ends_on: string;
           id?: string;
           manager_id: string;
@@ -535,7 +539,9 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          created_by?: string | null;
           delegate_id?: string;
+          ended_at?: string | null;
           ends_on?: string;
           id?: string;
           manager_id?: string;
@@ -543,6 +549,20 @@ export type Database = {
           starts_on?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "delegations_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "delegations_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "delegations_delegate_id_fkey";
             columns: ["delegate_id"];
@@ -1793,6 +1813,7 @@ export type Database = {
       approve_timesheet: { Args: { p_id: string }; Returns: undefined };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_decide_timesheet: { Args: { target: string }; Returns: boolean };
+      can_reopen_timesheet: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
       cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
@@ -1809,6 +1830,14 @@ export type Database = {
         Args: { p_approve: boolean; p_id: string; p_note?: string };
         Returns: undefined;
       };
+      delegate_candidates: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          full_name: string;
+          id: string;
+          role: Database["public"]["Enums"]["user_role"];
+        }[];
+      };
       edit_segment: {
         Args: {
           p_end_at: string;
@@ -1820,8 +1849,21 @@ export type Database = {
         };
         Returns: string;
       };
+      end_delegation: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
       mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
+      my_delegations: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          delegate_id: string;
+          delegate_name: string;
+          ends_on: string;
+          id: string;
+          manager_id: string;
+          manager_name: string;
+          starts_on: string;
+        }[];
+      };
       register_device: {
         Args: {
           agent_version: string;
@@ -1857,6 +1899,15 @@ export type Database = {
         Returns: string;
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      set_delegation: {
+        Args: {
+          p_delegate_id: string;
+          p_ends_on: string;
+          p_manager_id?: string;
+          p_starts_on: string;
+        };
+        Returns: string;
+      };
       set_project_members: {
         Args: { p_project_id: string; p_user_ids: string[] };
         Returns: undefined;

@@ -1,12 +1,14 @@
 // The Timesheets tab (#43, DSH-06): the timesheets of the people the viewer manages
 // (or, for admins, everyone), by week and status; open one to review, edit, approve
-// or return it. Employees get their own weeks with Submit (MyTimesheets).
+// or return it, and the Delegation section (#44). Employees get their own weeks with
+// Submit (MyTimesheets).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
+import { Delegation } from "../delegation/Delegation";
 import { SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration } from "./summary";
 import {
@@ -57,6 +59,8 @@ export function Timesheets() {
           Open my own week
         </Link>
       </div>
+
+      <Delegation />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" className="h-10" onClick={() => setPicked(addWeeks(week, -1))}>

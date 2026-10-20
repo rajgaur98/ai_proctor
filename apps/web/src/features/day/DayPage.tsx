@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
 import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
+import { canDecideQuery } from "../timesheets/timesheetData";
 import { CaptureViewer } from "./CaptureViewer";
 import { ManualEntries } from "./ManualEntries";
 import {
@@ -59,7 +60,7 @@ export function DayPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, timezone, manager_id, presence(status)")
+        .select("id, full_name, timezone, presence(status)")
         .eq("id", userId)
         .maybeSingle();
       if (error) throw error;
@@ -131,10 +132,10 @@ export function DayPage() {
   const segs = segments(span, periods, now);
   const viewer = viewerZone();
   const chosen = checkins.find((c) => c.id === selected) ?? null;
-  const canSchedule =
-    profile.role === "owner" || profile.role === "admin" || person.data?.manager_id === profile.id;
+  // The server decides who is the person's manager or active delegate (TS-12, TS-14).
+  const canDecide = useQuery(canDecideQuery(userId)).data === true;
+  const canSchedule = profile.role === "owner" || profile.role === "admin" || canDecide;
   const isSelf = userId === profile.id;
-  const isManager = person.data?.manager_id === profile.id;
 
   const go = (d: string) =>
     navigate({ to: "/team/$userId", params: { userId }, search: { date: d } });
@@ -321,7 +322,7 @@ export function DayPage() {
         dayStart={day.start}
         dayEnd={day.end}
         isSelf={isSelf}
-        canDecide={isManager}
+        canDecide={canDecide}
       />
 
       {canSchedule && (
