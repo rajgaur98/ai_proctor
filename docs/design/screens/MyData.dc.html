@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:100%;background:var(--bg);color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+  <dc-import name="WebNav" active="mydata" role="employee" hint-size="100%,56px"></dc-import>
+  <div style="padding:28px 32px 40px;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+      <div style="max-width:640px">
+        <div style="font-size:24px;font-weight:600;letter-spacing:-0.025em">My data</div>
+        <div style="font-size:13.5px;line-height:1.5;color:var(--ink2);margin-top:4px;text-wrap:pretty">Everything AI Proctor has collected about you. Only you, Sarah Lee (your manager) and workspace admins can see it. Images are deleted after 30 days.</div>
+      </div>
+      <button style="margin-left:auto;height:44px;padding:0 16px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer" style-hover="background:var(--sunk)">Export my data</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:15px;font-weight:600">Today · Tue 7 Oct</span>
+            <span style="font-size:13px;color:var(--ink2)"><span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--ink)">5 h 03 min</span> worked so far · shift 09:00–18:00</span>
+          </div>
+          <div style="position:relative;height:16px;font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">
+            <sc-for list="{{ hours }}" as="h" hint-placeholder-count="10"><span style="{{ h.style }}">{{ h.t }}</span></sc-for>
+          </div>
+          <div style="display:flex;gap:1px;height:32px;border-radius:7px;overflow:hidden;background:var(--line)">
+            <sc-for list="{{ segs }}" as="g" hint-placeholder-count="13"><span style="{{ g }}"></span></sc-for>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink2)">
+            <sc-for list="{{ legend }}" as="l" hint-placeholder-count="7"><span style="display:flex;align-items:center;gap:6px"><span style="{{ l.style }}"></span>{{ l.label }}</span></sc-for>
+          </div>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">
+            <span style="font-size:15px;font-weight:600">Missed check-ins</span>
+            <span style="font-size:12.5px;color:var(--ink2)">Add a reason so your timesheet is clear.</span>
+          </div>
+          <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="width:9px;height:9px;box-sizing:border-box;border-radius:50%;border:2px solid var(--ink)"></span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">14:03</span>
+              <span style="font-size:13.5px;font-weight:500">Missed</span>
+              <span style="font-size:12.5px;color:var(--ink2)">Screen locked 14:05–14:34 · 31 min marked unverified</span>
+              <span style="margin-left:auto;font-size:12.5px;font-weight:500;color:var(--ink2)">{{ reasonState }}</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+              <span style="font-size:12.5px;color:var(--ink3);margin-right:4px">Add reason</span>
+              <sc-for list="{{ reasons }}" as="r" hint-placeholder-count="5"><button onClick="{{ r.pick }}" style="{{ r.style }}">{{ r.label }}</button></sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">
+            <span style="font-size:15px;font-weight:600">Today's check-ins</span>
+            <span style="margin-left:auto;font-size:12.5px;color:var(--ink3)">5 shown · captures are taken only when you pass</span>
+          </div>
+          <sc-for list="{{ checkins }}" as="c" hint-placeholder-count="5">
+            <div style="padding:12px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:10px;width:150px">
+                <span style="{{ c.dot }}"></span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">{{ c.t }}</span>
+                <span style="font-size:13px;font-weight:500">{{ c.label }}</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <span style="width:96px;height:60px;box-sizing:border-box;border:1px solid var(--line);border-radius:6px;background:repeating-linear-gradient(135deg,var(--sunk) 0 5px,var(--panel) 5px 10px);display:flex;align-items:flex-end;padding:4px 5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:9.5px;color:var(--ink3)">screenshot</span>
+                <span style="{{ c.cam }}">{{ c.camLabel }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;font-size:12.5px;color:var(--ink2);min-width:140px">
+                <span style="color:var(--ink);font-weight:500">{{ c.app }}</span><span>{{ c.project }}</span>
+              </div>
+              <span style="{{ c.viewStyle }}">{{ c.viewed }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+          <div style="padding:16px 18px;border-bottom:1px solid var(--line)"><div style="font-size:15px;font-weight:600">Who viewed my captures</div><div style="font-size:12.5px;color:var(--ink2);margin-top:3px">Every view is logged. Last 30 days.</div></div>
+          <sc-for list="{{ views }}" as="w" hint-placeholder-count="3">
+            <div style="padding:12px 18px;border-bottom:1px solid var(--line);display:flex;gap:11px;align-items:flex-start">
+              <span style="width:30px;height:30px;flex:none;border-radius:50%;background:var(--sunk);border:1px solid var(--line);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--ink2)">{{ w.ini }}</span>
+              <div style="font-size:13px;line-height:1.45"><span style="font-weight:500">{{ w.who }}</span> <span style="color:var(--ink2)">{{ w.what }}</span><div style="font-size:12px;color:var(--ink3);font-family:'Geist Mono',ui-monospace,monospace">{{ w.when }}</div></div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+          <div style="padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:8px"><span style="font-size:15px;font-weight:600">My timesheet</span><span style="font-size:12.5px;color:var(--ink2)">Week of 6 Oct</span><span style="margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">13 h 08 min</span></div>
+          <div style="padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:12.5px;font-weight:500;color:var(--ink2)">Unassigned time · tag a project</span>
+            <sc-for list="{{ unassigned }}" as="u" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px">{{ u.when }}</span><span style="font-size:12px;color:var(--ink3)">{{ u.dur }}</span></div>
+                <div style="height:44px;box-sizing:border-box;border:1px solid var(--line2);border-radius:9px;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:13px;color:var(--ink2);cursor:pointer;min-width:150px">Pick a project<span style="margin-left:auto;width:6px;height:6px;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);transform:rotate(45deg) translateY(-2px)"></span></div>
+              </div>
+            </sc-for>
+            <button style="margin-top:4px;height:44px;border-radius:9px;border:none;background:var(--acc);color:var(--accink);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">Submit week</button>
+            <span style="font-size:12px;color:var(--ink3);line-height:1.45">Sarah Lee reviews it. You'll see any change she makes, with her reason.</span>
+          </div>
+          <div style="padding:14px 18px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:12.5px;font-weight:500;color:var(--ink2)">Manager edits · last week</span>
+            <sc-for list="{{ edits }}" as="e" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:8px;background:var(--sunk);font-size:13px;line-height:1.45">
+                <span><span style="font-weight:500">{{ e.action }}</span> <span style="color:var(--ink2)">{{ e.what }}</span></span>
+                <span style="color:var(--ink2)">Reason: “{{ e.reason }}”</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1100}}">
+const hatch = c => `repeating-linear-gradient(135deg, ${c} 0 4px, color-mix(in oklch, ${c} 35%, var(--panel)) 4px 8px)`;
+const BG = { verified: 'var(--sactive)', meeting: 'var(--smeeting)', idle: hatch('var(--sidle)'), unverified: hatch('var(--saway)'), pause: 'var(--spaused)', break: 'var(--sbreak)', upcoming: 'var(--sunk)' };
+const SEGS = [['verified', 90], ['meeting', 45], ['verified', 35], ['pause', 15], ['verified', 35], ['idle', 12], ['verified', 8], ['break', 45], ['verified', 7], ['idle', 11], ['unverified', 31], ['verified', 46], ['upcoming', 160]];
+const mk = (type) => type === 'pass' ? { width: 9, height: 9, borderRadius: '50%', background: 'var(--sactive)', flex: 'none' } : { width: 8, height: 8, borderRadius: 1, background: 'var(--stamper)', transform: 'rotate(45deg)', flex: 'none' };
+class Component extends DCLogic {
+  state = { reason: null };
+  renderVals() {
+    const pct = m => `${(m / 540) * 100}%`;
+    const hours = Array.from({ length: 10 }, (_, i) => ({ t: String(9 + i).padStart(2, '0') + ':00', style: { position: 'absolute', left: pct(i * 60), transform: i === 0 ? 'none' : i === 9 ? 'translateX(-100%)' : 'translateX(-50%)' } }));
+    const segs = SEGS.map(([k, n]) => ({ flex: n, background: BG[k], display: 'block' }));
+    const legend = [['verified', 'Verified'], ['meeting', 'Meeting'], ['idle', 'Idle (flagged)'], ['unverified', 'Unverified (flagged)'], ['pause', 'Pause'], ['break', 'Break'], ['upcoming', 'Rest of shift']].map(([k, label]) => ({ label, style: { width: 16, height: 9, borderRadius: 2, background: BG[k], border: k === 'upcoming' ? '1px solid var(--line2)' : 'none', boxSizing: 'border-box', display: 'block' } }));
+    const camBox = { width: 60, height: 60, boxSizing: 'border-box', borderRadius: 6, display: 'flex', alignItems: 'flex-end', padding: '4px 5px', fontFamily: "'Geist Mono',ui-monospace,monospace", fontSize: 9.5, color: 'var(--ink3)' };
+    const checkins = [
+      ['09:41', 'pass', 'VS Code', 'Northwind API', 'Viewed by Sarah Lee · 15:09'], ['10:42', 'pass', 'Figma', 'Northwind API', 'Viewed by Sarah Lee · 15:10'],
+      ['11:34', 'pass', 'Chrome · Jira', 'Northwind API', 'Not viewed'], ['12:20', 'failed', 'Zoom', 'Northwind API', 'Not viewed'], ['14:58', 'pass', 'VS Code', 'Northwind API', 'Not viewed']
+    ].map(([t, type, app, project, viewed]) => ({
+      t, app, project, viewed, label: type === 'pass' ? 'Passed' : 'Capture failed', dot: mk(type),
+      cam: type === 'pass' ? { ...camBox, border: '1px solid var(--line)', background: 'repeating-linear-gradient(135deg,var(--sunk) 0 5px,var(--panel) 5px 10px)' } : { ...camBox, border: '1.5px dashed var(--line2)', alignItems: 'center', justifyContent: 'center', textAlign: 'center' },
+      camLabel: type === 'pass' ? 'webcam' : 'none',
+      viewStyle: { marginLeft: 'auto', fontSize: 12.5, fontWeight: viewed === 'Not viewed' ? 400 : 500, color: viewed === 'Not viewed' ? 'var(--ink3)' : 'var(--ink)', padding: viewed === 'Not viewed' ? 0 : '3px 9px', borderRadius: 999, background: viewed === 'Not viewed' ? 'transparent' : 'var(--accsoft)' }
+    }));
+    const reasons = ['Meeting', 'Phone call', 'Break', 'Away from desk', 'Other'].map(l => {
+      const on = this.state.reason === l;
+      return { label: l, pick: () => this.setState({ reason: on ? null : l }), style: { height: 44, padding: '0 14px', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 500, cursor: 'pointer', color: 'var(--ink)', border: on ? '1.5px solid var(--acc)' : '1px solid var(--line2)', background: on ? 'var(--accsoft)' : 'var(--panel)' } };
+    });
+    return {
+      hours, segs, legend, checkins, reasons,
+      reasonState: this.state.reason ? `Reason: ${this.state.reason} · visible to Sarah Lee` : 'No reason yet',
+      views: [
+        { ini: 'SL', who: 'Sarah Lee (manager)', what: 'viewed 10:42 check-in', when: 'today 15:10' },
+        { ini: 'SL', who: 'Sarah Lee (manager)', what: 'viewed 09:41 check-in', when: 'today 15:09' },
+        { ini: 'NR', who: 'Nikhil Rao (admin)', what: 'viewed 16:12 check-in', when: 'Fri 3 Oct 17:45' }
+      ],
+      unassigned: [{ when: 'Mon 6 · 17:20–17:55', dur: '35 min' }, { when: 'Tue 7 · 11:15–11:50', dur: '35 min' }],
+      edits: [
+        { action: 'Sarah Lee excluded', what: 'Fri 3 Oct · 12:10–12:25 · Idle 15 min', reason: 'Idle before lunch, not work time.' },
+        { action: 'Sarah Lee approved', what: 'manual entry Wed 1 Oct · Client workshop 2 h', reason: 'Confirmed with Northwind.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -9,6 +9,7 @@ import {
 import { AppShell } from "./components/AppShell";
 import { AuditLog } from "./features/audit/AuditLog";
 import { DayPage } from "./features/day/DayPage";
+import { MyData } from "./features/mydata/MyData";
 import { NoticePage } from "./features/notice/Notice";
 import { People } from "./features/people/People";
 import { PolicyPage } from "./features/policy/PolicyPage";
@@ -166,6 +167,19 @@ const noticeRoute = createRoute({
   component: NoticePage,
 });
 
+/** Everyone with an account sees their own data (#49, EMP-02): employees from the nav,
+ * managers and admins from the account menu; the tray opens it too. Optional ?date= for
+ * another day. */
+const myDataRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/me",
+  validateSearch: (search: Record<string, unknown>): { date?: string } =>
+    typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date)
+      ? { date: search.date }
+      : {},
+  component: MyData,
+});
+
 const routeTree = rootRoute.addChildren([
   signInRoute,
   signUpRoute,
@@ -184,7 +198,7 @@ const routeTree = rootRoute.addChildren([
     page("/people", "People", 28, People),
     page("/policy", "Policy", 52, PolicyPage),
     page("/audit", "Audit log", 53, AuditLog),
-    page("/me", "My data", 49),
+    myDataRoute,
     page("/my-timesheet", "My timesheet", 43, MyTimesheets),
     noticeRoute,
   ]),
