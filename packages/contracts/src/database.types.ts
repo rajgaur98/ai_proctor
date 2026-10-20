@@ -171,6 +171,89 @@ export type Database = {
           },
         ];
       };
+      alerts: {
+        Row: {
+          details: NonNullable<Json>;
+          email_id: string | null;
+          episode: string;
+          id: string;
+          kind: Database["public"]["Enums"]["alert_kind"];
+          org_id: string;
+          read_at: string | null;
+          recipient_id: string;
+          triggered_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          details?: NonNullable<Json>;
+          email_id?: string | null;
+          episode: string;
+          id?: string;
+          kind: Database["public"]["Enums"]["alert_kind"];
+          org_id: string;
+          read_at?: string | null;
+          recipient_id: string;
+          triggered_at?: string;
+          user_id: string;
+        };
+        Update: {
+          details?: NonNullable<Json>;
+          email_id?: string | null;
+          episode?: string;
+          id?: string;
+          kind?: Database["public"]["Enums"]["alert_kind"];
+          org_id?: string;
+          read_at?: string | null;
+          recipient_id?: string;
+          triggered_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "alerts_email_id_fkey";
+            columns: ["email_id"];
+            isOneToOne: false;
+            referencedRelation: "email_outbox";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "alerts_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "alerts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "alerts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_log: {
         Row: {
           action: string;
@@ -305,6 +388,7 @@ export type Database = {
         Row: {
           capture_errors: Json | null;
           created_at: string;
+          deferral_reason: string | null;
           device_id: string;
           device_state: string | null;
           face_present: boolean | null;
@@ -312,6 +396,7 @@ export type Database = {
           id: string;
           idle_s_at_show: number | null;
           missed_reason: string | null;
+          missed_reason_kind: string | null;
           object_keys: string[];
           org_id: string;
           outcome: Database["public"]["Enums"]["checkin_outcome"];
@@ -327,6 +412,7 @@ export type Database = {
         Insert: {
           capture_errors?: Json | null;
           created_at?: string;
+          deferral_reason?: string | null;
           device_id: string;
           device_state?: string | null;
           face_present?: boolean | null;
@@ -334,6 +420,7 @@ export type Database = {
           id: string;
           idle_s_at_show?: number | null;
           missed_reason?: string | null;
+          missed_reason_kind?: string | null;
           object_keys?: string[];
           org_id: string;
           outcome: Database["public"]["Enums"]["checkin_outcome"];
@@ -348,6 +435,7 @@ export type Database = {
         Update: {
           capture_errors?: Json | null;
           created_at?: string;
+          deferral_reason?: string | null;
           device_id?: string;
           device_state?: string | null;
           face_present?: boolean | null;
@@ -355,6 +443,7 @@ export type Database = {
           id?: string;
           idle_s_at_show?: number | null;
           missed_reason?: string | null;
+          missed_reason_kind?: string | null;
           object_keys?: string[];
           org_id?: string;
           outcome?: Database["public"]["Enums"]["checkin_outcome"];
@@ -730,6 +819,57 @@ export type Database = {
           },
         ];
       };
+      email_outbox: {
+        Row: {
+          attempts: number;
+          batch_key: string | null;
+          created_at: string;
+          id: string;
+          last_error: string | null;
+          org_id: string;
+          payload: NonNullable<Json>;
+          send_after: string;
+          sent_at: string | null;
+          template: string;
+          to_email: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          attempts?: number;
+          batch_key?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id: string;
+          payload?: NonNullable<Json>;
+          send_after?: string;
+          sent_at?: string | null;
+          template: string;
+          to_email: string;
+        };
+        Update: {
+          attempts?: number;
+          batch_key?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id?: string;
+          payload?: NonNullable<Json>;
+          send_after?: string;
+          sent_at?: string | null;
+          template?: string;
+          to_email?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "email_outbox_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       last_seen: {
         Row: {
           at: string;
@@ -867,6 +1007,103 @@ export type Database = {
           {
             foreignKeyName: "manual_entries_user_id_fkey";
             columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notice_acks: {
+        Row: {
+          acknowledged_at: string;
+          notice_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          acknowledged_at?: string;
+          notice_id: string;
+          user_id: string;
+        };
+        Update: {
+          acknowledged_at?: string;
+          notice_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notice_acks_notice_id_fkey";
+            columns: ["notice_id"];
+            isOneToOne: false;
+            referencedRelation: "notices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notice_acks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notice_acks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notices: {
+        Row: {
+          body: NonNullable<Json>;
+          collection: NonNullable<Json>;
+          id: string;
+          org_id: string;
+          published_at: string;
+          published_by: string | null;
+          region: Database["public"]["Enums"]["region_preset"];
+          version: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          body: NonNullable<Json>;
+          collection: NonNullable<Json>;
+          id?: string;
+          org_id: string;
+          published_at?: string;
+          published_by?: string | null;
+          region: Database["public"]["Enums"]["region_preset"];
+          version: number;
+        };
+        Update: {
+          body?: NonNullable<Json>;
+          collection?: NonNullable<Json>;
+          id?: string;
+          org_id?: string;
+          published_at?: string;
+          published_by?: string | null;
+          region?: Database["public"]["Enums"]["region_preset"];
+          version?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notices_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notices_published_by_fkey";
+            columns: ["published_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notices_published_by_fkey";
+            columns: ["published_by"];
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
@@ -1751,6 +1988,7 @@ export type Database = {
       };
     };
     Functions: {
+      acknowledge_notice: { Args: { p_notice_id: string }; Returns: undefined };
       add_invited_member: {
         Args: {
           p_email: string;
@@ -1820,8 +2058,35 @@ export type Database = {
         };
         Returns: string;
       };
+      email_claim: {
+        Args: { p_limit?: number };
+        Returns: {
+          attempts: number;
+          batch_key: string | null;
+          created_at: string;
+          id: string;
+          last_error: string | null;
+          org_id: string;
+          payload: NonNullable<Json>;
+          send_after: string;
+          sent_at: string | null;
+          template: string;
+          to_email: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "email_outbox";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
+      };
+      email_mark_failed: { Args: { p_error: string; p_id: string }; Returns: undefined };
+      email_mark_sent: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
+      mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
       mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
+      notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
+      publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
         Args: {
           agent_version: string;
@@ -1857,6 +2122,10 @@ export type Database = {
         Returns: string;
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      set_miss_reason: {
+        Args: { p_checkin_id: string; p_kind: string; p_note?: string };
+        Returns: undefined;
+      };
       set_project_members: {
         Args: { p_project_id: string; p_user_ids: string[] };
         Returns: undefined;
@@ -1926,7 +2195,8 @@ export type Database = {
       };
     };
     Enums: {
-      checkin_outcome: "pass" | "miss" | "failed";
+      alert_kind: "consecutive_misses" | "offline" | "tamper" | "late_clock_in" | "pause_over_cap";
+      checkin_outcome: "pass" | "miss" | "failed" | "deferred";
       data_region: "us" | "eu";
       device_platform: "macos" | "windows";
       presence_status:
@@ -2057,7 +2327,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      checkin_outcome: ["pass", "miss", "failed"],
+      alert_kind: ["consecutive_misses", "offline", "tamper", "late_clock_in", "pause_over_cap"],
+      checkin_outcome: ["pass", "miss", "failed", "deferred"],
       data_region: ["us", "eu"],
       device_platform: ["macos", "windows"],
       presence_status: [

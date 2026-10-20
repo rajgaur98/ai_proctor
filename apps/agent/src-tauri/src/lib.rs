@@ -3,6 +3,11 @@
 
 pub mod account;
 mod card;
+#[cfg(debug_assertions)]
+mod dev;
+#[cfg(all(debug_assertions, unix))]
+mod dev_control;
+mod notice_window;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -11,12 +16,15 @@ use account::Account;
 use agent_core::activity::{self, ActivityPolicy, Sampler};
 use agent_core::auth::{AuthError, REDIRECT_URL};
 use agent_core::capture::{self, CapturePolicy, Captured};
-use agent_core::checkin::{Card, CardPolicy, ClickResult, Finished};
+use agent_core::checkin::{deferred_payload, Card, CardPolicy, ClickResult, Finished};
 use agent_core::clock::{Clock, SystemClock};
+use agent_core::config::ProjectConfig;
 use agent_core::contracts::{
-    AgentStatus, CardChallenge, CardClickResult, CommandResult, PermissionState, ShiftState,
+    AgentStatus, CardChallenge, CardClickResult, CheckinOutcome, CommandResult, LastCheckin,
+    MissedCheckin, NoticeContent, PermissionState, ProjectRef, ShiftState,
 };
 use agent_core::keystore::KeyStore;
+use agent_core::notice::NoticeState;
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
 use agent_core::platform::{CaptureError, Platform, SessionState};
 use agent_core::presence::PresenceTracker;
@@ -112,10 +120,19 @@ pub struct AgentState {
     /// The sync thread, woken early when there's something to send right away.
     sync_thread: Mutex<Option<std::thread::Thread>>,
     random: Arc<dyn Random>,
+    /// From the server config (#29, #38): projects to pick and the pause allowance.
+    projects: Mutex<Vec<ProjectConfig>>,
+    pause_daily_cap_s: Mutex<i64>,
+    /// For the tray: today's latest check-in, and a miss still without a reason.
+    last_checkin: Mutex<Option<(chrono::DateTime<chrono::Utc>, Outcome)>>,
+    missed_checkin: Mutex<Option<(uuid::Uuid, chrono::DateTime<chrono::Utc>)>>,
     /// `None` when this build has no server configured (see `account::api_config`).
     account: Option<Arc<Account>>,
     /// The last sign-in link handled, so a link delivered twice is used once.
     last_redirect: Mutex<Option<String>>,
+    /// The monitoring notice from the server's config (#48); nothing is collected
+    /// until it has been acknowledged.
+    notice: Mutex<NoticeState>,
 }
 
 impl AgentState {
@@ -127,6 +144,12 @@ impl AgentState {
         outbox: Option<Arc<Outbox>>,
         account: Option<Arc<Account>>,
     ) -> Self {
+        // AGT-04: with a server, nobody clocks in until its config says they have
+        // acknowledged a notice (a build without a server has nothing to show).
+        let mut session = session;
+        if account.is_some() {
+            session.set_collection_allowed(false);
+        }
         let state = Self {
             platform,
             clock,
@@ -142,8 +165,13 @@ impl AgentState {
             presence: Mutex::new(PresenceTracker::default()),
             sync_thread: Mutex::new(None),
             random: Arc::new(ThreadRandom),
+            projects: Mutex::new(Vec::new()),
+            pause_daily_cap_s: Mutex::new(60 * 60),
+            last_checkin: Mutex::new(None),
+            missed_checkin: Mutex::new(None),
             account,
             last_redirect: Mutex::new(None),
+            notice: Mutex::new(NoticeState::default()),
         };
         state.sync_schedule();
         state
@@ -161,13 +189,62 @@ impl AgentState {
 
     pub fn status(&self) -> AgentStatus {
         let email = self.account.as_ref().and_then(|a| a.email());
+        let projects = self.projects.lock().unwrap().clone();
+        let notice = self.notice.lock().unwrap().status();
         let session = self.session.lock().unwrap();
+        let snap = session.snapshot();
+        let today = session.today();
+        let iso = |t: chrono::DateTime<chrono::Utc>| t.to_rfc3339();
+        let project_ref = |p: &ProjectConfig| ProjectRef {
+            id: p.id.to_string(),
+            name: p.name.clone(),
+            client: p.client.clone(),
+        };
+        let today_date = self.clock.now().date_naive();
+        let tray = agent_core::status::Tray {
+            account_email: email,
+            clocked_in_at: snap.clocked_in_at.map(iso),
+            phase_started_at: snap.phase_started_at.map(iso),
+            pause_ends_at: snap.pause_until.map(iso),
+            pause_planned_min: snap.pause_planned_min,
+            worked_today_s: today.worked_s,
+            pause_used_today_s: today.pause_s,
+            pause_daily_cap_s: *self.pause_daily_cap_s.lock().unwrap(),
+            project: snap
+                .project_id
+                .and_then(|id| projects.iter().find(|p| p.id == id))
+                .map(project_ref),
+            projects: projects.iter().map(project_ref).collect(),
+            last_checkin: self
+                .last_checkin
+                .lock()
+                .unwrap()
+                .filter(|(at, _)| at.date_naive() == today_date)
+                .map(|(at, outcome)| LastCheckin {
+                    at: iso(at),
+                    outcome: match outcome {
+                        Outcome::Pass => CheckinOutcome::Pass,
+                        Outcome::Miss => CheckinOutcome::Miss,
+                        Outcome::Failed => CheckinOutcome::Failed,
+                    },
+                }),
+            missed_checkin: self
+                .missed_checkin
+                .lock()
+                .unwrap()
+                .filter(|(_, at)| at.date_naive() == today_date)
+                .map(|(id, at)| MissedCheckin {
+                    id: id.to_string(),
+                    at: iso(at),
+                }),
+            notice,
+        };
         agent_core::status::agent_status(
             self.platform.as_ref(),
             session.shift(),
             session.signed_in(),
-            email,
             env!("CARGO_PKG_VERSION"),
+            tray,
         )
     }
 
@@ -190,8 +267,18 @@ impl AgentState {
             }
             return CardAction::Nothing;
         }
-        let Decision::Show { scheduled_at } = self.scheduler.poll() else {
-            return CardAction::Nothing;
+        let scheduled_at = match self.scheduler.poll() {
+            Decision::Show { scheduled_at } => scheduled_at,
+            Decision::Deferred(deferral) => {
+                // Held for a call, a share or a presentation: leave a record, show
+                // nothing and capture nothing (CHK-03). The card comes later as usual.
+                tracing::info!(reason = deferral.reason.as_str(), "check-in deferred");
+                let payload =
+                    deferred_payload(&deferral, self.session.lock().unwrap().project_id());
+                self.append_checkin(now, payload);
+                return CardAction::Nothing;
+            }
+            _ => return CardAction::Nothing,
         };
         let shown = Card::show(
             scheduled_at,
@@ -209,6 +296,26 @@ impl AgentState {
         let challenge = self.challenge(&shown);
         *card = Some(shown);
         CardAction::Show(challenge)
+    }
+
+    /// The card on screen, as the card window shows it.
+    #[cfg(all(debug_assertions, unix))]
+    fn current_challenge(&self) -> Option<CardChallenge> {
+        self.card
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|c| self.challenge(c))
+    }
+
+    /// Marks the card on screen: the flag goes on its `checkin` event.
+    #[cfg(all(debug_assertions, unix))]
+    fn flag_card(&self, flag: &str) {
+        if let Some(card) = self.card.lock().unwrap().as_mut() {
+            if !card.flags.iter().any(|f| f == flag) {
+                card.flags.push(flag.to_owned());
+            }
+        }
     }
 
     /// A click on the card. Only real pointer clicks count (CHK-11); anything for
@@ -329,6 +436,19 @@ impl AgentState {
                 sampler.stop()
             }
         };
+        self.queue_activity(sessions);
+    }
+
+    /// A shift change (clock-out, break, pause, and back) closes the open buckets
+    /// there and then, so none spans the change; the time since the last sample
+    /// isn't counted (#105).
+    fn flush_activity(&self) {
+        let sessions = self.activity.lock().unwrap().stop();
+        self.queue_activity(sessions);
+    }
+
+    fn queue_activity(&self, sessions: Vec<activity::AppSession>) {
+        let now = self.clock.now();
         let Some(outbox) = &self.outbox else {
             return;
         };
@@ -393,8 +513,14 @@ impl AgentState {
             remaining_s: card.remaining_s(self.clock.now()).into(),
             wrong_clicks: card.wrong_clicks.into(),
             sound: self.card_policy.sound,
-            // Project names arrive with #38.
-            project: None,
+            project: self.session.lock().unwrap().project_id().and_then(|id| {
+                self.projects
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p.id == id)
+                    .map(|p| p.name.clone())
+            }),
         }
     }
 
@@ -408,6 +534,20 @@ impl AgentState {
     /// Queues a `checkin` event; its id keys the capture uploads.
     fn queue(&self, finished: Finished) -> Option<uuid::Uuid> {
         tracing::info!(outcome = ?finished.outcome, "check-in finished");
+        let (at, outcome) = (finished.at, finished.outcome);
+        self.append_checkin(at, finished.payload).inspect(|id| {
+            *self.last_checkin.lock().unwrap() = Some((at, outcome));
+            if outcome == Outcome::Miss {
+                *self.missed_checkin.lock().unwrap() = Some((*id, at));
+            }
+        })
+    }
+
+    fn append_checkin(
+        &self,
+        at: chrono::DateTime<chrono::Utc>,
+        payload: serde_json::Value,
+    ) -> Option<uuid::Uuid> {
         let Some(outbox) = &self.outbox else {
             tracing::error!("check-in not queued: the local queue is unavailable");
             return None;
@@ -415,9 +555,9 @@ impl AgentState {
         outbox
             .append(
                 "checkin",
-                finished.at,
+                at,
                 self.clock.mono_ms(),
-                finished.payload,
+                payload,
                 self.clock.now(),
             )
             .map(|event| event.id)
@@ -479,6 +619,7 @@ impl AgentState {
     /// the session on the server.
     fn sign_out(&self) {
         self.act("sign out", |s| s.sign_out());
+        self.forget_notice();
         if let Some(account) = &self.account {
             if let Err(error) = account.sync() {
                 tracing::warn!(%error, "sign-out: queued events stay for the next sign-in");
@@ -493,6 +634,7 @@ impl AgentState {
     fn signed_out_by_server(&self, error: &SyncError) {
         tracing::warn!(%error, "signed out by the server");
         self.act("sign out", |s| s.sign_out());
+        self.forget_notice();
         if let Some(account) = &self.account {
             account.sign_out();
         }
@@ -501,6 +643,57 @@ impl AgentState {
             _ => "Your session ended. Sign in again from the menu bar.",
         };
         self.platform.notify("Signed out of AI Proctor", body);
+    }
+
+    /// Signed out: the next person starts without an acknowledged notice.
+    fn forget_notice(&self) {
+        self.notice.lock().unwrap().clear();
+        if self.account.is_some() {
+            self.session.lock().unwrap().set_collection_allowed(false);
+        }
+    }
+
+    /// The notice window's text, once the server has sent one.
+    fn notice_content(&self) -> Option<NoticeContent> {
+        self.notice.lock().unwrap().content()
+    }
+
+    /// True once per unacknowledged version: open the notice window now.
+    fn take_notice_prompt(&self) -> bool {
+        self.notice.lock().unwrap().take_prompt()
+    }
+
+    /// AGT-04: "I've read this" for `version`, the one on screen. The server stores
+    /// the acknowledgement; its fresh config then lets collection start.
+    fn acknowledge_notice(&self, version: i64) -> Result<(), String> {
+        let account = self.account()?;
+        let (id, current) = self
+            .notice
+            .lock()
+            .unwrap()
+            .id_and_version()
+            .ok_or_else(|| "There is no notice to acknowledge yet.".to_owned())?;
+        if current != version {
+            return Err("The notice changed. Read the new version first.".into());
+        }
+        match account.acknowledge_notice(id) {
+            Ok(()) => {
+                self.apply_new_config();
+                tracing::info!(version, "monitoring notice acknowledged");
+                Ok(())
+            }
+            Err(SyncError::Refused(message)) if message.contains("not_current_notice") => {
+                // A newer version was published while the window was open.
+                if account.refresh_config().is_ok() {
+                    self.apply_new_config();
+                }
+                Err("The notice changed. Read the new version first.".into())
+            }
+            Err(error) => {
+                tracing::warn!(%error, "acknowledgement not saved");
+                Err("Couldn't save your acknowledgement. Try again in a minute.".into())
+            }
+        }
     }
 
     /// What the heartbeat says: nothing while off shift, only "alive" during a
@@ -559,6 +752,23 @@ impl AgentState {
             "session policy updated"
         );
         self.session.lock().unwrap().set_policy(policy);
+        // AGT-04/05: what the person has acknowledged decides whether they can start
+        // a shift. The policy in this config already carries only that collection.
+        {
+            let mut notice = self.notice.lock().unwrap();
+            notice.update(config.notice.clone());
+            tracing::info!(
+                version = ?notice.id_and_version().map(|(_, v)| v),
+                allowed = notice.collection_allowed(),
+                "monitoring notice"
+            );
+            self.session
+                .lock()
+                .unwrap()
+                .set_collection_allowed(notice.collection_allowed());
+        }
+        *self.projects.lock().unwrap() = config.projects.clone();
+        *self.pause_daily_cap_s.lock().unwrap() = config.pause_daily_cap_s();
         // Same setting the server uses for Idle (minutes; default 10).
         if let Some(min) = config.policy["idle_threshold_min"]
             .as_i64()
@@ -573,13 +783,41 @@ impl AgentState {
 
     /// Runs a transition; failures are logged and shown as a notification.
     fn act(&self, what: &str, f: impl FnOnce(&mut Session) -> Result<(), TransitionError>) {
-        let result = f(&mut self.session.lock().unwrap());
-        if let Err(error) = result {
-            tracing::warn!(%error, what, "transition refused");
+        if let Err(error) = self.act_checked(what, f) {
             self.platform
                 .notify(&format!("Couldn't {what}"), &error.to_string());
         }
+    }
+
+    /// `act`, handing the failure back too.
+    fn act_checked(
+        &self,
+        what: &str,
+        f: impl FnOnce(&mut Session) -> Result<(), TransitionError>,
+    ) -> Result<(), TransitionError> {
+        let (before, result, after) = {
+            let mut session = self.session.lock().unwrap();
+            let before = session.shift();
+            let result = f(&mut session);
+            (before, result, session.shift())
+        };
+        if before != after {
+            self.flush_activity();
+        }
+        if let Err(error) = &result {
+            tracing::warn!(%error, what, "transition refused");
+        }
         self.sync_schedule();
+        result
+    }
+
+    /// A transition from the popover: the error comes back to show there.
+    fn try_act(
+        &self,
+        what: &str,
+        f: impl FnOnce(&mut Session) -> Result<(), TransitionError>,
+    ) -> Result<(), String> {
+        self.act_checked(what, f).map_err(|error| error.to_string())
     }
 }
 
@@ -605,10 +843,31 @@ pub struct OutboxState(pub Option<Arc<Outbox>>);
 /// Name of the outbox key in the OS keychain.
 const OUTBOX_KEY: &str = "outbox-key";
 
+/// Where secrets live: the OS keychain. Debug builds can use files instead
+/// (`AI_PROCTOR_DEV_KEYSTORE`), so an unattended run raises no keychain prompt.
+fn key_store() -> Arc<dyn KeyStore> {
+    #[cfg(debug_assertions)]
+    if let Some(store) = dev::keystore() {
+        tracing::warn!("dev keystore: secrets are kept in files");
+        return Arc::new(store);
+    }
+    Arc::new(agent_platform::keychain::OsKeychain)
+}
+
+/// The app data dir; debug builds can point it elsewhere (`AI_PROCTOR_DEV_DATA_DIR`).
+fn data_dir(app: &tauri::App) -> tauri::Result<std::path::PathBuf> {
+    #[cfg(debug_assertions)]
+    if let Some(dir) = dev::data_dir() {
+        tracing::warn!(dir = %dir.display(), "dev data dir");
+        std::fs::create_dir_all(&dir)?;
+        return Ok(dir);
+    }
+    app.path().app_data_dir()
+}
+
 fn open_outbox(data_dir: &std::path::Path) -> Result<Outbox, String> {
-    let keychain = agent_platform::keychain::OsKeychain;
-    let key =
-        agent_core::keystore::get_or_create(&keychain, OUTBOX_KEY).map_err(|e| e.to_string())?;
+    let key = agent_core::keystore::get_or_create(key_store().as_ref(), OUTBOX_KEY)
+        .map_err(|e| e.to_string())?;
     Outbox::open(&data_dir.join("outbox"), &key).map_err(|e: OutboxError| e.to_string())
 }
 
@@ -621,6 +880,37 @@ fn get_status(state: tauri::State<'_, AgentState>) -> AgentStatus {
     state.status()
 }
 
+/// `get_notice`: the notice window's content.
+#[tauri::command(rename_all = "snake_case")]
+fn get_notice(state: tauri::State<'_, AgentState>) -> Option<NoticeContent> {
+    state.notice_content()
+}
+
+/// `show_notice`: opens the notice window (the tray's "Review the monitoring notice").
+#[tauri::command(rename_all = "snake_case")]
+fn show_notice(app: AppHandle) -> CommandResult {
+    notice_window::show(&app);
+    CommandResult {
+        ok: true,
+        error: None,
+    }
+}
+
+/// `acknowledge_notice`: network call, so off the UI thread. Closes the window on success.
+#[tauri::command(rename_all = "snake_case")]
+async fn acknowledge_notice(app: AppHandle, version: i64) -> CommandResult {
+    off_main_thread(move || {
+        let state = app.state::<AgentState>();
+        let result = state.acknowledge_notice(version);
+        emit_status(&app);
+        if result.is_ok() {
+            notice_window::hide(&app);
+        }
+        result
+    })
+    .await
+}
+
 /// `sign_in_start`: emails a magic link to `email`.
 #[tauri::command(rename_all = "snake_case")]
 async fn sign_in_start(app: AppHandle, email: String) -> CommandResult {
@@ -631,21 +921,30 @@ async fn sign_in_start(app: AppHandle, email: String) -> CommandResult {
 #[tauri::command(rename_all = "snake_case")]
 async fn sign_out(app: AppHandle) -> CommandResult {
     off_main_thread(move || {
-        let state = app.state::<AgentState>();
-        state.sign_out();
-        let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+        end_session(&app);
         Ok(())
     })
     .await
 }
 
+fn end_session(app: &AppHandle) {
+    let state = app.state::<AgentState>();
+    state.sign_out();
+    let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+}
+
 /// `card_click`: judged here, in Rust. A wrong click sends the reshuffled card.
 #[tauri::command(rename_all = "snake_case")]
 fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> CardClickResult {
+    click_card(&app, &card_id, value, trusted)
+}
+
+/// The click and what follows it: the reshuffled card, hiding it, the captures.
+fn click_card(app: &AppHandle, card_id: &str, value: i64, trusted: bool) -> CardClickResult {
     let state = app.state::<AgentState>();
-    let reply = state.card_click(&card_id, value, trusted);
+    let reply = state.card_click(card_id, value, trusted);
     if let Some(challenge) = reply.next {
-        card::update(&app, challenge);
+        card::update(app, challenge);
     }
     if matches!(
         reply.result,
@@ -664,6 +963,144 @@ fn card_click(app: AppHandle, card_id: String, value: i64, trusted: bool) -> Car
     reply.result
 }
 
+/// Runs a popover transition and pushes the new status (EMP-01).
+fn tray_act(
+    app: &AppHandle,
+    what: &str,
+    f: impl FnOnce(&mut Session) -> Result<(), TransitionError>,
+) -> CommandResult {
+    let state = app.state::<AgentState>();
+    let result = state.try_act(what, f);
+    let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+    CommandResult {
+        ok: result.is_ok(),
+        error: result.err(),
+    }
+}
+
+fn parse_project(project_id: Option<String>) -> Result<Option<uuid::Uuid>, String> {
+    project_id
+        .map(|p| uuid::Uuid::parse_str(&p).map_err(|_| "Unknown project.".to_owned()))
+        .transpose()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn clock_in(app: AppHandle, project_id: Option<String>) -> CommandResult {
+    match parse_project(project_id) {
+        Ok(project) => tray_act(&app, "clock in", |s| s.clock_in(project)),
+        Err(error) => CommandResult {
+            ok: false,
+            error: Some(error),
+        },
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn clock_out(app: AppHandle) -> CommandResult {
+    tray_act(&app, "clock out", |s| s.clock_out())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn break_start(app: AppHandle, planned_min: Option<i64>) -> CommandResult {
+    let planned = planned_min.and_then(|m| u32::try_from(m).ok());
+    tray_act(&app, "start a break", |s| s.start_break(planned))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn break_end(app: AppHandle) -> CommandResult {
+    tray_act(&app, "end the break", |s| s.end_break())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn pause_start(app: AppHandle, minutes: i64, reason: Option<String>) -> CommandResult {
+    let minutes = u32::try_from(minutes).unwrap_or(0);
+    tray_act(&app, "pause", |s| {
+        s.start_pause_with_reason(minutes, reason.as_deref())
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn pause_end(app: AppHandle) -> CommandResult {
+    tray_act(&app, "resume", |s| s.end_pause())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn switch_project(app: AppHandle, project_id: Option<String>) -> CommandResult {
+    match parse_project(project_id) {
+        Ok(project) => tray_act(&app, "switch project", |s| s.switch_project(project)),
+        Err(error) => CommandResult {
+            ok: false,
+            error: Some(error),
+        },
+    }
+}
+
+/// CHK-23: reason for today's miss; network call, so off the UI thread.
+#[tauri::command(rename_all = "snake_case")]
+async fn set_miss_reason(
+    app: AppHandle,
+    checkin_id: String,
+    kind: Option<String>,
+    note: Option<String>,
+) -> CommandResult {
+    off_main_thread(move || {
+        let state = app.state::<AgentState>();
+        let id = uuid::Uuid::parse_str(&checkin_id).map_err(|_| "Unknown check-in.".to_owned())?;
+        state
+            .account()?
+            .set_miss_reason(id, kind.as_deref(), note.as_deref())
+            .map_err(|_| "Couldn't save the reason. Try again in a minute.".to_owned())?;
+        let mut missed = state.missed_checkin.lock().unwrap();
+        if missed.is_some_and(|(m, _)| m == id) {
+            *missed = None;
+        }
+        drop(missed);
+        let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+        Ok(())
+    })
+    .await
+}
+
+/// My data and the notice live on the dashboard (#48, #49); the privacy panes
+/// are where a missing permission is fixed (#58, #59).
+#[tauri::command(rename_all = "snake_case")]
+fn open_link(target: String) -> CommandResult {
+    let dashboard = account::dashboard_url();
+    let url = match target.as_str() {
+        "my_data" => format!("{dashboard}/me"),
+        "notice" => format!("{dashboard}/notice"),
+        "screen_settings" => {
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture".into()
+        }
+        "camera_settings" => {
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera".into()
+        }
+        _ => {
+            return CommandResult {
+                ok: false,
+                error: Some("Unknown link.".into()),
+            }
+        }
+    };
+    let opened = if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+    } else {
+        std::process::Command::new("open").arg(&url).spawn()
+    };
+    match opened {
+        Ok(_) => CommandResult {
+            ok: true,
+            error: None,
+        },
+        Err(error) => CommandResult {
+            ok: false,
+            error: Some(error.to_string()),
+        },
+    }
+}
+
 /// `card_switch_project`: opens the popover next to the card; the card stays.
 #[tauri::command(rename_all = "snake_case")]
 fn card_switch_project(app: AppHandle) -> CommandResult {
@@ -679,6 +1116,22 @@ fn card_switch_project(app: AppHandle) -> CommandResult {
     CommandResult {
         ok: true,
         error: None,
+    }
+}
+
+/// Pushes the current status to the windows that show it: the tray popover and the
+/// notice window.
+fn emit_status(app: &AppHandle) {
+    let status = app.state::<AgentState>().status();
+    let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, status.clone());
+    let _ = app.emit_to(notice_window::LABEL, EVENT_STATUS_CHANGED, status);
+}
+
+/// Opens the notice window when the server's config brought a version this person
+/// hasn't acknowledged (AGT-04 first time, AGT-05 later), once per version.
+fn prompt_notice_if_due(app: &AppHandle) {
+    if app.state::<AgentState>().take_notice_prompt() {
+        notice_window::show(app);
     }
 }
 
@@ -703,7 +1156,8 @@ fn handle_deep_links(app: &AppHandle, urls: Vec<tauri::Url>) {
         std::thread::spawn(move || {
             let state = app.state::<AgentState>();
             state.complete_sign_in(&url);
-            let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+            emit_status(&app);
+            prompt_notice_if_due(&app);
         });
     }
 }
@@ -736,8 +1190,7 @@ fn open_account(
         tracing::warn!("no server configured (AI_PROCTOR_SUPABASE_URL); sign-in is off");
         return None;
     };
-    let keychain: Arc<dyn KeyStore> = Arc::new(agent_platform::keychain::OsKeychain);
-    match Account::new(config, keychain, clock, outbox, data_dir) {
+    match Account::new(config, key_store(), clock, outbox, data_dir) {
         Ok(account) => Some(Arc::new(account)),
         Err(error) => {
             tracing::error!(%error, "sign-in unavailable");
@@ -762,7 +1215,19 @@ pub fn run() {
             sign_in_start,
             sign_out,
             card_click,
-            card_switch_project
+            card_switch_project,
+            clock_in,
+            clock_out,
+            break_start,
+            break_end,
+            pause_start,
+            pause_end,
+            switch_project,
+            set_miss_reason,
+            open_link,
+            get_notice,
+            show_notice,
+            acknowledge_notice
         ])
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
@@ -772,7 +1237,7 @@ pub fn run() {
             Box::leak(Box::new(guard));
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "agent started");
 
-            let data_dir = app.path().app_data_dir()?;
+            let data_dir = data_dir(app)?;
             let outbox = match open_outbox(&data_dir) {
                 Ok(outbox) => {
                     tracing::info!(stats = ?outbox.stats().ok(), "outbox open");
@@ -789,7 +1254,10 @@ pub fn run() {
             #[cfg(debug_assertions)]
             if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
                 agent_platform::request_permissions();
+                agent_platform::request_notification_permission();
             }
+            #[cfg(debug_assertions)]
+            let platform = dev::platform(platform);
             let sink: Arc<dyn EventSink> = match &outbox {
                 Some(outbox) => Arc::new(OutboxSink { outbox: outbox.clone(), clock: clock.clone() }),
                 None => Arc::new(UnavailableSink),
@@ -824,8 +1292,13 @@ pub fn run() {
             spawn_ticker(app.handle().clone());
             spawn_sync(app.handle().clone());
             card::create(app.handle())?;
+            notice_window::create(app.handle())?;
             spawn_card_runner(app.handle().clone());
             spawn_activity(app.handle().clone());
+            #[cfg(all(debug_assertions, unix))]
+            if let Some(path) = dev::control_path() {
+                dev_control::spawn(app.handle().clone(), &path)?;
+            }
 
             let handle = app.handle().clone();
             app.deep_link()
@@ -864,7 +1337,7 @@ fn spawn_ticker(app: AppHandle) {
         state.act("update the shift", |s| s.tick());
         let after = state.status();
         if after != before {
-            let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, after);
+            emit_status(&app);
         }
     });
 }
@@ -914,6 +1387,7 @@ fn spawn_sync(app: AppHandle) {
                         last_heartbeat = Some(Instant::now());
                     }
                     backoff.success();
+                    prompt_notice_if_due(&app);
                     SYNC_EVERY
                 }
                 Err(error @ (SyncError::SignedOut(_) | SyncError::Revoked)) => {
@@ -1150,6 +1624,7 @@ mod tests {
             .filter_map(|w| w["label"].as_str())
             .collect();
         windows.push(card::LABEL);
+        windows.push(notice_window::LABEL);
         for w in windows {
             assert!(
                 allowed.contains(&w),
@@ -1164,6 +1639,19 @@ mod tests {
         let source = include_str!("lib.rs");
         let offenders = source.lines().filter(|l| l.trim() == bare).count();
         assert_eq!(offenders, 0, "a command would expect camelCase arguments");
+    }
+
+    #[test]
+    fn the_notice_commands_are_registered() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split("generate_handler![")
+            .nth(1)
+            .and_then(|rest| rest.split(']').next())
+            .unwrap();
+        for command in ["get_notice", "show_notice", "acknowledge_notice"] {
+            assert!(handler.contains(command), "{command} is not registered");
+        }
     }
 
     #[test]
@@ -1343,6 +1831,7 @@ mod tests {
                 app: "Safari".into(),
                 title: Some("Docs".into()),
                 domain: Some("docs.example.com".into()),
+                display: None,
             })
         });
         // 09:00:00 .. 09:01:30 in 5 s steps.
@@ -1365,6 +1854,86 @@ mod tests {
         w.clock.advance(chrono::Duration::seconds(5));
         w.state.activity_tick();
         assert_eq!(w.events("app_session").len(), 2, "nothing on a break");
+    }
+
+    /// Past the longest interval with `hold` in effect: the check-in is due and held.
+    fn deferred_by(w: &Working, hold: impl FnOnce(&mut agent_core::fake::FakeState)) {
+        w.platform.update(hold);
+        w.clock.advance(chrono::Duration::minutes(91));
+        assert_eq!(w.state.card_tick(), CardAction::Nothing, "nothing is shown");
+    }
+
+    #[test]
+    fn a_held_checkin_leaves_one_deferred_record_with_the_reason_and_no_capture() {
+        let w = working();
+        deferred_by(&w, |s| s.call.mic = true);
+        for _ in 0..20 {
+            w.clock.advance(chrono::Duration::minutes(1));
+            assert_eq!(w.state.card_tick(), CardAction::Nothing);
+        }
+        let checkins = w.checkins();
+        assert_eq!(checkins.len(), 1, "one record however long the call lasts");
+        assert_eq!(checkins[0]["outcome"], "deferred");
+        assert_eq!(checkins[0]["deferral_reason"], "call");
+        assert!(checkins[0]["shown_at"].is_null());
+        assert!(checkins[0]["response_ms"].is_null());
+        assert_eq!(checkins[0]["object_keys"], serde_json::json!([]));
+        assert_eq!(w.outbox.stats().unwrap().uploads, 0, "nothing captured");
+        assert!(
+            w.state.scheduler.wake_in().is_some(),
+            "still scheduled: the card comes after the call"
+        );
+    }
+
+    #[test]
+    fn the_deferral_names_a_share_or_a_presentation() {
+        use agent_core::platform::ScreenShare;
+        for (share, reason) in [
+            (ScreenShare::Sharing, "screen_share"),
+            (ScreenShare::Presenting, "presenting"),
+        ] {
+            let w = working();
+            deferred_by(&w, |s| s.screen_share = Some(share));
+            let checkins = w.checkins();
+            assert_eq!(checkins.len(), 1);
+            assert_eq!(checkins[0]["deferral_reason"], reason);
+        }
+    }
+
+    #[test]
+    fn the_card_still_comes_after_the_hold_against_the_original_time() {
+        let w = working();
+        deferred_by(&w, |s| s.call.mic = true);
+        w.platform.update(|s| s.call = Default::default());
+        // Within 2 min of the call ending (CHK-03).
+        let mut shown = None;
+        for _ in 0..=120 {
+            if let CardAction::Show(challenge) = w.state.card_tick() {
+                shown = Some(challenge);
+                break;
+            }
+            w.clock.advance(chrono::Duration::seconds(1));
+        }
+        let card = shown.expect("the card comes within 2 minutes");
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+
+        let checkins = w.checkins();
+        assert_eq!(checkins.len(), 2);
+        assert_eq!(checkins[0]["outcome"], "deferred");
+        assert_eq!(checkins[1]["outcome"], "pass");
+        assert_eq!(checkins[1]["scheduled_at"], checkins[0]["scheduled_at"]);
+        assert_eq!(
+            checkins[1]["object_keys"],
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+    }
+
+    #[test]
+    fn a_lock_leaves_no_deferred_record() {
+        let w = working();
+        deferred_by(&w, |s| s.session = SessionState::Locked);
+        assert!(w.checkins().is_empty());
     }
 
     #[test]
@@ -1406,7 +1975,8 @@ mod tests {
             "policy": { "auto_clock_in": true },
             "policy_version": 2,
             "timezone": "UTC",
-            "shifts": [{ "days": [1], "start": "08:00", "end": "17:00", "timezone": "UTC" }]
+            "shifts": [{ "days": [1], "start": "08:00", "end": "17:00", "timezone": "UTC" }],
+            "notice": notice_json(1, true, Some(1))
         }))
         .unwrap();
         state.apply_config(&config);
@@ -1446,6 +2016,24 @@ mod tests {
     }
 
     #[test]
+    fn a_screen_share_is_queued_as_a_call_while_working() {
+        use agent_core::platform::ScreenShare;
+        let w = working();
+        w.platform
+            .update(|s| s.screen_share = Some(ScreenShare::Sharing));
+        w.state.presence_tick();
+        let starts = w.events("call_start");
+        assert_eq!(starts.len(), 1, "share started: a call starts");
+        assert_eq!(starts[0]["source"], "screen_share");
+
+        w.platform.update(|s| s.screen_share = None);
+        w.state.presence_tick();
+        let ends = w.events("call_end");
+        assert_eq!(ends.len(), 1, "share ended: the call ends");
+        assert_eq!(ends[0]["source"], "screen_share");
+    }
+
+    #[test]
     fn the_org_idle_threshold_comes_with_the_config() {
         let w = working();
         let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
@@ -1459,6 +2047,96 @@ mod tests {
         w.platform.update(|s| s.idle_seconds = 130);
         w.state.presence_tick();
         assert_eq!(w.events("idle_start").len(), 1);
+    }
+
+    #[test]
+    fn the_tray_status_has_today_projects_and_the_last_miss() {
+        let w = working();
+        let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
+            "policy": { "pause_daily_max_min": 45 },
+            "policy_version": 2,
+            "timezone": "UTC",
+            "shifts": [],
+            "projects": [{ "id": "0190f5b0-0000-7000-8000-0000000000f1", "name": "Website revamp", "client": "Northwind" }]
+        }))
+        .unwrap();
+        w.state.apply_config(&config);
+        let project = uuid::Uuid::parse_str("0190f5b0-0000-7000-8000-0000000000f1").unwrap();
+        w.state.act("switch", |s| s.switch_project(Some(project)));
+
+        w.card_due();
+        w.clock.advance(chrono::Duration::seconds(91));
+        assert_eq!(w.state.card_tick(), CardAction::Hide, "a miss");
+        w.state
+            .act("pause", |s| s.start_pause_with_reason(5, Some("call")));
+        w.clock.advance(chrono::Duration::minutes(2));
+
+        let status = w.state.status();
+        assert_eq!(status.projects.len(), 1);
+        assert_eq!(
+            status.project.as_ref().map(|p| p.name.as_str()),
+            Some("Website revamp")
+        );
+        assert_eq!(status.pause_daily_cap_s, 45 * 60);
+        assert_eq!(status.pause_used_today_s, 120);
+        assert_eq!(status.pause_planned_min, Some(5));
+        assert!(status.pause_ends_at.is_some());
+        assert!(status.worked_today_s >= 91 * 60, "the shift so far counts");
+        assert!(
+            status.missed_checkin.is_some(),
+            "the miss waits for a reason"
+        );
+        assert_eq!(
+            status.last_checkin.map(|c| c.outcome),
+            Some(agent_core::contracts::CheckinOutcome::Miss)
+        );
+        let json = serde_json::to_string(&w.state.status()).unwrap();
+        assert!(!json.contains("next"), "never the next check-in time");
+    }
+
+    #[test]
+    fn a_quick_clock_out_and_in_never_spans_both_shifts() {
+        let w = working();
+        w.platform.update(|s| {
+            s.foreground = Some(agent_core::platform::Foreground {
+                app: "Xcode".into(),
+                title: None,
+                domain: None,
+                display: None,
+            })
+        });
+        for _ in 0..4 {
+            w.state.activity_tick();
+            w.clock.advance(chrono::Duration::seconds(5));
+        }
+        // 09:00:20: out and back in before the next 5 s sample.
+        w.state.act("clock out", |s| s.clock_out());
+        let out_at = w.clock.now();
+        w.clock.advance(chrono::Duration::seconds(2));
+        w.state.act("clock in", |s| s.clock_in(None));
+        let in_at = w.clock.now();
+        for _ in 0..3 {
+            w.clock.advance(chrono::Duration::seconds(5));
+            w.state.activity_tick();
+        }
+        w.state.act("clock out", |s| s.clock_out());
+
+        let buckets = w.events("app_session");
+        assert_eq!(buckets.len(), 2, "one per shift: {buckets:?}");
+        let t = |v: &serde_json::Value| {
+            v.as_str()
+                .unwrap()
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap()
+        };
+        assert!(
+            t(&buckets[0]["end"]) <= out_at,
+            "first ends by the clock-out"
+        );
+        assert!(
+            t(&buckets[1]["start"]) >= in_at,
+            "second starts after the clock-in"
+        );
     }
 
     #[test]
@@ -1492,5 +2170,182 @@ mod tests {
         );
         state.session.lock().unwrap().sign_in();
         assert_eq!(state.sync_round(true), Ok(false));
+    }
+
+    fn notice_json(
+        version: i64,
+        acknowledged: bool,
+        acknowledged_version: Option<i64>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "id": "0190f5b0-0000-7000-8000-0000000000a1",
+            "version": version,
+            "acknowledged": acknowledged,
+            "acknowledged_version": acknowledged_version,
+            "body": {
+                "collected": "A screenshot when you pass a check-in.",
+                "when": "Only while clocked in.",
+                "who": "Your manager.",
+                "retention": "30 days.",
+                "rights": "See and export it."
+            }
+        })
+    }
+
+    fn config_with(
+        policy: serde_json::Value,
+        shifts: serde_json::Value,
+        notice: serde_json::Value,
+    ) -> agent_core::config::AgentConfig {
+        serde_json::from_value(serde_json::json!({
+            "policy": policy, "policy_version": 2, "timezone": "UTC", "shifts": shifts,
+            "notice": notice
+        }))
+        .unwrap()
+    }
+
+    /// Signed in with the queue wired up but not clocked in.
+    fn signed_in_off_shift() -> (AgentState, Arc<Outbox>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let outbox = Arc::new(Outbox::open(&dir.path().join("outbox"), &[1u8; 32]).unwrap());
+        let clock = Arc::new(FakeClock::at("2026-10-19T09:00:00Z"));
+        let state = state(
+            dir.path(),
+            Arc::new(OutboxSink {
+                outbox: outbox.clone(),
+                clock,
+            }),
+        );
+        state.session.lock().unwrap().sign_in();
+        (state, outbox, dir)
+    }
+
+    #[test]
+    fn nothing_is_collected_before_the_first_acknowledgement() {
+        let (state, outbox, _dir) = signed_in_off_shift();
+        // Monday 09:00 UTC is inside the shift and the org has auto clock-in on.
+        state.apply_config(&config_with(
+            serde_json::json!({ "auto_clock_in": true }),
+            serde_json::json!([{ "days": [1], "start": "08:00", "end": "17:00", "timezone": "UTC" }]),
+            notice_json(1, false, None),
+        ));
+        let status = state.status().notice.unwrap();
+        assert_eq!(
+            (status.version, status.acknowledged, status.required),
+            (1, false, true)
+        );
+
+        let manual = state.try_act("clock in", |s| s.clock_in(None));
+        assert!(manual.unwrap_err().contains("notice"), "clock-in refused");
+        state.act("update the shift", |s| s.tick());
+        assert_eq!(
+            state.status().shift,
+            ShiftState::OffShift,
+            "no auto clock-in"
+        );
+        state.activity_tick();
+        state.presence_tick();
+        assert_eq!(state.card_tick(), CardAction::Nothing);
+        assert!(
+            outbox.pending(100).unwrap().is_empty(),
+            "nothing queued at all"
+        );
+
+        assert!(state.take_notice_prompt(), "the notice window opens");
+        assert!(!state.take_notice_prompt(), "once");
+        assert_eq!(state.notice_content().unwrap().version, 1);
+    }
+
+    #[test]
+    fn acknowledging_lets_the_person_clock_in() {
+        let (state, outbox, _dir) = signed_in_off_shift();
+        state.apply_config(&config_with(
+            serde_json::json!({}),
+            serde_json::json!([]),
+            notice_json(1, false, None),
+        ));
+        assert!(state.try_act("clock in", |s| s.clock_in(None)).is_err());
+
+        // The config the server sends after the acknowledgement.
+        state.apply_config(&config_with(
+            serde_json::json!({}),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+        assert!(!state.status().notice.unwrap().required);
+        state.try_act("clock in", |s| s.clock_in(None)).unwrap();
+        assert_eq!(state.status().shift, ShiftState::Working);
+        assert_eq!(
+            outbox.pending(100).unwrap().len(),
+            1,
+            "the clock-in is queued"
+        );
+    }
+
+    #[test]
+    fn a_new_version_keeps_the_old_settings_until_it_is_acknowledged() {
+        let w = working();
+        w.state.apply_config(&config_with(
+            serde_json::json!({ "webcam": false }),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+        // Version 2 arrives (say the org enabled the webcam): the server still sends
+        // the settings version 1 allows, and asks for a review.
+        w.state.apply_config(&config_with(
+            serde_json::json!({ "webcam": false }),
+            serde_json::json!([]),
+            notice_json(2, false, Some(1)),
+        ));
+        let status = w.state.status();
+        let notice = status.notice.unwrap();
+        assert_eq!(
+            (notice.version, notice.acknowledged, notice.required),
+            (2, false, false)
+        );
+        assert_eq!(status.shift, ShiftState::Working, "the shift carries on");
+        assert!(
+            w.state.take_notice_prompt(),
+            "the notice window opens for it"
+        );
+
+        // Still collecting under the old version: a check-in passes as before.
+        w.pass();
+        assert_eq!(w.checkins().len(), 1);
+        // And the person can end the shift and start another without acknowledging.
+        w.state.try_act("clock out", |s| s.clock_out()).unwrap();
+        w.state.try_act("clock in", |s| s.clock_in(None)).unwrap();
+
+        // Acknowledged: version 2 applies.
+        w.state.apply_config(&config_with(
+            serde_json::json!({ "webcam": true }),
+            serde_json::json!([]),
+            notice_json(2, true, Some(2)),
+        ));
+        assert!(w.state.status().notice.unwrap().acknowledged);
+        assert!(!w.state.take_notice_prompt());
+    }
+
+    #[test]
+    fn signing_out_forgets_the_notice() {
+        let (state, _outbox, _dir) = signed_in_off_shift();
+        state.apply_config(&config_with(
+            serde_json::json!({}),
+            serde_json::json!([]),
+            notice_json(1, true, Some(1)),
+        ));
+        assert!(state.status().notice.is_some());
+        state.sign_out();
+        assert!(state.status().notice.is_none());
+        assert!(state.notice_content().is_none());
+    }
+
+    #[test]
+    fn acknowledging_needs_the_version_on_screen_and_a_server() {
+        let (state, _outbox, _dir) = signed_in_off_shift();
+        assert_eq!(
+            state.acknowledge_notice(1).unwrap_err(),
+            "This copy of AI Proctor has no server set up."
+        );
     }
 }

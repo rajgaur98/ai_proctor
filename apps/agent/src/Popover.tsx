@@ -1,63 +1,33 @@
-// Tray popover skeleton (#15) with sign-in (#16). The full popover (clock, break,
-// pause, project) is #37.
-import type { AgentStatus, PermissionState, ShiftState } from "@ai-proctor/contracts";
+// Tray popover: sign-in (#16) here, the signed-in view (#37) in Tray.tsx.
+import type { AgentStatus } from "@ai-proctor/contracts";
 import { type FormEvent, useEffect, useState } from "react";
 import { invoke, listen } from "./ipc";
+import { Tray } from "./Tray";
 
-const shiftLabel: Record<ShiftState, string> = {
-  off_shift: "Off shift",
-  working: "Working",
-  on_break: "On break",
-  paused: "Paused",
-};
-
-const permissionLabel: Record<PermissionState, string> = {
-  granted: "Allowed",
-  denied: "Blocked",
-  not_determined: "Not set up",
-  restricted: "Restricted",
-  unsupported: "Not available yet",
-};
+/** The last status from the core and when it arrived, so the tray can tick time locally. */
+interface Snapshot {
+  status: AgentStatus;
+  receivedAt: number;
+}
 
 export function Popover() {
-  const [status, setStatus] = useState<AgentStatus | null>(null);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke("get_status", {}).then(setStatus, (e: unknown) => setError(String(e)));
-    const unlisten = listen("status_changed", setStatus);
+    const accept = (status: AgentStatus) => setSnapshot({ status, receivedAt: Date.now() });
+    invoke("get_status", {}).then(accept, (e: unknown) => setError(String(e)));
+    const unlisten = listen("status_changed", accept);
     return () => {
       unlisten.then((stop) => stop());
     };
   }, []);
 
   if (error) return <main className="popover">Couldn't load status: {error}</main>;
-  if (!status) return <main className="popover">Loading…</main>;
+  if (!snapshot) return <main className="popover">Loading…</main>;
+  const { status, receivedAt } = snapshot;
   if (!status.signed_in) return <SignIn version={status.agent_version} />;
-
-  return (
-    <main className="popover">
-      <header>
-        <span className="title">AI Proctor</span>
-        <span className="status">{shiftLabel[status.shift]}</span>
-      </header>
-      <section>
-        <h2>Permissions</h2>
-        <dl>
-          <dt>Screen recording</dt>
-          <dd>{permissionLabel[status.permissions.screen]}</dd>
-          <dt>Camera</dt>
-          <dd>{permissionLabel[status.permissions.camera]}</dd>
-        </dl>
-      </section>
-      <footer className="account">
-        <span>
-          {status.account_email ?? "Signed in"} · v{status.agent_version}
-        </span>
-        <SignOut />
-      </footer>
-    </main>
-  );
+  return <Tray status={status} receivedAt={receivedAt} />;
 }
 
 // Magic link (#16): the email opens aiproctor://auth on this computer, which
@@ -122,22 +92,5 @@ function SignIn({ version }: { version: string }) {
       )}
       <footer>v{version}</footer>
     </main>
-  );
-}
-
-function SignOut() {
-  const [busy, setBusy] = useState(false);
-  return (
-    <button
-      type="button"
-      className="link"
-      disabled={busy}
-      onClick={() => {
-        setBusy(true);
-        invoke("sign_out", {}).finally(() => setBusy(false));
-      }}
-    >
-      Sign out
-    </button>
   );
 }
