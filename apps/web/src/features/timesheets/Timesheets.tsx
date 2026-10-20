@@ -10,13 +10,16 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Delegation } from "../delegation/Delegation";
 import { ExportDialog } from "./ExportDialog";
-import { SheetStatusChip } from "./SheetStatusChip";
+import { downloadExport } from "./exportData";
+import { LateDataBadge, SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration } from "./summary";
 import {
   ensureAndSubmit,
   type SheetStatus,
+  sheetColumns,
   statusLabel,
   type Timesheet,
+  toTimesheet,
   weekListQuery,
   weekStartQuery,
 } from "./timesheetData";
@@ -155,7 +158,10 @@ export function Timesheets() {
                     </Link>
                   </td>
                   <td>
-                    <SheetStatusChip sheet={r} />
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <SheetStatusChip sheet={r} />
+                      <LateDataBadge sheet={r} />
+                    </span>
                   </td>
                   <td className="font-mono text-[13px]">{formatDuration(r.workedS)}</td>
                   <td className="font-mono text-[13px]">
@@ -197,32 +203,29 @@ export function MyTimesheets() {
     queryFn: async (): Promise<Map<string, Timesheet>> => {
       const { data, error } = await supabase
         .from("timesheets")
-        .select(
-          "id, user_id, period_start, status, submitted_at, approved_at, returned_at, comment",
-        )
+        .select(sheetColumns)
         .eq("user_id", profile.id)
         .gte("period_start", oldest);
       if (error) throw error;
-      return new Map(
-        data.map((r) => [
-          r.period_start,
-          {
-            id: r.id,
-            userId: r.user_id,
-            periodStart: r.period_start,
-            status: r.status as SheetStatus,
-            submittedAt: r.submitted_at,
-            approvedAt: r.approved_at,
-            returnedAt: r.returned_at,
-            comment: r.comment,
-          },
-        ]),
-      );
+      return new Map(data.map((r) => [r.period_start, toTimesheet(r)]));
     },
   });
   const submit = useMutation({
     mutationFn: (week: string) => ensureAndSubmit(profile.id, week, profile.timezone),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["timesheet-mine", profile.id] }),
+  });
+  // Employees can export their own time (TS-20, EMP-04); the function checks and logs it.
+  const exportWeek = useMutation({
+    mutationFn: (week: string) =>
+      downloadExport({
+        view: "daily",
+        from: week,
+        to: weekDays(week).at(-1) ?? week,
+        userId: profile.id,
+        clientId: "",
+        projectId: "",
+        status: "",
+      }),
   });
 
   return (
@@ -234,9 +237,9 @@ export function MyTimesheets() {
           with their reasons.
         </p>
       </div>
-      {(mine.error || submit.error) && (
+      {(mine.error || submit.error || exportWeek.error) && (
         <p role="alert" className="text-sm text-warnink">
-          {(mine.error ?? submit.error)?.message}
+          {(mine.error ?? submit.error ?? exportWeek.error)?.message}
         </p>
       )}
       <div className="overflow-hidden rounded-xl border border-line bg-panel">
@@ -251,6 +254,9 @@ export function MyTimesheets() {
               approvedAt: null,
               returnedAt: null,
               comment: null,
+              lateDataAt: null,
+              lateDataLastAt: null,
+              lateDataCount: 0,
             };
             const canSubmit = sheet.status === "draft" || sheet.status === "returned";
             return (
@@ -271,6 +277,15 @@ export function MyTimesheets() {
                   <span className="text-ink2">“{sheet.comment}”</span>
                 )}
                 <span className="ml-auto flex gap-2">
+                  <Button
+                    variant="ghost"
+                    className="h-9"
+                    aria-label={`Download ${weekLabel(w)} as CSV`}
+                    disabled={exportWeek.isPending}
+                    onClick={() => exportWeek.mutate(w)}
+                  >
+                    CSV
+                  </Button>
                   {canSubmit && (
                     <Button
                       variant="secondary"

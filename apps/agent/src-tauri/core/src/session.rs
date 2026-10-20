@@ -293,6 +293,17 @@ impl Session {
         self.clock_out_at(self.clock.now(), "manual")
     }
 
+    /// The OS is ending the person's session (logout, restart, shutdown; #159, ANT-01).
+    /// A shift in any phase ends now with reason "session_end", which the server
+    /// keeps apart from a manual or forgotten ("auto") clock-out. Nothing to do off
+    /// shift, and a second call is harmless.
+    pub fn session_ended(&mut self) -> Result<(), TransitionError> {
+        if self.state.shift == ShiftPhase::OffShift {
+            return Ok(());
+        }
+        self.clock_out_at(self.clock.now(), "session_end")
+    }
+
     pub fn start_break(&mut self, planned_min: Option<u32>) -> Result<(), TransitionError> {
         self.require_working()?;
         if let Some(min) = planned_min.filter(|m| !BREAK_PRESETS.contains(m)) {
@@ -666,6 +677,38 @@ mod tests {
         r.session.clock_out().unwrap();
         assert_eq!(r.session.shift(), ShiftState::OffShift);
         assert_eq!(r.sink.last().2, json!({ "reason": "manual" }));
+    }
+
+    #[test]
+    fn a_session_end_clocks_out_with_its_own_reason_from_any_phase() {
+        for phase in ["working", "break", "pause"] {
+            let mut r = rig(SessionPolicy::default());
+            r.session.clock_in(None).unwrap();
+            match phase {
+                "break" => r.session.start_break(None).unwrap(),
+                "pause" => r.session.start_pause(5).unwrap(),
+                _ => {}
+            }
+            r.session.session_ended().unwrap();
+            assert_eq!(r.session.shift(), ShiftState::OffShift, "{phase}");
+            let (kind, _, payload) = r.sink.last();
+            assert_eq!(
+                (kind.as_str(), payload),
+                ("clock_out", json!({ "reason": "session_end" })),
+                "{phase}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_session_end_off_shift_or_twice_records_nothing() {
+        let mut r = rig(SessionPolicy::default());
+        r.session.session_ended().unwrap();
+        assert!(r.sink.types().is_empty());
+        r.session.clock_in(None).unwrap();
+        r.session.session_ended().unwrap();
+        r.session.session_ended().unwrap();
+        assert_eq!(r.sink.types(), ["clock_in", "clock_out"]);
     }
 
     #[test]

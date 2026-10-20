@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(93);
+select plan(97);
 
 \set ada '''00000000-0000-4000-8000-0000000000a1'''
 \set max '''00000000-0000-4000-8000-0000000000b1'''
@@ -95,6 +95,8 @@ select ok(internal.region_preset('eu') ->> 'screenshots' = 'blurred'
   and (internal.region_preset('eu') ->> 'image_retention_days')::int = 30,
   'EU preset: blurred, webcam and window titles off, 45-120 min, images kept 30 days');
 select is(internal.region_preset('india'), internal.region_preset('us'), 'India preset: the same values as US');
+select is((select bool_and((internal.region_preset(r) ->> 'reminders_enabled')::boolean)
+           from unnest(enum_range(null::public.region_preset)) r), true, 'every preset has timesheet reminders on');
 select is(
   (select count(*)::int from jsonb_object_keys(internal.region_preset('eu')) k
    where k not in (select key from internal.policy_spec())),
@@ -234,9 +236,13 @@ select is(
   (select count(*)::int from (values
     ('webcam'), ('window_titles'), ('activity_sampling'), ('auto_clock_in'), ('breaks_paid'),
     ('alert_consecutive_misses_enabled'), ('alert_offline_enabled'), ('alert_tamper_enabled'),
-    ('alert_late_clock_in_enabled'), ('alert_pause_over_cap_enabled'), ('require_admin_mfa')
+    ('alert_late_clock_in_enabled'), ('alert_pause_over_cap_enabled'), ('reminders_enabled'),
+    ('require_admin_mfa')
   ) v(k) where pg_temp.save(v.k, '"yes"') = 'invalid_policy:' || v.k and pg_temp.save(v.k, '1') = 'invalid_policy:' || v.k),
-  11, 'every switch refuses anything but a boolean');
+  12, 'every switch refuses anything but a boolean');
+select is(pg_temp.save('reminders_enabled', 'false'), 'ok', 'timesheet reminders can be switched off (#177)');
+select is(public.policy_settings() -> 'policy' ->> 'reminders_enabled', 'false', 'and the settings show it');
+select is(pg_temp.save('reminders_enabled', 'true'), 'ok', 'and on again');
 select is(pg_temp.save('pause_max_min', 'null'), 'invalid_policy:pause_max_min', 'only the daily break limit may be null');
 select is(pg_temp.save('break_daily_max_min', 'null'), 'ok', 'which means no limit');
 select pg_temp.act_as_postgres();

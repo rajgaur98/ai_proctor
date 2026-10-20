@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appLabel,
-  asPeriods,
+  asTimelineSegments,
   type CaptureView,
   type DaySegment,
   filesOf,
@@ -55,10 +55,17 @@ describe("placeSegments", () => {
   });
 });
 
-describe("asPeriods", () => {
-  it("keeps the times", () => {
-    expect(asPeriods([seg("verified", "09:00", "10:00")])).toEqual([
-      { status: "active", start: at("09:00"), end: at("10:00") },
+describe("asTimelineSegments", () => {
+  it("keeps the times, as milliseconds", () => {
+    expect(asTimelineSegments([seg("verified", "09:00", "10:00")])).toEqual([
+      {
+        type: "verified",
+        start: ms("09:00"),
+        end: ms("10:00"),
+        flagged: false,
+        excluded: false,
+        counted: true,
+      },
     ]);
   });
 });
