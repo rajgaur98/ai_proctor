@@ -10,7 +10,7 @@ Read this first after a restart or a context compaction. Update it with every PR
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
 - **Now (20 Oct):** implementers on #43 weekly timesheets (`ai_proctor-w43`, on #42), #50 manager alerts + email (`ai_proctor-a50`, on #36), #53 audit log (`ai_proctor-l53`, on main).
-- **In review, waiting on CI (Actions billing):** #115 (#38) → #121 (#35/#36) → #127 (#37, has #117 merged) and #131 (#102); #116 (#105), #117 (#39), #119 (#99), #120 (#118), #122 (#40) → #125 (#41) → #128 (#42, has #121 merged); #123 (#104/#106); #129 (#51). Merge in that order. Later migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture` or `capture_view` must start from the latest version.
+- **In review (CI runs again since the repo went public, 20 Oct):** #115 (#38) → #121 (#35/#36) → #127 (#37, has #117 merged) and #131 (#102); #116 (#105), #117 (#39), #119 (#99), #120 (#118), #122 (#40) → #125 (#41) → #128 (#42, has #121 merged); #123 (#104/#106); #129 (#51). Merge in that order. Later migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture` or `capture_view` must start from the latest version.
 - **Next (in order):** #44 → #45 → #46 → #47 (after #43) → M5 (#48, #49, #52, #54) → #124 day view design → #126, #130, #132 follow-ups → M6 not blocked (#58, #59, #107) → #26.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj:** batched here as they come up.
@@ -91,7 +91,6 @@ Answered by Raj on 20 Oct 2026.
 
 Format: `- #<issue>: <exact question or action needed>`
 
-- **GitHub Actions stopped running jobs (20 Oct):** "recent account payments have failed or your spending limit needs to be increased". Fix billing / raise the Actions limit for `rajgaur98`, or approve making the macOS and Windows jobs run only on `main`. Until then PRs can't merge on green CI.
 - #108: create a stable code-signing identity for debug builds (free Apple Development certificate via Xcode → Settings → Accounts, or a self-signed code-signing certificate in Keychain Access), so rebuilt agents keep their Screen Recording, Camera and keychain grants.
 - #12, #13, #14 (Windows halves), #56: a Windows machine or VM, or a decision that the pilot is Mac-only.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
@@ -135,7 +134,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 ## Environment notes
 
 - Development machine: Raj's Mac, local Claude desktop session. Keep it awake during long runs (`caffeinate -dims`).
-- CI budget: private repo, 2,000 free Actions minutes/month; macOS counts 10×, Windows 2×. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
+- CI budget: the repo is public since 20 Oct, so standard runners are free (it was private with 2,000 minutes/month; macOS counts 10×, Windows 2×, which ran out). Going private again brings the limit back. Linux checks on every PR; Windows also on PRs touching Windows code; otherwise macOS/Windows only on the `ci:full` label or nightly.
 - Homebrew refuses formula builds because the Command Line Tools are outdated (it wants the Xcode 27 version; fixing needs `sudo`). Full Xcode 26.6 works for Rust builds. The Supabase CLI comes from the `supabase` npm devDependency instead of Homebrew (#9).
 - Local Supabase runs with analytics (Logflare + Vector) off: they failed health checks on Docker Desktop and aren't needed.
 - Rust comes from Homebrew's `rustup` (proxies in `/opt/homebrew/opt/rustup/bin`, not on the default PATH); Node 22 from asdf. See the Commands section of `CLAUDE.md`.
