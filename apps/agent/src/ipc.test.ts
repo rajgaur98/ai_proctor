@@ -161,7 +161,9 @@ describe("onboarding", () => {
   const state = {
     platform: "macos",
     permissions: { screen: "granted", camera: "not_determined" },
-    webcam: true,
+    screen_required: true,
+    camera_required: true,
+    screenshots: true,
     accessibility: "denied",
     domains: true,
     ready: false,

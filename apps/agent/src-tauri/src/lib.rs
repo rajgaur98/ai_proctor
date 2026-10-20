@@ -594,9 +594,9 @@ impl AgentState {
         }
     }
 
-    /// The org's effective webcam setting: whether Camera is asked for at all.
-    fn webcam_on(&self) -> bool {
-        self.capture_policy.lock().unwrap().webcam
+    /// Whether the org's effective policy takes screenshots at all.
+    fn screenshots_on(&self) -> bool {
+        self.capture_policy.lock().unwrap().screenshots != capture::ScreenshotMode::Off
     }
 
     /// What this person's collection needs from the OS: the same rule as the
@@ -632,7 +632,8 @@ impl AgentState {
         onboarding::state(
             current_os(),
             self.platform.permissions(),
-            self.webcam_on(),
+            self.required_permissions(),
+            self.screenshots_on(),
             self.platform.accessibility_permission(),
             self.domains_collected(),
             &self.onboarding.lock().unwrap(),
@@ -3840,14 +3841,68 @@ mod tests {
             s.permissions.camera = PermissionState::Denied;
         });
         let blocked = state.onboarding_state();
-        assert!(blocked.webcam && !blocked.ready, "the camera is needed too");
+        assert!(
+            blocked.camera_required && !blocked.ready,
+            "the camera is needed too"
+        );
 
         // The org turns the webcam off: the Camera card goes away and the step passes.
         state.apply_config(&webcam_config(false));
         let onboarding = state.onboarding_state();
-        assert!(!onboarding.webcam && onboarding.ready);
+        assert!(!onboarding.camera_required && onboarding.ready);
         state.finish_onboarding().unwrap();
         assert!(state.onboarding_state().completed);
+    }
+
+    #[test]
+    fn the_permission_step_follows_the_same_rule_as_the_tray_for_screen_recording() {
+        // (screenshots, window titles, webcam) -> (Screen Recording, Camera, screenshots)
+        let cases = [
+            (("full", true, true), (true, true, true)),
+            (("blurred", false, false), (true, false, true)),
+            (("off", true, false), (true, false, false)),
+            (("off", true, true), (true, true, false)),
+            (("off", false, true), (false, true, false)),
+            (("off", false, false), (false, false, false)),
+        ];
+        for ((screenshots, titles, webcam), (screen, camera, shots)) in cases {
+            let w = working();
+            w.state
+                .apply_config(&collection_config(screenshots, titles, webcam));
+            // Neither permission is on: `ready` only waits for the ones needed.
+            w.platform.update(|s| {
+                s.permissions.screen = PermissionState::Denied;
+                s.permissions.camera = PermissionState::Denied;
+            });
+            let got = w.state.onboarding_state();
+            let label = format!("{screenshots} titles={titles} webcam={webcam}");
+            assert_eq!(
+                (got.screen_required, got.camera_required, got.screenshots),
+                (screen, camera, shots),
+                "{label}"
+            );
+            assert_eq!(got.ready, !screen && !camera, "{label}");
+            assert_eq!(
+                w.state.finish_onboarding().is_ok(),
+                !screen && !camera,
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_required_lets_the_person_finish_with_every_permission_off() {
+        let w = working();
+        w.state
+            .apply_config(&collection_config("off", false, false));
+        w.platform.update(|s| {
+            s.permissions.screen = PermissionState::NotDetermined;
+            s.permissions.camera = PermissionState::Restricted;
+        });
+        let onboarding = w.state.onboarding_state();
+        assert!(onboarding.ready && !onboarding.screenshots);
+        w.state.finish_onboarding().unwrap();
+        assert!(w.state.onboarding_state().completed);
     }
 
     #[test]

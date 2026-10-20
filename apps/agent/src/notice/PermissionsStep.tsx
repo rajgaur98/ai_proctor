@@ -7,6 +7,7 @@ import {
   type PermissionCard,
   permissionCards,
   permissionsHeading,
+  permissionsIntro,
 } from "./onboardingModel";
 
 interface Props {
@@ -18,17 +19,11 @@ interface Props {
 
 export function PermissionsStep({ state, busy, onRequest, onRestart }: Props) {
   const cards = permissionCards(state);
-  const hasOptional = cards.some((c) => c.optional);
   return (
     <>
       <header>
         <h1>{permissionsHeading(cards)}</h1>
-        <p className="n-intro">
-          {state.platform === "windows"
-            ? "Windows asks nothing for the screen. AI Proctor only uses the camera during a check-in you pass."
-            : "macOS asks once. AI Proctor only uses Screen Recording and Camera during a check-in you pass."}
-          {hasOptional && " Accessibility is optional: you can skip it and carry on."}
-        </p>
+        <p className="n-intro">{permissionsIntro(state, cards)}</p>
       </header>
       {needsRestart(state) && (
         <div className="n-warn" role="alert">
@@ -41,16 +36,18 @@ export function PermissionsStep({ state, busy, onRequest, onRestart }: Props) {
           </button>
         </div>
       )}
-      <div className={`n-perms ${permsLayout(cards.length)}`}>
-        {cards.map((card) => (
-          <PermissionCardView
-            key={card.kind}
-            card={card}
-            busy={busy === card.kind}
-            onRequest={() => onRequest(card.kind)}
-          />
-        ))}
-      </div>
+      {cards.length > 0 && (
+        <div className={`n-perms ${permsLayout(cards.length)}`}>
+          {cards.map((card) => (
+            <PermissionCardView
+              key={card.kind}
+              card={card}
+              busy={busy === card.kind}
+              onRequest={() => onRequest(card.kind)}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }

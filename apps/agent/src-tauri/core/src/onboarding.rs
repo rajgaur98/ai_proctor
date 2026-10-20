@@ -17,7 +17,7 @@ use crate::contracts::{
     OnboardingPlatform, OnboardingState, PermissionState, Permissions, TestCaptureFailure,
     TestCaptureResult,
 };
-use crate::permissions::blocks;
+use crate::permissions::{blocks, Required};
 use crate::platform::CaptureError;
 
 /// Bumped when the flow changes enough that everyone should see it again.
@@ -159,10 +159,12 @@ impl Onboarding {
     }
 }
 
-/// What the permission step needs before Continue: Screen Recording is on, and the
-/// camera too when the org's webcam setting is on (Camera is skipped otherwise).
-pub fn ready(permissions: &Permissions, webcam: bool) -> bool {
-    !blocks(&permissions.screen) && !(webcam && blocks(&permissions.camera))
+/// What the permission step needs before Continue: each permission this person's
+/// collection needs (`Required`, the rule the tray and the server use) is on. One
+/// nothing uses is neither shown nor waited for; with nothing required it is ready.
+pub fn ready(permissions: &Permissions, required: Required) -> bool {
+    !(required.screen && blocks(&permissions.screen))
+        && !(required.camera && blocks(&permissions.camera))
 }
 
 /// Whether the permission step shows the optional Accessibility card: browser domains
@@ -180,19 +182,25 @@ pub fn needs_restart(captured: &Captured, os: &Permissions) -> bool {
         && os.screen == PermissionState::Granted
 }
 
+/// `screenshots` is whether the org takes screenshots at all (not the same as Screen
+/// Recording being required: window titles need it too); with the webcam, that is what
+/// a test capture would show.
 pub fn state(
     platform: OnboardingPlatform,
     permissions: Permissions,
-    webcam: bool,
+    required: Required,
+    screenshots: bool,
     accessibility: PermissionState,
     sampling: bool,
     onboarding: &Onboarding,
 ) -> OnboardingState {
     OnboardingState {
         platform,
-        ready: ready(&permissions, webcam),
+        ready: ready(&permissions, required),
         permissions,
-        webcam,
+        screen_required: required.screen,
+        camera_required: required.camera,
+        screenshots,
         accessibility,
         domains: domains_card(sampling, accessibility),
         restart_needed: onboarding.restart_needed(),
@@ -244,6 +252,7 @@ pub fn test_result(captured: &Captured, os: &Permissions) -> TestCaptureResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::activity::ActivityPolicy;
     use crate::capture::{self, CapturePolicy};
     use crate::fake::FakePlatform;
     use crate::platform::Platform;
@@ -260,22 +269,68 @@ mod tests {
         Onboarding::new(Arc::new(MemoryOnboardingStore::default()))
     }
 
+    fn req(screen: bool, camera: bool) -> Required {
+        Required { screen, camera }
+    }
+
     #[test]
-    fn continue_needs_screen_recording_and_the_camera_only_when_the_webcam_is_on() {
+    fn continue_needs_only_the_permissions_the_collection_uses() {
         use PermissionState::*;
-        assert!(ready(&perms(Granted, Granted), true));
-        assert!(!ready(&perms(Denied, Granted), true));
-        assert!(!ready(&perms(NotDetermined, Granted), false));
-        assert!(!ready(&perms(Granted, NotDetermined), true));
-        assert!(!ready(&perms(Granted, Restricted), true));
+        assert!(ready(&perms(Granted, Granted), req(true, true)));
+        assert!(!ready(&perms(Denied, Granted), req(true, true)));
+        assert!(!ready(&perms(NotDetermined, Granted), req(true, false)));
+        assert!(!ready(&perms(Granted, NotDetermined), req(true, true)));
+        assert!(!ready(&perms(Granted, Restricted), req(true, true)));
         assert!(
-            ready(&perms(Granted, Denied), false),
+            ready(&perms(Granted, Denied), req(true, false)),
             "webcam off: the camera isn't asked for"
         );
         assert!(
-            ready(&perms(Unsupported, Unsupported), true),
+            ready(&perms(Denied, Granted), req(false, true)),
+            "no screenshots and no window titles: Screen Recording isn't asked for"
+        );
+        assert!(
+            ready(&perms(Denied, Restricted), req(false, false)),
+            "nothing required: nothing to wait for"
+        );
+        assert!(
+            ready(&perms(Unsupported, Unsupported), req(true, true)),
             "nothing to ask where the OS has no permission"
         );
+    }
+
+    #[test]
+    fn required_follows_the_collection_policy_for_every_combination() {
+        use crate::capture::ScreenshotMode::{Blurred, Full, Off};
+        let os = perms(PermissionState::Denied, PermissionState::Denied);
+        // (screenshots, sampling, window titles, webcam) -> (screen, camera)
+        let cases = [
+            (Full, false, false, false, (true, false)),
+            (Blurred, false, false, false, (true, false)),
+            (Off, true, true, false, (true, false)),
+            (Off, true, false, false, (false, false)),
+            (Off, false, true, false, (false, false)),
+            (Off, false, false, true, (false, true)),
+            (Off, true, true, true, (true, true)),
+            (Full, true, true, true, (true, true)),
+            (Off, false, false, false, (false, false)),
+        ];
+        for (screenshots, sampling, window_titles, webcam, (screen, camera)) in cases {
+            let required = Required::for_collection(
+                &CapturePolicy {
+                    screenshots,
+                    webcam,
+                    ..CapturePolicy::default()
+                },
+                &ActivityPolicy {
+                    sampling,
+                    window_titles,
+                    ..ActivityPolicy::default()
+                },
+            );
+            assert_eq!(required, req(screen, camera), "{screenshots:?}");
+            assert_eq!(ready(&os, required), !screen && !camera, "{screenshots:?}");
+        }
     }
 
     #[test]
@@ -285,6 +340,7 @@ mod tests {
         let s = state(
             OnboardingPlatform::Macos,
             perms(PermissionState::Granted, PermissionState::NotDetermined),
+            req(true, true),
             true,
             PermissionState::Granted,
             true,
@@ -292,16 +348,30 @@ mod tests {
         );
         assert!(!s.ready && !s.completed && !s.restart_needed);
         assert_eq!(s.start_step, 2);
-        assert!(s.webcam);
+        assert!(s.screen_required && s.camera_required && s.screenshots);
         let s = state(
             OnboardingPlatform::Macos,
             perms(PermissionState::Granted, PermissionState::NotDetermined),
-            false,
+            req(true, false),
+            true,
             PermissionState::Granted,
             true,
             &o,
         );
-        assert!(s.ready && !s.webcam);
+        assert!(s.ready && s.screen_required && !s.camera_required);
+        let s = state(
+            OnboardingPlatform::Macos,
+            perms(PermissionState::Denied, PermissionState::Denied),
+            req(false, false),
+            false,
+            PermissionState::Granted,
+            false,
+            &o,
+        );
+        assert!(
+            s.ready && !s.screen_required && !s.camera_required && !s.screenshots,
+            "nothing required: ready with every permission off"
+        );
     }
 
     #[test]
@@ -331,6 +401,7 @@ mod tests {
             let s = state(
                 OnboardingPlatform::Macos,
                 granted.clone(),
+                req(true, true),
                 true,
                 accessibility,
                 true,
@@ -342,6 +413,7 @@ mod tests {
         let s = state(
             OnboardingPlatform::Windows,
             granted,
+            req(true, true),
             true,
             PermissionState::Unsupported,
             true,
