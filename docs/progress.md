@@ -9,9 +9,9 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (21 Oct, night):** implementers on #195 e2e independence (stacked on main after #193) and #211 onboarding asks only for required permissions (stacked on #217). Merging green PRs one at a time (CLAUDE.md, merging): main merged in first; two PRs merge back to back only when their files and redefined functions don't overlap.
-- **Open PRs:** #172 (#145), #209 (#189, merge waiting on Raj), #217 (#161).
-- **Next:** nothing unstarted. Blocked on Raj: #168, #175, #209's merge commit (and the Windows/M6 items below).
+- **Now (21 Oct, night):** every unblocked Phase 1 milestone issue is merged. What's left needs Raj (below) or is the later P1 backlog under #62 (#63–#67, #86, #202), which waits for Raj's go-ahead.
+- **Open PRs:** #209 (#189, merge commit waiting on Raj).
+- **Next:** device checks below; then Raj's decisions on #168 / #175 and the M6 accounts (#55–#57, #60, #61, #108). Nightly CI now repeats the e2e to catch order dependence (#221).
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
