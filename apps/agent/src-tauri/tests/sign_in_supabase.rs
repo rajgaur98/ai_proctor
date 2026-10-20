@@ -12,6 +12,8 @@ use agent_core::clock::{Clock, SystemClock};
 use agent_core::fake::FakePlatform;
 use agent_core::keystore::{KeyStore, MemoryKeyStore};
 use agent_core::outbox::Outbox;
+use agent_core::platform::SessionState;
+use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{Outcome, ThreadRandom};
 use agent_core::session::{FileSessionStore, OutboxSink, Session, SessionPolicy};
 use agent_core::sync::{ApiConfig, Heartbeat, SyncError};
@@ -117,6 +119,46 @@ fn sign_in_register_sync_and_sign_out() {
     session.sign_in();
     session.clock_in(None).unwrap();
     assert_eq!(first.sync().unwrap().accepted, 1, "clock_in accepted");
+
+    // State changes go out as events (STS-01) and the server takes them.
+    let mut presence = PresenceTracker::default();
+    fake_platform.update(|s| {
+        s.session = SessionState::Locked;
+        s.idle_seconds = 700;
+        s.call.mic = true;
+    });
+    let events = presence.observe(fake_platform.as_ref(), clock.now());
+    for e in &events {
+        outbox
+            .append(
+                e.event_type,
+                e.at,
+                clock.mono_ms(),
+                e.payload.clone(),
+                clock.now(),
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        first.sync().unwrap().accepted,
+        3,
+        "lock, idle_start, call_start accepted"
+    );
+    fake_platform.update(|s| {
+        s.session = SessionState::Active;
+        s.idle_seconds = 0;
+        s.call.mic = false;
+    });
+    for e in presence.observe(fake_platform.as_ref(), clock.now()) {
+        outbox
+            .append(e.event_type, e.at, clock.mono_ms(), e.payload, clock.now())
+            .unwrap();
+    }
+    assert_eq!(
+        first.sync().unwrap().accepted,
+        3,
+        "unlock, idle_end, call_end accepted"
+    );
     first
         .heartbeat(&Heartbeat {
             idle_s: 3,
