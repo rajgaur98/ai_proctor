@@ -2,6 +2,9 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { agentFor, clientFor } from "./agent";
 
+const MAX = "00000000-0000-4000-8000-0000000000b1";
+const LUCAS = "00000000-0000-4000-8000-0000000000c2";
+
 /** A fresh shift, then three misses in a row: what alert_eval raises "N consecutive misses" for. */
 async function threeMisses(email: string) {
   const agent = await agentFor(email);
@@ -35,12 +38,46 @@ test("new alerts reach the bell without a reload, and the alerts page lists, fil
   const cleared = await max.rpc("mark_alerts_read");
   expect(cleared.error).toBeNull();
 
+  // The same job can raise alerts for what earlier specs left (tamper-reason.spec's
+  // Tamper, up to a minute later), so the bell is checked against Max's alerts as they
+  // are, by its own rule (the unread among his latest 30), rather than a fixed count.
+  const expectedBell = async () => {
+    const { data, error } = await max
+      .from("alerts")
+      .select("read_at")
+      .eq("recipient_id", MAX)
+      .order("triggered_at", { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    const n = data.filter((a) => a.read_at === null).length;
+    return n > 0 ? `Alerts, ${n} unread` : "Alerts";
+  };
+  /** Max's unread alerts for Lucas's missed check-ins: the ones this test raises. */
+  const lucasUnread = async () => {
+    const { count, error } = await max
+      .from("alerts")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", MAX)
+      .eq("user_id", LUCAS)
+      .eq("kind", "consecutive_misses")
+      .is("read_at", null);
+    if (error) throw error;
+    return count ?? 0;
+  };
+
   await page.goto("/sign-in");
   await page.getByLabel("Work email").fill("manager@acme.test");
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/team$/, { timeout: 15_000 });
-  await expect(page.getByRole("button", { name: "Alerts", exact: true })).toBeVisible();
+  const bell = page.getByRole("button", { name: /^Alerts(, \d+ unread)?$/ });
+  const bellIsCurrent = () =>
+    expect
+      .poll(async () => (await bell.getAttribute("aria-label")) === (await expectedBell()), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+  await bellIsCurrent();
   // A reload would lose this: the alerts below must arrive in the open page.
   await page.evaluate(() => {
     (window as unknown as { openPage: boolean }).openPage = true;
@@ -48,15 +85,15 @@ test("new alerts reach the bell without a reload, and the alerts page lists, fil
 
   // Lucas's agent, with the page already open. A second shift of misses raises a second
   // alert (one per episode); alert_eval only looks at the latest shift, so wait in between.
-  const bell = page.getByRole("button", { name: /^Alerts/ });
-
   await threeMisses("lucas@acme.test");
-  await expect(bell).toHaveAccessibleName("Alerts, 1 unread", { timeout: 100_000 });
+  await expect.poll(lucasUnread, { timeout: 100_000 }).toBe(1);
+  await bellIsCurrent();
   expect(await page.evaluate(() => (window as unknown as { openPage?: boolean }).openPage)).toBe(
     true,
   );
   const lucas = await threeMisses("lucas@acme.test");
-  await expect(bell).toHaveAccessibleName("Alerts, 2 unread", { timeout: 100_000 });
+  await expect.poll(lucasUnread, { timeout: 100_000 }).toBe(2);
+  await bellIsCurrent();
 
   // The bell: both unread, marking one read.
   await bell.click();
@@ -78,7 +115,7 @@ test("new alerts reach the bell without a reload, and the alerts page lists, fil
     .getByRole("button", { name: /^Mark read/ })
     .click();
   await expect(unreadItems).toHaveCount(1);
-  await expect(bell).toHaveAccessibleName("Alerts, 1 unread");
+  await bellIsCurrent();
 
   // See all: the history page.
   await panel.getByRole("link", { name: "See all alerts" }).click();
@@ -143,7 +180,7 @@ test("new alerts reach the bell without a reload, and the alerts page lists, fil
   await filter("Kind").selectOption({ label: "Missed check-ins" });
   await page.getByRole("button", { name: "Mark all matching read" }).click();
   await expect(unreadRow("Lucas Martin")).toHaveCount(0);
-  await expect(bell).toHaveAccessibleName(/^Alerts$/);
+  await bellIsCurrent();
 
   // An alert links to that employee's day, on the day it was raised.
   await row("Lucas Martin").first().getByRole("link").click();
