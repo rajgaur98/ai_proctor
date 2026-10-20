@@ -15,6 +15,7 @@ describe("navFor", () => {
     expect(navFor("owner")).toEqual(navFor("admin"));
     expect(navFor("admin").map((l) => l.label)).toContain("People");
     expect(navFor("admin").map((l) => l.label)).toContain("Projects");
+    expect(navFor("admin").map((l) => l.label)).toContain("Monitoring notice");
   });
 
   it("gives employees only their own pages", () => {

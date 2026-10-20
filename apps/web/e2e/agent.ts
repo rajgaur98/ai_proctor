@@ -9,6 +9,19 @@ function env(): { url: string; anonKey: string } {
   return { url: get("VITE_SUPABASE_URL"), anonKey: get("VITE_SUPABASE_ANON_KEY") };
 }
 
+/** Acknowledges the org's current monitoring notice as the signed-in user (clock-in needs it). */
+export async function acknowledgeLatestNotice(client: SupabaseClient<Database>) {
+  const { data, error } = await client
+    .from("notices")
+    .select("id")
+    .order("version", { ascending: false })
+    .limit(1)
+    .single();
+  if (error) throw error;
+  const { error: ackError } = await client.rpc("acknowledge_notice", { p_notice_id: data.id });
+  if (ackError) throw ackError;
+}
+
 export async function agentFor(email: string) {
   const { url, anonKey } = env();
   const client = createClient(url, anonKey, { auth: { persistSession: false } });
@@ -21,6 +34,7 @@ export async function agentFor(email: string) {
     hardware_hash: `e2e-${email}-${Date.now()}`,
   });
   if (regError) throw regError;
+  await acknowledgeLatestNotice(client as unknown as SupabaseClient<Database>);
   let seq = 0;
   return async (type: string, payload: Record<string, unknown> = {}, id = crypto.randomUUID()) => {
     seq += 1;

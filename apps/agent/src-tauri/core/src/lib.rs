@@ -12,6 +12,7 @@ pub mod contracts;
 pub mod fake;
 pub mod keystore;
 pub mod logging;
+pub mod notice;
 pub mod outbox;
 pub mod platform;
 pub mod presence;

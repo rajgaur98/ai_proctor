@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:720px;height:560px;box-sizing:border-box;display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+  <div style="height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;position:relative;background:var(--sunk);border-bottom:1px solid var(--line)">
+    <span style="width:12px;height:12px;border-radius:50%;background:var(--line2)"></span><span style="width:12px;height:12px;border-radius:50%;background:var(--line2)"></span><span style="width:12px;height:12px;border-radius:50%;background:var(--line2)"></span>
+    <span style="position:absolute;left:0;right:0;text-align:center;font-size:12.5px;font-weight:500;color:var(--ink2);pointer-events:none">Set up AI Proctor</span>
+  </div>
+  <div style="height:56px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:12px;padding:0 28px;border-bottom:1px solid var(--line)">
+    <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+      <div style="display:flex;align-items:center;gap:8px;flex:none">
+        <span style="{{ st.circle }}">{{ st.mark }}</span>
+        <span style="{{ st.label }}">{{ st.name }}</span>
+      </div>
+      <sc-if value="{{ st.line }}"><span style="flex:1;height:1px;background:var(--line2);min-width:16px"></span></sc-if>
+    </sc-for>
+  </div>
+  <div style="flex:1;min-height:0;box-sizing:border-box;padding:22px 28px">
+
+    <sc-if value="{{ s1 }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <div style="font-size:21px;font-weight:600;letter-spacing:-0.02em">Monitoring notice</div>
+          <div style="font-size:13.5px;line-height:1.45;color:var(--ink2);margin-top:4px">Brightline Digital uses AI Proctor for timesheets. Here is exactly what it collects.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:150px minmax(0,1fr);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px;line-height:1.4">
+          <div style="background:var(--sunk);padding:10px 14px;font-weight:600">What's collected</div>
+          <div style="padding:10px 14px;color:var(--ink2);text-wrap:pretty">When you pass a check-in: one screenshot and one webcam frame. While clocked in: app names and active time.</div>
+          <div style="background:var(--sunk);padding:10px 14px;font-weight:600;border-top:1px solid var(--line)">When</div>
+          <div style="padding:10px 14px;color:var(--ink2);border-top:1px solid var(--line)">Only while you're clocked in. Never on break, on pause or off shift.</div>
+          <div style="background:var(--sunk);padding:10px 14px;font-weight:600;border-top:1px solid var(--line)">Who can see it</div>
+          <div style="padding:10px 14px;color:var(--ink2);border-top:1px solid var(--line);text-wrap:pretty">Your direct manager (Sarah Lee) and workspace admins. You see every time someone views your captures.</div>
+          <div style="background:var(--sunk);padding:10px 14px;font-weight:600;border-top:1px solid var(--line)">How long it's kept</div>
+          <div style="padding:10px 14px;color:var(--ink2);border-top:1px solid var(--line)">Images are deleted after 30 days. Time records stay with your timesheets.</div>
+          <div style="background:var(--sunk);padding:10px 14px;font-weight:600;border-top:1px solid var(--line)">Your rights</div>
+          <div style="padding:10px 14px;color:var(--ink2);border-top:1px solid var(--line)">See everything collected about you, and export it any time from My data.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ s2 }}">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <div style="font-size:21px;font-weight:600;letter-spacing:-0.02em">Allow two permissions</div>
+          <div style="font-size:13.5px;line-height:1.45;color:var(--ink2);margin-top:4px">macOS asks once. AI Proctor only uses these during a check-in you pass.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <sc-for list="{{ perms }}" as="p" hint-placeholder-count="2">
+            <div style="border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:14px;font-weight:600">{{ p.name }}</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:500"><span style="{{ p.dot }}"></span>{{ p.status }}</span>
+              </div>
+              <div style="height:96px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:var(--sunk);display:flex;overflow:hidden;font-size:10.5px">
+                <div style="width:36%;border-right:1px solid var(--line);padding:8px 6px;display:flex;flex-direction:column;gap:5px">
+                  <span style="height:6px;width:70%;border-radius:3px;background:var(--line2);margin:3px 4px"></span>
+                  <span style="height:6px;width:55%;border-radius:3px;background:var(--line2);margin:3px 4px"></span>
+                  <span style="padding:3px 4px;border-radius:4px;background:var(--accsoft);color:var(--ink);font-weight:500;line-height:1.2">Privacy &amp; Security</span>
+                  <span style="height:6px;width:62%;border-radius:3px;background:var(--line2);margin:3px 4px"></span>
+                </div>
+                <div style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-weight:600;color:var(--ink)">{{ p.name }}</span>
+                  <div style="display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:5px 6px">
+                    <span style="width:12px;height:12px;border-radius:3px;background:var(--acc)"></span>
+                    <span style="color:var(--ink)">AI Proctor</span>
+                    <span style="{{ p.track }}"><span style="{{ p.knob }}"></span></span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;padding:0 6px;opacity:0.6">
+                    <span style="width:12px;height:12px;border-radius:3px;background:var(--line2)"></span>
+                    <span style="height:5px;width:40px;border-radius:3px;background:var(--line2)"></span>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;line-height:1.35;color:var(--ink2)">
+                <span>1 · Open System Settings → Privacy &amp; Security</span>
+                <span>2 · Choose {{ p.name }}</span>
+                <span>{{ p.step3 }}</span>
+              </div>
+              <button style="{{ p.btn }}">{{ p.cta }}</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ s3 }}">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <div style="font-size:21px;font-weight:600;letter-spacing:-0.02em">Test capture</div>
+          <div style="font-size:13.5px;line-height:1.45;color:var(--ink2);margin-top:4px">This is what your manager sees on a check-in.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="height:206px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:repeating-linear-gradient(135deg,var(--sunk) 0 7px,var(--panel) 7px 14px);display:flex;align-items:flex-end;padding:10px"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">screenshot · display 1</span></div>
+            <span style="font-size:12.5px;color:var(--ink2)">Screenshot · full screen, Display 1</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="height:154px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:repeating-linear-gradient(135deg,var(--sunk) 0 7px,var(--panel) 7px 14px);display:flex;align-items:flex-end;padding:10px"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink3)">webcam frame</span></div>
+            <span style="font-size:12.5px;color:var(--ink2)">Webcam · one still frame</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:11px 12px;background:var(--sunk);border:1px solid var(--line);border-radius:9px;font-size:13px;line-height:1.45;color:var(--ink2)">
+          <span style="width:16px;height:16px;flex:none;border-radius:50%;border:1.5px solid var(--ink3);box-sizing:border-box;font-size:10px;font-weight:700;color:var(--ink2);display:flex;align-items:center;justify-content:center;margin-top:1px">i</span>
+          <span>Taken only when you pass a check-in, kept 30 days. Every capture appears in My data.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ s4 }}">
+      <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center">
+        <span style="width:52px;height:52px;border-radius:50%;background:var(--sactive);position:relative"><span style="position:absolute;left:19px;top:12px;width:11px;height:20px;border-right:3px solid var(--panel);border-bottom:3px solid var(--panel);transform:rotate(45deg)"></span></span>
+        <div>
+          <div style="font-size:26px;font-weight:600;letter-spacing:-0.025em">You're set.</div>
+          <div style="font-size:15px;color:var(--ink2);margin-top:6px">Clock in when you start work.</div>
+        </div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:8px">
+          <div style="width:340px;height:28px;box-sizing:border-box;border:1px solid var(--line);border-radius:7px;background:var(--sunk);display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:0 10px">
+            <span style="height:6px;width:26px;border-radius:3px;background:var(--line2)"></span>
+            <span style="height:6px;width:18px;border-radius:3px;background:var(--line2)"></span>
+            <span style="width:18px;height:18px;border-radius:5px;background:var(--acc);position:relative;box-shadow:0 0 0 3px var(--accsoft)"><span style="position:absolute;left:8px;top:4px;width:2px;height:6px;background:var(--accink)"></span><span style="position:absolute;left:8px;top:8px;width:5px;height:2px;background:var(--accink)"></span></span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--ink2)">Tue 09:01</span>
+          </div>
+          <span style="font-size:12.5px;color:var(--ink3)">AI Proctor lives in your menu bar.</span>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+  <div style="height:64px;flex:none;box-sizing:border-box;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 28px">
+    <span style="font-size:12.5px;color:var(--ink3)">Step {{ stepNum }} of 4</span>
+    <span style="flex:1"></span>
+    <sc-if value="{{ secondary }}"><button style="height:44px;padding:0 18px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer" style-hover="background:var(--sunk)">{{ secondary }}</button></sc-if>
+    <button style="{{ primaryStyle }}">{{ primary }}</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:720,&quot;height&quot;:560},&quot;step&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;min&quot;:1,&quot;max&quot;:4,&quot;default&quot;:1,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const step = Number(this.props.step ?? 1);
+    const names = ['Notice', 'Permissions', 'Test capture', 'Done'];
+    const steps = names.map((name, i) => {
+      const n = i + 1, done = n < step, cur = n === step;
+      return {
+        name, line: n < 4, mark: done ? '✓' : String(n),
+        circle: { width: 22, height: 22, boxSizing: 'border-box', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 600, fontFamily: "'Geist Mono',ui-monospace,monospace",
+          background: cur ? 'var(--acc)' : done ? 'var(--accsoft)' : 'transparent', color: cur ? 'var(--accink)' : done ? 'var(--acctext)' : 'var(--ink3)', border: cur || done ? 'none' : '1px solid var(--line2)' },
+        label: { fontSize: 13, fontWeight: cur ? 600 : 500, color: cur ? 'var(--ink)' : done ? 'var(--ink2)' : 'var(--ink3)' }
+      };
+    });
+    const btn2 = { height: 44, borderRadius: 9, border: '1px solid var(--line2)', background: 'var(--panel)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 500, cursor: 'pointer' };
+    const perm = (name, granted) => ({
+      name, status: granted ? 'Granted' : 'Not yet',
+      dot: granted ? { width: 8, height: 8, borderRadius: '50%', background: 'var(--sactive)' } : { width: 8, height: 8, boxSizing: 'border-box', borderRadius: '50%', border: '2px solid var(--soffline)' },
+      track: { marginLeft: 'auto', width: 22, height: 13, borderRadius: 7, background: granted ? 'var(--acc)' : 'var(--line2)', position: 'relative', flex: 'none' },
+      knob: { position: 'absolute', top: 2, left: granted ? 11 : 2, width: 9, height: 9, borderRadius: '50%', background: '#fff' },
+      step3: granted ? '3 · AI Proctor is on — nothing else to do' : '3 · Turn on AI Proctor, then come back here',
+      cta: granted ? 'Granted' : 'Open System Settings',
+      btn: granted ? { ...btn2, opacity: 0.5, cursor: 'default' } : { ...btn2, border: 'none', background: 'var(--acc)', color: 'var(--accink)', fontWeight: 600 }
+    });
+    const prim = ['I’ve read this', 'Continue', 'Looks good', 'Clock in now'][step - 1];
+    const sec = [null, 'Back', 'Retake', 'Close'][step - 1];
+    return {
+      steps, stepNum: step, s1: step === 1, s2: step === 2, s3: step === 3, s4: step === 4,
+      perms: [perm('Screen Recording', true), perm('Camera', false)],
+      primary: prim, secondary: sec,
+      primaryStyle: { height: 44, padding: '0 20px', borderRadius: 9, border: 'none', background: 'var(--acc)', color: 'var(--accink)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: step === 2 ? 0.45 : 1 }
+    };
+  }
+}
+</script>
+</body>
+</html>

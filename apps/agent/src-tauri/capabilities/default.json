@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal permissions for the popover and the check-in card",
-  "windows": ["popover", "card"],
+  "description": "Minimal permissions for the popover, the check-in card and the notice window",
+  "windows": ["popover", "card", "notice"],
   "permissions": ["core:default"]
 }

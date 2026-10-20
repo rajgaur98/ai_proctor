@@ -69,6 +69,70 @@
       "required": ["id", "at"],
       "additionalProperties": false
     },
+    "NoticeStatus": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "acknowledged": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": ["version", "acknowledged", "required"],
+      "additionalProperties": false
+    },
+    "NoticeBody": {
+      "type": "object",
+      "properties": {
+        "intro": {
+          "type": "string"
+        },
+        "collected": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "retention": {
+          "type": "string"
+        },
+        "rights": {
+          "type": "string"
+        },
+        "grievance": {
+          "type": "string"
+        }
+      },
+      "required": ["collected", "when", "who", "retention", "rights"],
+      "additionalProperties": false
+    },
+    "NoticeContent": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "acknowledged": {
+          "type": "boolean"
+        },
+        "body": {
+          "$ref": "#/definitions/NoticeBody"
+        }
+      },
+      "required": ["version", "acknowledged", "body"],
+      "additionalProperties": false
+    },
     "AgentStatus": {
       "type": "object",
       "properties": {
@@ -158,6 +222,16 @@
               "type": "null"
             }
           ]
+        },
+        "notice": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NoticeStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -176,7 +250,8 @@
         "project",
         "projects",
         "last_checkin",
-        "missed_checkin"
+        "missed_checkin",
+        "notice"
       ],
       "additionalProperties": false
     },
