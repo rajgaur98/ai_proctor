@@ -11,6 +11,8 @@ import { DayPage } from "./features/day/DayPage";
 import { People } from "./features/people/People";
 import { Projects } from "./features/projects/Projects";
 import { LiveTeam } from "./features/team/LiveTeam";
+import { TimesheetPage } from "./features/timesheets/TimesheetPage";
+import { MyTimesheets, Timesheets } from "./features/timesheets/Timesheets";
 import { homeFor, navFor } from "./lib/nav";
 import { currentSession, needsMfa, type Profile, profileQuery } from "./lib/session";
 import { Join } from "./routes/Join";
@@ -126,6 +128,22 @@ const dayRoute = createRoute({
   component: DayPage,
 });
 
+/** One person's week (#43); reached from the Timesheets tab. Employees open only their own. */
+const timesheetRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/timesheets/$userId",
+  beforeLoad: ({ context, params }) => {
+    if (context.profile.role === "employee" && params.userId !== context.profile.id) {
+      throw redirect({ to: homeFor(context.profile.role) });
+    }
+  },
+  validateSearch: (search: Record<string, unknown>): { week?: string } =>
+    typeof search.week === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.week)
+      ? { week: search.week }
+      : {},
+  component: TimesheetPage,
+});
+
 /** An employee's own day (#42, for manual entries): the nav link lands on their day. */
 const myDayRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -147,12 +165,13 @@ const routeTree = rootRoute.addChildren([
     page("/team", "Live team", 32, LiveTeam),
     dayRoute,
     myDayRoute,
-    page("/timesheets", "Timesheets", 43),
+    page("/timesheets", "Timesheets", 43, Timesheets),
+    timesheetRoute,
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
     page("/policy", "Policy", 52),
     page("/me", "My data", 49),
-    page("/my-timesheet", "My timesheet", 43),
+    page("/my-timesheet", "My timesheet", 43, MyTimesheets),
     page("/notice", "Monitoring notice", 48),
   ]),
 ]);

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></helmet>
+<div style="width:100%;background:var(--bg);color:var(--ink);font-family:Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+  <dc-import name="WebNav" active="timesheets" role="manager" hint-size="100%,56px"></dc-import>
+  <div style="padding:24px 32px 40px;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:13px;color:var(--ink3);display:flex;gap:6px"><a style="color:var(--acctext);cursor:pointer">Timesheets</a><span>/</span><span style="color:var(--ink2)">Lucas Martin</span></div>
+      <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Lucas Martin · Week of 6 Oct</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px;border-radius:999px;background:var(--accsoft);color:var(--acctext);font-size:12.5px;font-weight:600">Submitted · Fri 10 Oct, 18:12</span>
+          </div>
+          <div style="font-size:15px;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline"><span style="font-family:'Geist Mono',ui-monospace,monospace;font-weight:500">38 h 20 min</span><span style="color:var(--ink2)">worked</span><span style="color:var(--ink3)">·</span><span style="font-family:'Geist Mono',ui-monospace,monospace;font-weight:500">1 h 05 min</span><span style="color:var(--ink2)">flagged</span></div>
+        </div>
+        <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          <div style="display:flex;gap:8px">
+            <button style="height:44px;padding:0 16px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer" style-hover="background:var(--sunk)">Return with comment</button>
+            <button style="{{ approveStyle }}">Approve week</button>
+          </div>
+          <span style="font-size:12.5px;color:var(--ink2)">{{ pendingText }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <div style="display:grid;grid-template-columns:110px 110px 90px 80px 130px minmax(260px,1fr);gap:16px;padding:0 20px;height:40px;align-items:center;font-size:12px;font-weight:500;color:var(--ink3);background:var(--sunk);border-bottom:1px solid var(--line)">
+        <span>Day</span><span>Worked</span><span>Flagged</span><span>Break</span><span>Manual</span><span>Project split</span>
+      </div>
+      <sc-for list="{{ days }}" as="d" hint-placeholder-count="5">
+        <div style="display:grid;grid-template-columns:110px 110px 90px 80px 130px minmax(260px,1fr);gap:16px;padding:0 20px;min-height:56px;align-items:center;font-size:13.5px;border-bottom:1px solid var(--line)">
+          <span style="font-weight:500">{{ d.day }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">{{ d.worked }}</span>
+          <span style="{{ d.flagStyle }}">{{ d.flagged }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px;color:var(--ink2)">{{ d.brk }}</span>
+          <span style="font-size:13px;color:var(--ink2)">{{ d.manual }}</span>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:8px 0">
+            <div style="display:flex;height:6px;gap:2px;border-radius:3px;overflow:hidden"><sc-for list="{{ d.bars }}" as="b" hint-placeholder-count="2"><span style="{{ b }}"></span></sc-for></div>
+            <span style="font-size:12px;color:var(--ink2)">{{ d.split }}</span>
+          </div>
+        </div>
+      </sc-for>
+      <div style="display:grid;grid-template-columns:110px 110px 90px 80px 130px minmax(260px,1fr);gap:16px;padding:0 20px;min-height:56px;align-items:center;font-size:13.5px;font-weight:600;background:var(--sunk)">
+        <span>Total</span>
+        <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">38 h 20 min</span>
+        <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">1 h 05 min</span>
+        <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">3 h 30 min</span>
+        <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">2 h 30 min</span>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;font-weight:500">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:var(--ink2)"></span>Northwind API 25 h 20</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:var(--ink3);opacity:0.6"></span>Acme Redesign 10 h 00</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:var(--line2)"></span>Internal 3 h 00</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-size:15px;font-weight:600">Flagged segments</span>
+          <span style="font-size:12.5px;color:var(--ink2)">Excluded edits are shown to the employee.</span>
+        </div>
+        <sc-for list="{{ flags }}" as="f" hint-placeholder-count="4">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px">{{ f.when }}</span>
+                  <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;white-space:nowrap"><span style="{{ f.swatch }}"></span><span>{{ f.kind }} · {{ f.dur }}</span></span>
+                </div>
+                <span style="font-size:12.5px;color:var(--ink2)">{{ f.detail }}</span>
+              </div>
+              <div style="display:flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden">
+                <button onClick="{{ f.keep }}" style="{{ f.keepStyle }}">Keep</button>
+                <button onClick="{{ f.excl }}" style="{{ f.exclStyle }}">Exclude</button>
+              </div>
+            </div>
+            <sc-if value="{{ f.excluded }}">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:500;color:var(--ink2)">Reason for excluding <span style="color:var(--ink3);font-weight:400">(required, shown to Lucas)</span></span>
+                <input value="{{ f.reason }}" onChange="{{ f.onReason }}" placeholder="e.g. Idle before lunch, not work time" style="{{ f.inputStyle }}">
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:15px;font-weight:600">Manual entry request</span><span style="margin-left:auto;font-size:12px;font-weight:500;color:var(--ink2)">{{ manualStatus }}</span></div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:15px;font-weight:500">Client visit</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:13px;color:var(--ink2)">Thu 14:00–16:30 · 2 h 30 min</span>
+            <span style="font-size:13px;color:var(--ink2)">Northwind API</span>
+          </div>
+          <div style="font-size:13px;line-height:1.45;color:var(--ink2);padding:10px 12px;border-radius:8px;background:var(--sunk)">“On-site at Northwind for the API handoff. Laptop was closed.” — Lucas</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button onClick="{{ reject }}" style="{{ rejectStyle }}">Reject</button>
+            <button onClick="{{ approve }}" style="{{ approveMStyle }}">Approve</button>
+          </div>
+        </div>
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.5;color:var(--ink2)">
+          <span style="font-size:14px;font-weight:600;color:var(--ink)">What Lucas will see</span>
+          <span>Each exclusion with your reason, your decision on the manual entry, and any comment you add when returning the week.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1100}}">
+const hatch = c => `repeating-linear-gradient(135deg, ${c} 0 3px, color-mix(in oklch, ${c} 35%, var(--panel)) 3px 6px)`;
+const FLAGS = [
+  { when: 'Tue 7 · 12:40–12:52', kind: 'Idle', dur: '12 min', detail: 'Northwind API · no keyboard or mouse activity', c: 'var(--sidle)' },
+  { when: 'Tue 7 · 13:52–14:03', kind: 'Idle', dur: '11 min', detail: 'Northwind API · just after break', c: 'var(--sidle)' },
+  { when: 'Tue 7 · 14:03–14:34', kind: 'Unverified', dur: '31 min', detail: 'Missed check-in, screen locked · Lucas: “Phone call with client”', c: 'var(--saway)' },
+  { when: 'Wed 8 · 16:20–16:31', kind: 'Idle', dur: '11 min', detail: 'Acme Redesign', c: 'var(--sidle)' }
+];
+const P = { nw: 'var(--ink2)', acme: 'color-mix(in oklch, var(--ink3) 60%, transparent)', int: 'var(--line2)' };
+const DAYS = [
+  ['Mon 6 Oct', '8 h 05 min', '—', '45 min', '—', [['nw', 370], ['acme', 115]], 'Northwind API 6 h 10 · Acme Redesign 1 h 55'],
+  ['Tue 7 Oct', '7 h 06 min', '54 min', '45 min', '—', [['nw', 331], ['acme', 95]], 'Northwind API 5 h 31 · Acme Redesign 1 h 35'],
+  ['Wed 8 Oct', '7 h 50 min', '11 min', '40 min', '—', [['nw', 260], ['acme', 160], ['int', 50]], 'Northwind API 4 h 20 · Acme Redesign 2 h 40 · Internal 50 min'],
+  ['Thu 9 Oct', '7 h 24 min', '—', '30 min', '2 h 30 min · pending', [['nw', 354], ['int', 90]], 'Northwind API 5 h 54 · Internal 1 h 30'],
+  ['Fri 10 Oct', '7 h 55 min', '—', '50 min', '—', [['nw', 205], ['acme', 230], ['int', 40]], 'Northwind API 3 h 25 · Acme Redesign 3 h 50 · Internal 40 min']
+];
+class Component extends DCLogic {
+  state = { d: ['exclude', null, 'keep', null], r: ['Idle before lunch, not work time.', '', '', ''], manual: null };
+  set(i, k, v) { this.setState(s => { const a = [...s[k]]; a[i] = v; return { [k]: a }; }); }
+  renderVals() {
+    const seg = on => ({ height: 44, padding: '0 16px', border: 'none', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 500, cursor: 'pointer', background: on ? 'var(--ink)' : 'var(--panel)', color: on ? 'var(--panel)' : 'var(--ink)' });
+    const flags = FLAGS.map((f, i) => {
+      const dec = this.state.d[i], reason = this.state.r[i];
+      return {
+        ...f, excluded: dec === 'exclude', reason,
+        swatch: { width: 14, height: 10, borderRadius: 2, background: hatch(f.c), display: 'block' },
+        keep: () => this.set(i, 'd', 'keep'), excl: () => this.set(i, 'd', 'exclude'),
+        keepStyle: seg(dec === 'keep'), exclStyle: { ...seg(dec === 'exclude'), borderLeft: '1px solid var(--line2)' },
+        onReason: e => this.set(i, 'r', e.target.value),
+        inputStyle: { height: 44, boxSizing: 'border-box', padding: '0 12px', borderRadius: 9, border: reason.trim() ? '1px solid var(--line2)' : '1.5px solid var(--saway)', background: 'var(--panel)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 13.5, outline: 'none', width: '100%' }
+      };
+    });
+    const undecided = this.state.d.filter(x => !x).length;
+    const noReason = this.state.d.filter((x, i) => x === 'exclude' && !this.state.r[i].trim()).length;
+    const m = this.state.manual;
+    const parts = [];
+    if (undecided) parts.push(`${undecided} flagged segment${undecided > 1 ? 's' : ''}`);
+    if (!m) parts.push('1 manual entry');
+    let pendingText = parts.length ? `Decide on ${parts.join(' and ')} first` : 'Ready to approve';
+    if (noReason && !parts.length) pendingText = 'Add a reason for each exclusion';
+    const ready = !parts.length && !noReason;
+    const b = { height: 44, borderRadius: 9, fontFamily: 'inherit', fontSize: 14, fontWeight: 500, cursor: 'pointer' };
+    const days = DAYS.map(([day, worked, flagged, brk, manual, bars, split]) => {
+      const tot = bars.reduce((a, [, n]) => a + n, 0);
+      return { day, worked, flagged, brk, manual, split, bars: bars.map(([k, n]) => ({ flex: n / tot, background: P[k], display: 'block' })),
+        flagStyle: { fontFamily: "'Geist Mono',ui-monospace,monospace", fontSize: 13, fontWeight: flagged === '—' ? 400 : 600, color: flagged === '—' ? 'var(--ink3)' : 'var(--ink)' } };
+    });
+    return {
+      flags, days, pendingText,
+      approveStyle: { ...b, padding: '0 18px', border: 'none', background: 'var(--acc)', color: 'var(--accink)', fontWeight: 600, opacity: ready ? 1 : 0.45, cursor: ready ? 'pointer' : 'default' },
+      manualStatus: m === 'approved' ? 'Approved' : m === 'rejected' ? 'Rejected' : 'Pending',
+      approve: () => this.setState({ manual: 'approved' }), reject: () => this.setState({ manual: 'rejected' }),
+      approveMStyle: { ...b, border: m === 'approved' ? 'none' : '1px solid var(--line2)', background: m === 'approved' ? 'var(--ink)' : 'var(--panel)', color: m === 'approved' ? 'var(--panel)' : 'var(--ink)' },
+      rejectStyle: { ...b, border: m === 'rejected' ? 'none' : '1px solid var(--line2)', background: m === 'rejected' ? 'var(--ink)' : 'var(--panel)', color: m === 'rejected' ? 'var(--panel)' : 'var(--ink)' }
+    };
+  }
+}
+</script>
+</body>
+</html>
