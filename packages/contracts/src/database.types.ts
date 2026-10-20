@@ -244,6 +244,7 @@ export type Database = {
           end_at: string | null;
           id: string;
           org_id: string;
+          over_cap_s: number;
           planned_min: number | null;
           start_at: string;
           user_id: string;
@@ -254,6 +255,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id: string;
+          over_cap_s?: number;
           planned_min?: number | null;
           start_at: string;
           user_id: string;
@@ -263,6 +265,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id?: string;
+          over_cap_s?: number;
           planned_min?: number | null;
           start_at?: string;
           user_id?: string;
@@ -789,6 +792,7 @@ export type Database = {
           org_id: string;
           over_cap_s: number;
           planned_min: number;
+          private_reason: string | null;
           start_at: string;
           user_id: string;
         };
@@ -800,6 +804,7 @@ export type Database = {
           org_id: string;
           over_cap_s?: number;
           planned_min: number;
+          private_reason?: string | null;
           start_at: string;
           user_id: string;
         };
@@ -810,6 +815,7 @@ export type Database = {
           org_id?: string;
           over_cap_s?: number;
           planned_min?: number;
+          private_reason?: string | null;
           start_at?: string;
           user_id?: string;
         };
@@ -1189,6 +1195,72 @@ export type Database = {
       };
     };
     Views: {
+      my_pauses: {
+        Row: {
+          clock_session_id: string | null;
+          end_at: string | null;
+          id: string | null;
+          org_id: string | null;
+          over_cap_s: number | null;
+          planned_min: number | null;
+          private_reason: string | null;
+          start_at: string | null;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          clock_session_id?: string | null;
+          end_at?: string | null;
+          id?: string | null;
+          org_id?: string | null;
+          over_cap_s?: number | null;
+          planned_min?: number | null;
+          private_reason?: string | null;
+          start_at?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          clock_session_id?: string | null;
+          end_at?: string | null;
+          id?: string | null;
+          org_id?: string | null;
+          over_cap_s?: number | null;
+          planned_min?: number | null;
+          private_reason?: string | null;
+          start_at?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pauses_clock_session_id_fkey";
+            columns: ["clock_session_id"];
+            isOneToOne: false;
+            referencedRelation: "clock_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "pauses_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "pauses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "pauses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       team_live: {
         Row: {
           checkins_passed_today: number | null;
