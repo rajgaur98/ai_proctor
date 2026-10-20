@@ -2372,6 +2372,20 @@ export type Database = {
           name: string;
         }[];
       };
+      export_notice_ack_report: {
+        Args: { p_status?: string; p_version?: number };
+        Returns: {
+          acknowledged_at: string;
+          acknowledged_current: boolean;
+          acknowledged_selected: boolean;
+          acknowledged_version: number;
+          email: string;
+          full_name: string;
+          manager_name: string;
+          role: Database["public"]["Enums"]["user_role"];
+          user_id: string;
+        }[];
+      };
       export_user_capture_views: {
         Args: { p_days?: number; p_user_id: string };
         Returns: {
@@ -2443,6 +2457,20 @@ export type Database = {
         Returns: {
           full_name: string;
           id: string;
+        }[];
+      };
+      notice_ack_report: {
+        Args: { p_version?: number };
+        Returns: {
+          acknowledged_at: string;
+          acknowledged_current: boolean;
+          acknowledged_selected: boolean;
+          acknowledged_version: number;
+          email: string;
+          full_name: string;
+          manager_name: string;
+          role: Database["public"]["Enums"]["user_role"];
+          user_id: string;
         }[];
       };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
