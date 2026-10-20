@@ -924,6 +924,95 @@ export type Database = {
           },
         ];
       };
+      manual_entries: {
+        Row: {
+          created_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          decision_note: string | null;
+          end_at: string;
+          id: string;
+          org_id: string;
+          project_id: string | null;
+          reason: string;
+          start_at: string;
+          status: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_note?: string | null;
+          end_at: string;
+          id?: string;
+          org_id: string;
+          project_id?: string | null;
+          reason: string;
+          start_at: string;
+          status?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_note?: string | null;
+          end_at?: string;
+          id?: string;
+          org_id?: string;
+          project_id?: string | null;
+          reason?: string;
+          start_at?: string;
+          status?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "manual_entries_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "manual_entries_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manual_entries_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manual_entries_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manual_entries_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "manual_entries_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       orgs: {
         Row: {
           created_at: string;
@@ -1601,6 +1690,7 @@ export type Database = {
       };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
+      cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
       create_org: {
         Args: {
@@ -1610,6 +1700,10 @@ export type Database = {
           timezone?: string;
         };
         Returns: string;
+      };
+      decide_manual_entry: {
+        Args: { p_approve: boolean; p_id: string; p_note?: string };
+        Returns: undefined;
       };
       email_claim: {
         Args: { p_limit?: number };
@@ -1648,6 +1742,10 @@ export type Database = {
       replace_day_segments: {
         Args: { p_day: string; p_loaded_at?: string; p_segments: Json; p_user_id: string };
         Returns: number;
+      };
+      request_manual_entry: {
+        Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };
+        Returns: string;
       };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       save_client: {
