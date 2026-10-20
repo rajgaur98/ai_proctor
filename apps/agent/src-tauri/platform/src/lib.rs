@@ -16,6 +16,13 @@ mod unsupported;
 #[cfg(target_os = "windows")]
 mod windows;
 
+/// Shows the OS permission prompts the agent needs. Debug builds use it to try the
+/// agent before guided onboarding (#59); a no-op where there's nothing to ask.
+pub fn request_permissions() {
+    #[cfg(target_os = "macos")]
+    macos::request_permissions();
+}
+
 /// The platform for the OS this binary was built for.
 pub fn current() -> Arc<dyn Platform> {
     #[cfg(target_os = "macos")]

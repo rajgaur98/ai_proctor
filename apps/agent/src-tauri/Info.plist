@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by Tauri. macOS shows this text when the
+     agent asks for the camera (CAP-01: one webcam frame on a passed check-in). -->
+<plist version="1.0">
+<dict>
+  <key>NSCameraUsageDescription</key>
+  <string>AI Proctor takes a single webcam frame when you pass a check-in, only while you're clocked in.</string>
+</dict>
+</plist>
