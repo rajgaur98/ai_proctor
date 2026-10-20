@@ -90,7 +90,7 @@
               "properties": {
                 "reason": {
                   "type": "string",
-                  "enum": ["manual", "auto"]
+                  "enum": ["manual", "auto", "session_end"]
                 }
               },
               "required": ["reason"],
@@ -967,7 +967,7 @@
                 },
                 "reason": {
                   "type": "string",
-                  "enum": ["killed", "exited", "rebooted"]
+                  "enum": ["killed", "exited", "session_end", "rebooted"]
                 }
               },
               "required": ["last_alive_at", "reason"],

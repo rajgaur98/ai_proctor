@@ -102,6 +102,9 @@ impl Platform for ActiveSession {
     fn boot_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         self.0.boot_time()
     }
+    fn on_session_end(&self, handler: agent_core::platform::SessionEndHandler) {
+        self.0.on_session_end(handler)
+    }
 }
 
 /// One file per secret, unencrypted: for throwaway test runs only.

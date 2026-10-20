@@ -36,6 +36,7 @@ const eu: Policy = {
   alert_tamper_enabled: true,
   alert_late_clock_in_enabled: true,
   alert_pause_over_cap_enabled: true,
+  reminders_enabled: true,
   image_retention_days: 30,
   event_retention_months: 12,
   timesheet_retention_years: 3,
@@ -149,10 +150,11 @@ describe("replies", () => {
   });
 });
 
-// The ranges here and in update_policy must not drift apart: read them from the migration.
+// The ranges here and in update_policy must not drift apart: read them from the migration
+// that last defined policy_spec (#177 repeats the whole list when it adds a key).
 describe("the database's ranges", () => {
   const sql = readFileSync(
-    new URL("../../../supabase/migrations/20261020180000_policy_settings.sql", import.meta.url),
+    new URL("../../../supabase/migrations/20261020196000_reminder_shift_day.sql", import.meta.url),
     "utf8",
   );
   const rows = [...sql.matchAll(/\('([a-z_]+)', '(int|num)', ([\d.]+), ([\d.]+)/g)].map((m) => ({

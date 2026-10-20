@@ -114,7 +114,7 @@ test("an employee sees her day, check-ins and who viewed her captures; her own v
     .getByRole("button", { name: /^View the captures of the/ })
     .last()
     .click();
-  const shot = page.getByRole("img", { name: "Screen 1 at check-in" });
+  const shot = page.getByRole("img", { name: "Display 1 at check-in" });
   await expect(shot).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => shot.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
   await expect(viewed.getByText("Erin Employee")).toHaveCount(0);

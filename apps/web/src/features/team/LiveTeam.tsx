@@ -102,7 +102,7 @@ export function LiveTeam() {
               .filter((s) => s !== "off_shift")
               .map((s) => (
                 <option key={s} value={s}>
-                  {statusStyle[s].label}
+                  {s === "tamper" ? "Tamper" : statusStyle[s].label}
                 </option>
               ))}
           </select>
@@ -231,7 +231,10 @@ function Row({ row, now, project }: { row: TeamRow; now: Date; project: string |
       <td className="font-medium md:hidden">{row.full_name}</td>
       <td>
         <span className="inline-flex items-center gap-1.5">
-          <StatusChip status={(row.status ?? "off_shift") as PresenceStatus} />
+          <StatusChip
+            status={(row.status ?? "off_shift") as PresenceStatus}
+            reason={row.tamper_reason}
+          />
           <span className="text-[12.5px] text-ink3">· {since(row.since, now)}</span>
         </span>
       </td>

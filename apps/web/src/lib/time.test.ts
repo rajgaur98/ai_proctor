@@ -11,6 +11,12 @@ describe("formatTime", () => {
   it("labels any other zone", () => {
     expect(formatTime(iso, "America/Los_Angeles", "Asia/Kolkata")).toBe("10:03 PDT");
   });
+
+  it("can include seconds", () => {
+    expect(formatTime("2026-10-19T17:03:12Z", "Asia/Kolkata", "Asia/Kolkata", true)).toBe(
+      "22:33:12",
+    );
+  });
 });
 
 describe("employeeZoneTitle", () => {

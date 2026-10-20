@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { initials } from "../../lib/nav";
 import { ManagerDelegation } from "../delegation/ManagerDelegation";
+import { DataRequests } from "./DataRequests";
 import { InviteDialog } from "./InviteDialog";
 import { MemberFields } from "./MemberFields";
 import {
@@ -242,6 +243,7 @@ function EditDialog({
           </p>
         )}
         <ShiftEditor userId={member.id} timezone={draft.timezone} />
+        {!isSelf && <DataRequests member={member} onDeleted={done} />}
         <div className="flex flex-wrap gap-2">
           {!isSelf && member.role !== "owner" && (
             <Button
