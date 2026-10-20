@@ -2194,7 +2194,7 @@ export type Database = {
       end_delegation: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
-      mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
+      mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
       my_delegations: {
         Args: Record<PropertyKey, never>;
         Returns: {
