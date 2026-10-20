@@ -9,10 +9,17 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now:** —
-- **Next (in order):** #98 runtime fixes from the device test → #99 agent e2e harness → #101 state-change events → M1 follow-ups (#100, #102, #104, #105, #106, #103 default) → M3 (#35, #36, #38, #39, #37) → M4 (#40 → #41 → #42, #43, #44, #45, #46, #47) → M5 (#48, #49, #50, #51, #52, #53, #54) → M6 not blocked (#58, #59, #107) → #26.
+- **Now (20 Oct):** implementers on #42 manual entries (worktree `ai_proctor-m42`, has #36/#38/#41 merged in), #102 deferred check-ins (`ai_proctor-d102`, from #36), #51 retention jobs (`ai_proctor-x51`, from main).
+- **In review, waiting on CI (Actions billing):** #115 (#38) → #121 (#35/#36) → #127 (#37, has #117 merged); #116 (#105), #117 (#39), #119 (#99), #120 (#118), #122 (#40) → #125 (#41), #123 (#104/#106). Merge in that order; rebase #121 on #38's `apply_event` is already done.
+- **Next (in order):** #43 timesheets (on #42) → #44 → #45 → #46 → #47 → M5 (#48, #49, #50, #52, #53, #54) → #124 day view design → #126 segment follow-ups → M6 not blocked (#58, #59, #107) → #26.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
-- **Device checks for Raj:** batched at the bottom of this block as they come up.
+- **Device checks for Raj:** batched here as they come up.
+  1. Chromium (Brave, Chrome) and Safari domains with Accessibility granted (#114).
+  2. Notification permission prompt and banners (#123).
+  3. Two displays: an excluded app on one display blanks only that display (#123).
+  4. Screen sharing holds the card (CHK-03); with #102, a deferred marker shows on the day page.
+  5. Invite flow on device: invite email → join → agent sign-in.
+  6. Tray popover (#127): clock in with a project, break, pause with a note, extend, switch project, miss a card and give a reason; time today ticks, pause left drops.
 
 ## Build order
 
