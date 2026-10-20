@@ -9,9 +9,9 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (20 Oct):** implementers on #42 manual entries (worktree `ai_proctor-m42`, has #36/#38/#41 merged in), #102 deferred check-ins (`ai_proctor-d102`, from #36), #51 retention jobs (`ai_proctor-x51`, from main).
-- **In review, waiting on CI (Actions billing):** #115 (#38) → #121 (#35/#36) → #127 (#37, has #117 merged); #116 (#105), #117 (#39), #119 (#99), #120 (#118), #122 (#40) → #125 (#41), #123 (#104/#106). Merge in that order; rebase #121 on #38's `apply_event` is already done.
-- **Next (in order):** #43 timesheets (on #42) → #44 → #45 → #46 → #47 → M5 (#48, #49, #50, #52, #53, #54) → #124 day view design → #126 segment follow-ups → M6 not blocked (#58, #59, #107) → #26.
+- **Now (20 Oct):** implementers on #43 weekly timesheets (`ai_proctor-w43`, on #42), #50 manager alerts + email (`ai_proctor-a50`, on #36), #53 audit log (`ai_proctor-l53`, on main).
+- **In review, waiting on CI (Actions billing):** #115 (#38) → #121 (#35/#36) → #127 (#37, has #117 merged) and #131 (#102); #116 (#105), #117 (#39), #119 (#99), #120 (#118), #122 (#40) → #125 (#41) → #128 (#42, has #121 merged); #123 (#104/#106); #129 (#51). Merge in that order. Later migrations that redefine `apply_event`, `segment_inputs`, `can_upload_capture` or `capture_view` must start from the latest version.
+- **Next (in order):** #44 → #45 → #46 → #47 (after #43) → M5 (#48, #49, #52, #54) → #124 day view design → #126, #130, #132 follow-ups → M6 not blocked (#58, #59, #107) → #26.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj:** batched here as they come up.
   1. Chromium (Brave, Chrome) and Safari domains with Accessibility granted (#114).
