@@ -2026,6 +2026,7 @@ export type Database = {
         Row: {
           active: boolean;
           approval_required: boolean;
+          config_version: number;
           created_at: string;
           email: string;
           full_name: string;
@@ -2041,6 +2042,7 @@ export type Database = {
         Insert: {
           active?: boolean;
           approval_required?: boolean;
+          config_version?: number;
           created_at?: string;
           email: string;
           full_name: string;
@@ -2055,6 +2057,7 @@ export type Database = {
         Update: {
           active?: boolean;
           approval_required?: boolean;
+          config_version?: number;
           created_at?: string;
           email?: string;
           full_name?: string;

@@ -170,8 +170,11 @@ fn queued_events_and_captures_reach_supabase() {
             permissions: json!({}),
         })
         .unwrap();
-    // Starts at 1; schedule changes (#29) move it.
+    // Starts at 1; policy changes move it.
     assert!(reply.policy_version >= 1);
+    // The combined (org + this person) version the agent compares with its config's.
+    assert!(reply.config_version.is_some(), "{reply:?}");
+    assert_eq!(reply.config_version(), syncer.config().unwrap().version());
     assert!(
         syncer.clock_offset().num_seconds().abs() < 5,
         "local stack shares this clock"

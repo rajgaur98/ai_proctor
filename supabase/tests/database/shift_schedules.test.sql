@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(11);
+select plan(12);
 
 \set ada '''00000000-0000-4000-8000-0000000000a1'''
 \set max '''00000000-0000-4000-8000-0000000000b1'''
@@ -18,7 +18,9 @@ language sql as $$
   select set_config('role', 'authenticated', true);
 $$;
 
-create temp table v0 as select policy_version from public.orgs where id = '00000000-0000-4000-8000-000000000001';
+create temp table v0 as select
+  (select policy_version from public.orgs where id = '00000000-0000-4000-8000-000000000001') as policy_version,
+  (select config_version from public.users where id = '00000000-0000-4000-8000-0000000000c1') as config_version;
 grant select on v0 to authenticated;
 
 select pg_temp.act_as(:lucas);
@@ -42,8 +44,10 @@ select results_eq(
   $$ values (array[1, 2, 5], '09:00:00', '17:30:00'), (array[6], '22:00:00', '06:00:00') $$,
   'replaces what was there; days de-duplicated and sorted'
 );
-select ok((select policy_version from public.orgs where id = '00000000-0000-4000-8000-000000000001')
-  > (select policy_version from v0), 'the org''s policy_version moves so agents refetch');
+select is((select policy_version from public.orgs where id = '00000000-0000-4000-8000-000000000001'),
+  (select policy_version from v0), 'the org''s policy_version does not move');
+select is((select config_version from public.users where id = '00000000-0000-4000-8000-0000000000c1'),
+  (select config_version + 1 from v0), 'her config_version moves so only her devices refetch');
 
 select throws_ok(
   $$ select public.set_shifts('00000000-0000-4000-8000-0000000000c1',
