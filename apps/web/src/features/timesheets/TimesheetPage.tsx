@@ -26,7 +26,7 @@ import { FlaggedSegments } from "./FlaggedSegments";
 import { ProjectTime } from "./ProjectTime";
 import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
 import { EditsList, WeekEntries } from "./SheetPanels";
-import { SheetStatusChip } from "./SheetStatusChip";
+import { lateDataSummary, SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration, projectSplit, summarizeWeek } from "./summary";
 import {
   adjustTime,
@@ -347,6 +347,17 @@ export function TimesheetPage() {
           className="rounded-xl border border-warnline bg-warnbg px-5 py-3 text-[13.5px] text-warnink"
         >
           Returned with a comment: “{sheet.data.comment}”
+        </p>
+      )}
+      {sheet.data && lateDataSummary(sheet.data) !== null && (
+        <p
+          role="status"
+          className="rounded-xl border border-line bg-sunk px-5 py-3 text-[13.5px] text-ink2"
+        >
+          New data arrived after approval ({lateDataSummary(sheet.data)}).{" "}
+          {canReopen
+            ? "Reopen to include it."
+            : `${isSelf ? "Your" : `${first}'s`} manager can reopen the week to include it.`}
         </p>
       )}
       {(loadError || submit.error || approve.error) && (
