@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
+import { AlertsPage } from "./features/alerts/AlertsPage";
 import { DayPage } from "./features/day/DayPage";
 import { NoticePage } from "./features/notice/Notice";
 import { People } from "./features/people/People";
@@ -164,6 +165,16 @@ const noticeRoute = createRoute({
   component: NoticePage,
 });
 
+/** Alert history (#135, ALR-01), opened from the bell: everyone who gets alerts, so not employees. */
+const alertsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/alerts",
+  beforeLoad: ({ context }) => {
+    if (context.profile.role === "employee") throw redirect({ to: homeFor(context.profile.role) });
+  },
+  component: AlertsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   signInRoute,
   signUpRoute,
@@ -183,6 +194,7 @@ const routeTree = rootRoute.addChildren([
     page("/me", "My data", 49),
     page("/my-timesheet", "My timesheet", 43, MyTimesheets),
     noticeRoute,
+    alertsRoute,
   ]),
 ]);
 

@@ -2230,6 +2230,15 @@ export type Database = {
       end_delegation: { Args: { p_id: string }; Returns: undefined };
       ensure_timesheet: { Args: { p_period_start: string; p_user_id: string }; Returns: string };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
+      mark_alerts_read_matching: {
+        Args: {
+          p_from?: string;
+          p_kind?: Database["public"]["Enums"]["alert_kind"];
+          p_to?: string;
+          p_user_id?: string;
+        };
+        Returns: number;
+      };
       mark_notifications_read: { Args: Record<PropertyKey, never>; Returns: number };
       my_delegations: {
         Args: Record<PropertyKey, never>;
