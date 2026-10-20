@@ -7,7 +7,7 @@ use std::sync::Arc;
 use agent_core::contracts::Permissions;
 use agent_core::keystore::{KeyStore, KeyStoreError};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState,
+    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, SessionState,
 };
 
 /// Outbox, session, schedule and install id go here instead of the app data dir.
@@ -78,8 +78,11 @@ impl Platform for ActiveSession {
     fn request_permission(&self, kind: agent_core::contracts::PermissionKind) {
         self.0.request_permission(kind)
     }
-    fn is_injected(&self, click: &Click) -> bool {
-        self.0.is_injected(click)
+    fn start_input_guard(&self, area: ScreenRect) {
+        self.0.start_input_guard(area)
+    }
+    fn stop_input_guard(&self) -> InjectedInput {
+        self.0.stop_input_guard()
     }
     fn notify(&self, title: &str, body: &str) {
         self.0.notify(title, body)

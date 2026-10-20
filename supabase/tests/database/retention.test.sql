@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(49);
+select plan(72);
 
 -- Org 1 (seed, default policy) has Erin. Org 2 has a short policy; org 3's policy is
 -- out of range or not a number, so it falls back to / is clamped to the limits.
@@ -14,9 +14,11 @@ select plan(49);
 \set dev1 '''00000000-0000-4000-8000-0000000000e1'''
 \set dev2 '''00000000-0000-4000-8000-0000000000e2'''
 \set dev3 '''00000000-0000-4000-8000-0000000000e3'''
+\set max '''00000000-0000-4000-8000-0000000000b1'''
 
 insert into public.orgs (id, name, policy) values
-  (:org2, 'Short Co', '{"image_retention_days": 7, "event_retention_months": 6}'),
+  (:org2, 'Short Co',
+   '{"image_retention_days": 7, "event_retention_months": 6, "timesheet_retention_years": 5}'),
   (:org3, 'Wild Co',
    '{"image_retention_days": 1000, "event_retention_months": "bad", "timesheet_retention_years": 1}');
 insert into auth.users (id, email) values (:u2, 'u2@short.test'), (:u3, 'u3@wild.test');
@@ -42,6 +44,12 @@ create function pg_temp.act_as_postgres() returns void
 language sql as $$
   select set_config('role', 'postgres', true);
   select set_config('request.jwt.claims', '', true);
+$$;
+
+-- The UTC date p_years back from now, plus p_days: how the purge reads its cutoff.
+create function pg_temp.d(p_years int, p_days int default 0) returns date
+language sql as $$
+  select ((now() - make_interval(years => p_years)) at time zone 'UTC')::date + p_days
 $$;
 
 create function pg_temp.partition_exists(parent text, ts timestamptz) returns boolean
@@ -124,6 +132,63 @@ insert into public.clock_sessions (id, org_id, user_id, device_id, start_at, end
 select id, org, usr, dev, now() - ended - interval '8 hours', now() - ended, gen_random_uuid() from sessions;
 insert into public.breaks (org_id, user_id, clock_session_id, start_at, end_at)
 select org, usr, id, now() - ended - interval '4 hours', now() - ended - interval '3 hours' from sessions where id = '00000000-0000-4000-8000-00000000a001';
+
+-- Timesheet tables. The cutoff date is today minus the org's years; a day or week is
+-- purged once it ended before the day before that (d(3, -1) is the last one kept).
+-- Org 1: default 3 years. Org 2: 5 years. Org 3: asked for 1, which clamps to 3.
+insert into public.time_segments (org_id, user_id, day, start_at, end_at, type, counted, flagged)
+select org, usr, day, day::timestamptz + interval '10 hours', day::timestamptz + interval '11 hours',
+  'verified', true, false
+from (values (:org1::uuid, :erin::uuid, pg_temp.d(4)), (:org1, :erin, pg_temp.d(3, -2)),
+             (:org1, :erin, pg_temp.d(3, -1)), (:org1, :erin, pg_temp.d(2)),
+             (:org2, :u2, pg_temp.d(6)), (:org2, :u2, pg_temp.d(4)),
+             (:org3, :u3, pg_temp.d(4)), (:org3, :u3, pg_temp.d(2))) v (org, usr, day);
+
+insert into public.dirty_days (user_id, day) values
+  (:erin, pg_temp.d(4)), (:erin, pg_temp.d(2)), (:u2, pg_temp.d(6)), (:u2, pg_temp.d(4))
+on conflict do nothing;
+
+-- A week is labelled by its start; ends 6 days later. The old ones are a draft and an
+-- approved week: status makes no difference.
+insert into public.timesheets (org_id, user_id, period_start, status)
+select org, usr, ps, st
+from (values (:org1::uuid, :erin::uuid, pg_temp.d(4), 'draft'), (:org1, :erin, pg_temp.d(3, -8), 'approved'),
+             (:org1, :erin, pg_temp.d(3, -7), 'approved'), (:org1, :erin, pg_temp.d(2), 'submitted'),
+             (:org2, :u2, pg_temp.d(6), 'approved'), (:org2, :u2, pg_temp.d(4), 'approved')) v (org, usr, ps, st);
+
+insert into public.timesheet_edits (org_id, timesheet_id, user_id, kind, start_at, end_at, reason)
+select t.org_id, t.id, t.user_id, 'exclude', t.period_start::timestamptz + interval '1 hour',
+  t.period_start::timestamptz + interval '2 hours', 'retention fixture'
+from public.timesheets t, generate_series(1, 2) g
+where t.period_start in (pg_temp.d(4), pg_temp.d(3, -7), pg_temp.d(6));
+insert into public.timesheet_edits (org_id, timesheet_id, user_id, kind, start_at, end_at, reason)
+select t.org_id, t.id, t.user_id, 'exclude', t.period_start::timestamptz + interval '1 hour',
+  t.period_start::timestamptz + interval '2 hours', 'retention fixture'
+from public.timesheets t
+where t.period_start = pg_temp.d(2);
+
+-- Entries end 4 years ago, an hour before org 1's cutoff, an hour after it, 2 years ago.
+insert into public.manual_entries (org_id, user_id, start_at, end_at, reason, status, decided_at)
+select org, usr, e - interval '1 hour', e, label, st, case when st = 'pending' then null else now() end
+from (values (:org1::uuid, :erin::uuid, now() - interval '4 years', 'a-4y-approved', 'approved'),
+             (:org1, :erin, now() - interval '4 years', 'b-4y-pending', 'pending'),
+             (:org1, :erin, now() - interval '3 years' - interval '1 hour', 'c-just-past', 'rejected'),
+             (:org1, :erin, now() - interval '3 years' + interval '1 hour', 'd-just-inside', 'approved'),
+             (:org1, :erin, now() - interval '2 years', 'e-2y', 'approved'),
+             (:org2, :u2, now() - interval '6 years', 'f-6y', 'approved'),
+             (:org2, :u2, now() - interval '4 years', 'g-4y', 'approved')) v (org, usr, e, label, st);
+
+insert into public.reminders_sent (org_id, kind, user_id, period_start, recipient_id)
+values (:org1, 'submit', :erin, pg_temp.d(4), :max), (:org1, 'submit', :erin, pg_temp.d(2), :max),
+       (:org2, 'submit', :u2, pg_temp.d(6), :u2), (:org2, 'submit', :u2, pg_temp.d(4), :u2);
+
+-- Notifications follow the events window: 12 months for orgs 1 and 3, 6 for org 2.
+insert into public.notifications (org_id, user_id, kind, payload, created_at)
+values (:org1, :erin, 'timesheet.returned', '{"k": "old"}', now() - interval '13 months'),
+       (:org1, :erin, 'timesheet.returned', '{"k": "recent"}', now() - interval '2 months'),
+       (:org2, :u2, 'timesheet.returned', '{"k": "old"}', now() - interval '7 months'),
+       (:org2, :u2, 'timesheet.returned', '{"k": "recent"}', now() - interval '2 months'),
+       (:org3, :u3, 'timesheet.returned', '{"k": "kept"}', now() - interval '7 months');
 
 -- The audit log, with an entry far older than any retention.
 insert into public.audit_log (org_id, action, metadata, at) values
@@ -240,6 +305,110 @@ select is(
    where action = 'retention.purged' and org_id = :org2 order by id desc limit 1),
   '1', 'and in the org''s audit log'
 );
+
+-- Timesheet tables (#130) -----------------------------------------------------------------------
+
+select is(
+  (select array_agg(day order by day) from public.time_segments where org_id = :org1),
+  array[pg_temp.d(3, -1), pg_temp.d(2)],
+  'segments: days over before the 3-year cutoff go, the last day inside it stays'
+);
+select is(
+  (select array_agg(day) from public.time_segments where org_id = :org2),
+  array[pg_temp.d(4)], 'org 2 keeps 5 years: its 4-year-old day stays, the 6-year-old goes'
+);
+select is(
+  (select array_agg(day) from public.time_segments where org_id = :org3),
+  array[pg_temp.d(2)], 'org 3 asked for 1 year, clamped to 3: its 4-year-old day goes'
+);
+select ok(
+  not exists (select 1 from public.dirty_days where user_id = :erin and day < pg_temp.d(3, -1))
+  and exists (select 1 from public.dirty_days where user_id = :erin and day = pg_temp.d(2)),
+  'dirty days: old marks go, recent ones stay'
+);
+select ok(
+  not exists (select 1 from public.dirty_days where user_id = :u2 and day = pg_temp.d(6))
+  and exists (select 1 from public.dirty_days where user_id = :u2 and day = pg_temp.d(4)),
+  'and by the org''s own setting'
+);
+select is(
+  (select array_agg(period_start order by period_start) from public.timesheets where org_id = :org1),
+  array[pg_temp.d(3, -7), pg_temp.d(2)],
+  'timesheets: a week goes once it ended before the cutoff, draft or approved'
+);
+select is(
+  (select array_agg(period_start) from public.timesheets where org_id = :org2),
+  array[pg_temp.d(4)], 'org 2''s 4-year-old week stays (5 years)'
+);
+select is(
+  (select count(*)::int from public.timesheet_edits where org_id = :org1), 3,
+  'edits go with their timesheet (the two kept weeks keep theirs)'
+);
+select is(
+  (select count(*)::int from public.timesheet_edits where org_id = :org2), 2,
+  'org 2 keeps its 4-year-old week''s edit'
+);
+select is(
+  (select array_agg(reason order by reason) from public.manual_entries where org_id = :org1),
+  array['d-just-inside', 'e-2y'], 'manual entries go by end time, whatever their status'
+);
+select is(
+  (select array_agg(reason) from public.manual_entries where org_id = :org2),
+  array['g-4y'], 'org 2''s 4-year-old entry stays'
+);
+select is(
+  (select array_agg(period_start) from public.reminders_sent where org_id = :org1),
+  array[pg_temp.d(2)], 'reminders sent go with their week'
+);
+select is(
+  (select array_agg(period_start) from public.reminders_sent where org_id = :org2),
+  array[pg_temp.d(4)], 'by the org''s setting'
+);
+select is(
+  (select array_agg(payload ->> 'k') from public.notifications where org_id = :org1),
+  array['recent'], 'notifications follow the events window (12 months)'
+);
+select is(
+  (select array_agg(payload ->> 'k') from public.notifications where org_id = :org2),
+  array['recent'], 'org 2 on 6 months'
+);
+select is(
+  (select array_agg(payload ->> 'k') from public.notifications where org_id = :org3),
+  array['kept'], 'org 3 on the default 12: its 7-month-old one stays'
+);
+select is(
+  (select jsonb_object_agg(category, deleted) from public.retention_runs
+   where org_id = :org1 and category in ('time_segments', 'timesheets', 'timesheet_edits', 'manual_entries',
+                                         'reminders_sent', 'notifications')),
+  '{"time_segments": 2, "timesheets": 2, "timesheet_edits": 2, "manual_entries": 3,
+    "reminders_sent": 1, "notifications": 1}'::jsonb,
+  'org 1 counts are logged per category (children counted before their parents go)'
+);
+select is(
+  (select jsonb_object_agg(category, deleted) from public.retention_runs
+   where org_id = :org2 and category in ('time_segments', 'timesheets', 'timesheet_edits', 'manual_entries',
+                                         'reminders_sent', 'notifications')),
+  '{"time_segments": 1, "timesheets": 1, "timesheet_edits": 2, "manual_entries": 1,
+    "reminders_sent": 1, "notifications": 1}'::jsonb,
+  'org 2 counts too'
+);
+select is(
+  (select jsonb_object_agg(category, deleted) from public.retention_runs
+   where org_id = :org3 and category in ('time_segments', 'timesheets', 'timesheet_edits', 'manual_entries',
+                                         'reminders_sent', 'notifications')),
+  '{"time_segments": 1}'::jsonb, 'org 3 lost one segment and nothing else'
+);
+select ok(
+  (select sum(deleted) from public.retention_runs where category = 'dirty_days') > 0,
+  'dirty days are counted'
+);
+select is(
+  (select metadata ->> 'timesheets' from public.audit_log
+   where action = 'retention.purged' and org_id = :org2 order by id desc limit 1),
+  '1', 'the org''s audit row carries the timesheet counts'
+);
+select is((select r ->> 'timesheets' from purged), '3', 'the totals include them');
+select is(public.retention_purge_rows(), '{}'::jsonb, 'a second run finds nothing more');
 
 -- The audit log is never purged -----------------------------------------------------------------
 
