@@ -3,7 +3,7 @@
 
 use agent_core::contracts::{PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState,
+    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
 
 #[derive(Default)]
@@ -29,8 +29,8 @@ impl Platform for WindowsPlatform {
         CallState::default()
     }
 
-    fn screen_shared(&self) -> bool {
-        false
+    fn screen_share(&self) -> Option<ScreenShare> {
+        None
     }
 
     fn foreground(&self) -> Option<Foreground> {

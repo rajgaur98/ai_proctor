@@ -13,6 +13,7 @@ import { CaptureViewer } from "./CaptureViewer";
 import {
   barSpan,
   type Checkin,
+  deferralLabel,
   localDay,
   markerLeft,
   type Outcome,
@@ -39,7 +40,19 @@ const outcomeLabel: Record<Outcome, string> = {
   pass: "Passed check-in",
   miss: "Missed check-in",
   failed: "Failed check-in",
+  deferred: "Deferred check-in",
 };
+
+function reasonText(reason: string | null): string {
+  return (reason && deferralLabel[reason]) || "Held back";
+}
+
+/** What the marker button says: the outcome, the time, and for a deferral the reason. */
+function markerLabel(c: Checkin, zone: string): string {
+  const at = DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone }).toFormat("HH:mm");
+  const reason = c.outcome === "deferred" ? ` (${reasonText(c.deferralReason).toLowerCase()})` : "";
+  return `${outcomeLabel[c.outcome]} at ${at}${reason}`;
+}
 
 function minutesText(m: number): string {
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
@@ -90,7 +103,7 @@ export function DayPage() {
         supabase
           .from("checkin_events")
           .select(
-            "id, scheduled_at, shown_at, responded_at, outcome, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, object_keys",
+            "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, object_keys",
           )
           .eq("user_id", userId)
           .gte("scheduled_at", from)
@@ -111,6 +124,7 @@ export function DayPage() {
             shownAt: c.shown_at,
             respondedAt: c.responded_at,
             outcome: c.outcome,
+            deferralReason: c.deferral_reason,
             responseMs: c.response_ms,
             wrongClicks: c.wrong_clicks,
             idleSAtShow: c.idle_s_at_show,
@@ -232,7 +246,7 @@ export function DayPage() {
                     key={c.id}
                     type="button"
                     aria-pressed={selected === c.id}
-                    aria-label={`${outcomeLabel[c.outcome]} at ${DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone: viewer }).toFormat("HH:mm")}`}
+                    aria-label={markerLabel(c, viewer)}
                     onClick={() => setSelected(selected === c.id ? null : c.id)}
                     className="absolute top-0 grid h-6 w-6 -translate-x-1/2 place-items-center rounded-full"
                     style={{ left: `${left}%` }}
@@ -274,6 +288,9 @@ export function DayPage() {
                 <span className="flex items-center gap-1.5">
                   <Marker outcome="failed" /> failed
                 </span>
+                <span className="flex items-center gap-1.5">
+                  <Marker outcome="deferred" /> deferred
+                </span>
               </li>
             </ul>
             {isToday && <p className="text-xs text-ink3">Updates every 30 seconds.</p>}
@@ -299,6 +316,9 @@ export function DayPage() {
                   <Marker outcome={c.outcome} />
                   <Time iso={c.shownAt ?? c.scheduledAt} employeeZone={zone} />
                   <span>{outcomeLabel[c.outcome]}</span>
+                  {c.outcome === "deferred" && (
+                    <span className="text-ink3">{reasonText(c.deferralReason)}</span>
+                  )}
                   {c.outcome === "pass" && c.responseMs !== null && (
                     <span className="text-ink3">in {Math.round(c.responseMs / 1000)} s</span>
                   )}
@@ -343,6 +363,16 @@ function Marker({ outcome }: { outcome: Outcome }) {
       />
     );
   }
+  if (outcome === "deferred") {
+    // A hollow diamond: not a result, only a check-in that waited for a call or share.
+    return (
+      <span
+        aria-hidden
+        className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-panel"
+        style={{ border: "2px solid var(--smeeting)" }}
+      />
+    );
+  }
   return (
     <span
       aria-hidden
@@ -357,10 +387,18 @@ function Marker({ outcome }: { outcome: Outcome }) {
 function CheckinDetails({ c, zone }: { c: CheckinRow; zone: string }) {
   const [showCaptures, setShowCaptures] = useState(false);
   const rows: [string, React.ReactNode][] = [
-    ["Scheduled", <Time key="s" iso={c.scheduledAt} employeeZone={zone} />],
+    [
+      c.outcome === "deferred" ? "Due" : "Scheduled",
+      <Time key="s" iso={c.scheduledAt} employeeZone={zone} />,
+    ],
   ];
   if (c.shownAt) rows.push(["Shown", <Time key="sh" iso={c.shownAt} employeeZone={zone} />]);
-  if (c.outcome === "miss") {
+  if (c.outcome === "deferred") {
+    rows.push(
+      ["Reason", reasonText(c.deferralReason)],
+      ["Shown", "Not shown. The check-in comes once it ends, and this is not counted as missed."],
+    );
+  } else if (c.outcome === "miss") {
     rows.push(
       [
         "Idle when shown",

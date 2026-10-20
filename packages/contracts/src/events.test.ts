@@ -30,6 +30,34 @@ describe("AgentEvent", () => {
     expect(AgentEvent.parse(event)).toEqual(event);
   });
 
+  it("accepts a deferred check-in with its reason (CHK-03)", () => {
+    const event = {
+      ...base,
+      type: "checkin",
+      payload: {
+        scheduled_at: "2026-10-07T09:39:58Z",
+        shown_at: null,
+        responded_at: null,
+        outcome: "deferred",
+        deferral_reason: "screen_share",
+        response_ms: null,
+        wrong_clicks: 0,
+        idle_s_at_show: null,
+        device_state: null,
+        object_keys: [],
+        project_id: null,
+        flags: [],
+      },
+    };
+    expect(AgentEvent.parse(event)).toEqual(event);
+    for (const reason of ["call", "presenting"]) {
+      const payload = { ...event.payload, deferral_reason: reason };
+      expect(AgentEvent.safeParse({ ...event, payload }).success).toBe(true);
+    }
+    const unknown = { ...event.payload, deferral_reason: "lunch" };
+    expect(AgentEvent.safeParse({ ...event, payload: unknown }).success).toBe(false);
+  });
+
   it("covers every LLD event type", () => {
     expect(agentEventTypes).toEqual(
       expect.arrayContaining([

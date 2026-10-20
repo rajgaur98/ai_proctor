@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Click, Foreground, Frame, Platform, SessionState,
+    CallState, CaptureError, Click, Foreground, Frame, Platform, ScreenShare, SessionState,
 };
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
@@ -226,15 +226,13 @@ impl Platform for MacPlatform {
         }
     }
 
-    fn screen_shared(&self) -> bool {
+    fn screen_share(&self) -> Option<ScreenShare> {
         let windows = window_list();
         if is_sharing(&windows) {
-            return true;
+            return Some(ScreenShare::Sharing);
         }
-        let Some(pid) = frontmost_pid() else {
-            return false;
-        };
-        is_presenting(&windows, &display_bounds(), pid)
+        let pid = frontmost_pid()?;
+        is_presenting(&windows, &display_bounds(), pid).then_some(ScreenShare::Presenting)
     }
 
     /// Frontmost app, its frontmost window's title (needs Screen Recording, else
