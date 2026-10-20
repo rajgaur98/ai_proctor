@@ -87,12 +87,21 @@ describe("AgentEvent", () => {
   it("accepts a restart report with how the last run ended and when it was last alive (ANT-01)", () => {
     const restart = (payload: object) =>
       AgentEvent.safeParse({ ...base, type: "agent_restart", payload }).success;
-    for (const reason of ["killed", "exited", "rebooted"]) {
+    for (const reason of ["killed", "exited", "session_end", "rebooted"]) {
       expect(restart({ last_alive_at: base.at, reason })).toBe(true);
     }
     expect(restart({ last_alive_at: base.at, reason: "crashed" })).toBe(false);
     expect(restart({ reason: "killed" })).toBe(false);
     expect(restart({ last_alive_at: "yesterday", reason: "killed" })).toBe(false);
+  });
+
+  it("accepts a clock-out for a session end, and no other reason (ANT-01)", () => {
+    const clockOut = (reason: string) =>
+      AgentEvent.safeParse({ ...base, type: "clock_out", payload: { reason } }).success;
+    for (const reason of ["manual", "auto", "session_end"]) {
+      expect(clockOut(reason)).toBe(true);
+    }
+    expect(clockOut("logout")).toBe(false);
   });
 
   it("rejects a pause preset other than 5, 10 or 15 minutes (BRK-03)", () => {

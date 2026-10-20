@@ -334,65 +334,43 @@ export type Database = {
         Row: {
           action: string;
           actor_id: string | null;
+          actor_name: string | null;
           at: string;
           id: number;
           metadata: NonNullable<Json>;
           org_id: string;
+          target_name: string | null;
           target_user_id: string | null;
         };
         ComputedFields: never;
         Insert: {
           action: string;
           actor_id?: string | null;
+          actor_name?: string | null;
           at?: string;
           id?: never;
           metadata?: NonNullable<Json>;
           org_id: string;
+          target_name?: string | null;
           target_user_id?: string | null;
         };
         Update: {
           action?: string;
           actor_id?: string | null;
+          actor_name?: string | null;
           at?: string;
           id?: never;
           metadata?: NonNullable<Json>;
           org_id?: string;
+          target_name?: string | null;
           target_user_id?: string | null;
         };
         Relationships: [
-          {
-            foreignKeyName: "audit_log_actor_id_fkey";
-            columns: ["actor_id"];
-            isOneToOne: false;
-            referencedRelation: "team_live";
-            referencedColumns: ["user_id"];
-          },
-          {
-            foreignKeyName: "audit_log_actor_id_fkey";
-            columns: ["actor_id"];
-            isOneToOne: false;
-            referencedRelation: "users";
-            referencedColumns: ["id"];
-          },
           {
             foreignKeyName: "audit_log_org_id_fkey";
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "orgs";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "audit_log_target_user_id_fkey";
-            columns: ["target_user_id"];
-            isOneToOne: false;
-            referencedRelation: "team_live";
-            referencedColumns: ["user_id"];
-          },
-          {
-            foreignKeyName: "audit_log_target_user_id_fkey";
-            columns: ["target_user_id"];
-            isOneToOne: false;
-            referencedRelation: "users";
             referencedColumns: ["id"];
           },
         ];
@@ -2282,6 +2260,10 @@ export type Database = {
       };
       anticheat_mark_reviewed: { Args: { p_flag_id: string; p_note?: string }; Returns: undefined };
       approve_timesheet: { Args: { p_id: string }; Returns: undefined };
+      begin_user_data_request: {
+        Args: { p_action: string; p_email: string; p_user_id: string };
+        Returns: Json;
+      };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_decide_timesheet: { Args: { target: string }; Returns: boolean };
       can_reopen_timesheet: { Args: { target: string }; Returns: boolean };
@@ -2324,6 +2306,7 @@ export type Database = {
           status: string;
         }[];
       };
+      delete_user_data: { Args: { p_email: string; p_user_id: string }; Returns: Json };
       due_segment_days: {
         Args: { p_limit?: number };
         Returns: {
@@ -2386,6 +2369,23 @@ export type Database = {
           name: string;
         }[];
       };
+      export_user_capture_views: {
+        Args: { p_days?: number; p_user_id: string };
+        Returns: {
+          checkin_at: string;
+          checkin_id: string;
+          viewed_at: string;
+          viewer_id: string;
+          viewer_name: string;
+          viewer_role: string;
+        }[];
+      };
+      list_user_capture_objects: {
+        Args: { p_limit?: number; p_user_id: string };
+        Returns: {
+          name: string;
+        }[];
+      };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
       mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
       my_capture_views: {
@@ -2443,6 +2443,10 @@ export type Database = {
       record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
       record_segment_failure: {
         Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
+        Returns: undefined;
+      };
+      record_user_data_export: {
+        Args: { p_actor_id: string; p_counts: Json; p_user_id: string };
         Returns: undefined;
       };
       register_device: {
