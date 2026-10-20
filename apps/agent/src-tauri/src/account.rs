@@ -148,10 +148,11 @@ impl Account {
     fn keep_config(&self, config: AgentConfig) {
         tracing::info!(
             policy_version = config.policy_version,
+            config_version = config.version(),
             shifts = config.shifts.len(),
             "config received"
         );
-        *self.config_version.lock().unwrap() = Some(config.policy_version);
+        *self.config_version.lock().unwrap() = Some(config.version());
         *self.pending_config.lock().unwrap() = Some(config);
     }
 
@@ -167,8 +168,8 @@ impl Account {
         }
     }
 
-    /// Sends a heartbeat; when its policy_version differs from the config in use
-    /// (shifts or policy changed), fetches the new config (`take_config`).
+    /// Sends a heartbeat; when its config_version differs from the config in use
+    /// (the org's policy or something about this person changed), fetches the new config (`take_config`).
     pub fn heartbeat(&self, heartbeat: &Heartbeat) -> Result<(), SyncError> {
         let config = {
             let syncer = self.syncer.lock().unwrap();
@@ -176,7 +177,7 @@ impl Account {
                 return Ok(());
             };
             let reply = syncer.heartbeat(heartbeat)?;
-            if *self.config_version.lock().unwrap() == Some(reply.policy_version) {
+            if *self.config_version.lock().unwrap() == Some(reply.config_version()) {
                 return Ok(());
             }
             syncer.config()?

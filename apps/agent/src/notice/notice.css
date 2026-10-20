@@ -251,6 +251,20 @@ body {
   grid-template-columns: minmax(0, 340px);
   justify-content: center;
 }
+.n-perms-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.n-optional {
+  font-weight: 400;
+  color: var(--ink2);
+}
+.n-perm-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink2);
+}
 .n-perm {
   min-width: 0;
   display: flex;

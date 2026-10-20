@@ -9,6 +9,7 @@ mod dev;
 mod dev_control;
 mod notice_window;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -25,13 +26,13 @@ use agent_core::contracts::{
     ProjectRef, ShiftState, TestCaptureResult,
 };
 use agent_core::keystore::KeyStore;
-use agent_core::liveness::{Liveness, PreviousRun, RestartReport};
+use agent_core::liveness::{classify_exit, ExitKind, Liveness, PreviousRun, RestartReport};
 use agent_core::notice::NoticeState;
 use agent_core::onboarding::{
     self, FileOnboardingStore, MemoryOnboardingStore, Onboarding, OnboardingStore,
 };
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
-use agent_core::permissions::{PermissionMonitor, Required};
+use agent_core::permissions::{self, PermissionMonitor, Required};
 use agent_core::platform::{Platform, ScreenRect, SessionState};
 use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{
@@ -117,6 +118,11 @@ pub struct AgentState {
     /// Last-alive evidence for the watchdog's restart report (ANT-01); `None` when
     /// the keychain is unavailable.
     liveness: Option<Liveness>,
+    /// When the OS announced a logout, restart or shutdown (#159); how the exit that
+    /// follows is told from a kill.
+    session_end_at: Mutex<Option<chrono::DateTime<chrono::Utc>>>,
+    /// The agent is exiting on purpose (the restart for a new permission).
+    planned_exit: AtomicBool,
     /// Activity sampling (#25); sampling and titles follow the server's config.
     activity: Mutex<Sampler>,
     /// Idle, lock, sleep and call changes sent as events (STS-01).
@@ -180,6 +186,8 @@ impl AgentState {
             capture_policy: Mutex::new(capture_policy),
             permissions: Mutex::new(PermissionMonitor::default()),
             liveness,
+            session_end_at: Mutex::new(None),
+            planned_exit: AtomicBool::new(false),
             activity: Mutex::new(Sampler::new(activity_policy)),
             presence: Mutex::new(PresenceTracker::default()),
             sync_thread: Mutex::new(None),
@@ -246,6 +254,56 @@ impl AgentState {
         if let Some(liveness) = &self.liveness {
             liveness.exited(self.clock.now());
         }
+    }
+
+    /// An exit the agent chose (the restart for a new permission): `exited`, even
+    /// mid-shift, and not a quit that nothing announced.
+    fn exit_planned(&self) {
+        self.planned_exit.store(true, Ordering::SeqCst);
+        self.exited();
+    }
+
+    /// ANT-01, #159: the OS says the session is ending (logout, restart, shutdown).
+    /// A shift in any phase is clocked out with reason `session_end` (no flagged
+    /// time, no Tamper), the sync loop is woken so the events go out if the network
+    /// is still up (they are in the sealed outbox either way), and the run is marked
+    /// as ended by the session so the gap that follows is never read as a kill.
+    /// Runs on the OS's thread, inside its notification, so it only does local work.
+    fn session_ended(&self) {
+        let now = self.clock.now();
+        *self.session_end_at.lock().unwrap() = Some(now);
+        if let Err(error) =
+            self.act_checked("end the shift for the session end", |s| s.session_ended())
+        {
+            tracing::error!(%error, "clock-out for the session end not recorded");
+        }
+        if let Some(liveness) = &self.liveness {
+            liveness.session_ended(self.clock.now());
+        }
+        self.nudge_sync();
+    }
+
+    /// The exit event: marks how this run ends and says what the process exit code
+    /// should be. See `ExitKind`.
+    fn exiting(&self) -> ExitKind {
+        let kind = classify_exit(
+            self.session.lock().unwrap().shift() != ShiftState::OffShift,
+            self.planned_exit.load(Ordering::SeqCst),
+            *self.session_end_at.lock().unwrap(),
+            self.clock.now(),
+        );
+        match kind {
+            ExitKind::Normal => self.exited(),
+            ExitKind::SessionEnd => {
+                if let Some(liveness) = &self.liveness {
+                    liveness.session_ended(self.clock.now());
+                }
+            }
+            ExitKind::Interrupted => {
+                tracing::warn!("quit while clocked in; exiting so the watchdog restarts the agent");
+            }
+        }
+        kind
     }
 
     /// The tray's Quit is for off shift only: while clocked in the agent keeps
@@ -316,6 +374,7 @@ impl AgentState {
                 }),
             notice,
             permissions: Some(self.effective_permissions()),
+            accessibility_missing: self.accessibility_missing(),
         };
         agent_core::status::agent_status(
             self.platform.as_ref(),
@@ -525,6 +584,21 @@ impl AgentState {
         self.capture_policy.lock().unwrap().webcam
     }
 
+    /// Whether browser domains are collected: activity sampling is on (ACT-01/03), which
+    /// it isn't before a notice is acknowledged or while signed out.
+    fn domains_collected(&self) -> bool {
+        self.activity.lock().unwrap().sampling()
+    }
+
+    /// The tray's Accessibility banner (#169): domains are collected but the optional
+    /// Accessibility permission is off. Never on Windows, which has none.
+    fn accessibility_missing(&self) -> bool {
+        permissions::accessibility_missing(
+            self.domains_collected(),
+            self.platform.accessibility_permission(),
+        )
+    }
+
     // --- Guided onboarding (#59; AGT-03) ---------------------------------------------
 
     /// What the onboarding window's permission and finish steps show.
@@ -533,6 +607,8 @@ impl AgentState {
             current_os(),
             self.effective_permissions(),
             self.webcam_on(),
+            self.platform.accessibility_permission(),
+            self.domains_collected(),
             &self.onboarding.lock().unwrap(),
         )
     }
@@ -1283,7 +1359,7 @@ async fn set_miss_reason(
 }
 
 /// The OS settings page to fix a permission, or `None` for a target with none on this
-/// OS (Windows needs no Screen Recording permission).
+/// OS (Windows needs no Screen Recording or Accessibility permission).
 fn settings_url(target: &str, windows: bool) -> Option<&'static str> {
     match (target, windows) {
         ("screen_settings", false) => {
@@ -1291,6 +1367,9 @@ fn settings_url(target: &str, windows: bool) -> Option<&'static str> {
         }
         ("camera_settings", false) => {
             Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")
+        }
+        ("accessibility_settings", false) => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         }
         ("camera_settings", true) => Some("ms-settings:privacy-webcam"),
         _ => None,
@@ -1346,6 +1425,7 @@ async fn request_permission(app: AppHandle, kind: PermissionKind) -> CommandResu
         let target = match kind {
             PermissionKind::Screen => "screen_settings",
             PermissionKind::Camera => "camera_settings",
+            PermissionKind::Accessibility => "accessibility_settings",
         };
         match settings_url(target, cfg!(target_os = "windows")) {
             Some(url) => open_url(url),
@@ -1419,7 +1499,7 @@ fn restart_plan(platform: &dyn Platform) -> Restart {
 fn restart_app(app: AppHandle) -> CommandResult {
     let state = app.state::<AgentState>();
     // A deliberate exit: the next run reads it as `exited`, not `killed` (ANT-01).
-    state.exited();
+    state.exit_planned();
     match restart_plan(state.platform.as_ref()) {
         Restart::Respawn => {
             tracing::info!("restart: starting a new process");
@@ -1629,8 +1709,8 @@ pub fn run() {
                 }
             };
             let clock: Arc<dyn Clock> = Arc::new(SystemClock::default());
-            // Debug builds only. Screen Recording and Camera come from the onboarding
-            // flow; Accessibility (browser domains, #25) isn't part of it.
+            // Debug builds only. The permissions come from the onboarding flow (Accessibility,
+            // browser domains, is its optional card, #169); this asks at launch for a dev run.
             #[cfg(debug_assertions)]
             if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
                 agent_platform::request_accessibility();
@@ -1672,6 +1752,7 @@ pub fn run() {
                 .with_onboarding_store(Arc::new(FileOnboardingStore::new(&data_dir))),
             );
             app.manage(OutboxState(outbox));
+            watch_for_session_end(app.handle());
             spawn_ticker(app.handle().clone());
             spawn_sync(app.handle().clone());
             card::create(app.handle())?;
@@ -1711,14 +1792,33 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building the agent")
         .run(|app, event| {
-            // Only a normal exit gets here; a kill doesn't, which is how the next run
-            // knows it was one (ANT-01).
+            // Only an exit the process chooses gets here; a kill doesn't, which is how
+            // the next run knows it was one (ANT-01). A quit while clocked in that
+            // the OS did not announce (an Apple Event quit) is made to look like one:
+            // non-zero, so the watchdog starts the agent again (#159).
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app.try_state::<AgentState>() {
-                    state.exited();
+                    if state.exiting() == ExitKind::Interrupted {
+                        std::process::exit(RESTART_EXIT_CODE);
+                    }
                 }
             }
         });
+}
+
+/// ANT-01, #159: clocks the person out and marks the exit when the OS announces a
+/// logout, restart or shutdown. Windows ends the process right after the message, so
+/// it exits here with 0 (the watchdog restarts only after a failure); macOS goes on
+/// to ask the app to quit, which the exit event then sees as the session ending.
+fn watch_for_session_end(app: &AppHandle) {
+    let handle = app.clone();
+    app.state::<AgentState>()
+        .platform
+        .on_session_end(Arc::new(move || {
+            handle.state::<AgentState>().session_ended();
+            #[cfg(windows)]
+            std::process::exit(0);
+        }));
 }
 
 /// What the watchdog starts: this executable, when it runs from an installed app
@@ -3423,6 +3523,10 @@ mod tests {
     enum Ending {
         Killed,
         Exited,
+        /// A quit while clocked in that nothing announced (an Apple Event quit).
+        Quit,
+        /// The OS announced a session end but the clock-out was not recorded.
+        SessionEndMarkedOnly,
     }
 
     fn restarted(
@@ -3471,8 +3575,13 @@ mod tests {
         }
         clock.advance(chrono::Duration::minutes(10));
         first.beat();
-        if matches!(ending, Ending::Exited) {
-            first.exited();
+        match ending {
+            Ending::Killed => {}
+            Ending::Exited => first.exited(),
+            Ending::Quit => assert_eq!(first.exiting(), ExitKind::Interrupted),
+            Ending::SessionEndMarkedOnly => {
+                first.liveness.as_ref().unwrap().session_ended(clock.now());
+            }
         }
         drop(first);
         // The next run, `gap` later.
@@ -3508,6 +3617,70 @@ mod tests {
     fn a_normal_exit_during_a_shift_is_reported_as_exited() {
         let reports = restarted(true, Ending::Exited, chrono::Duration::hours(2), None);
         assert_eq!(reports[0]["reason"], "exited");
+    }
+
+    #[test]
+    fn a_quit_while_clocked_in_that_nothing_announced_is_reported_as_killed() {
+        let reports = restarted(true, Ending::Quit, chrono::Duration::seconds(10), None);
+        assert_eq!(reports[0]["reason"], "killed");
+    }
+
+    #[test]
+    fn a_session_end_that_could_not_clock_out_is_reported_as_session_end_not_killed() {
+        let reports = restarted(
+            true,
+            Ending::SessionEndMarkedOnly,
+            chrono::Duration::hours(14),
+            None,
+        );
+        assert_eq!(reports[0]["reason"], "session_end");
+    }
+
+    #[test]
+    fn a_session_end_clocks_the_person_out_with_its_own_reason() {
+        let w = working();
+        w.clock.advance(chrono::Duration::hours(3));
+        w.state.session_ended();
+        assert_eq!(
+            w.state.session.lock().unwrap().shift(),
+            ShiftState::OffShift
+        );
+        assert_eq!(
+            w.events("clock_out"),
+            [serde_json::json!({ "reason": "session_end" })]
+        );
+        assert_eq!(w.state.exiting(), ExitKind::SessionEnd);
+    }
+
+    #[test]
+    fn the_platform_announcement_reaches_the_state() {
+        let w = working();
+        let state = Arc::new(w.state);
+        let handler_state = state.clone();
+        w.platform
+            .on_session_end(Arc::new(move || handler_state.session_ended()));
+        w.platform.end_session();
+        assert_eq!(state.session.lock().unwrap().shift(), ShiftState::OffShift);
+    }
+
+    #[test]
+    fn a_quit_off_shift_and_a_planned_restart_are_normal_exits() {
+        let w = working();
+        w.state.exit_planned();
+        assert_eq!(w.state.exiting(), ExitKind::Normal, "planned, mid-shift");
+        let w = working();
+        w.state.act("clock out", |s| s.clock_out());
+        assert_eq!(w.state.exiting(), ExitKind::Normal, "off shift");
+        let w = working();
+        assert_eq!(w.state.exiting(), ExitKind::Interrupted, "mid-shift quit");
+    }
+
+    #[test]
+    fn a_session_end_while_off_shift_records_nothing() {
+        let w = working();
+        w.state.act("clock out", |s| s.clock_out());
+        w.state.session_ended();
+        assert_eq!(w.events("clock_out").len(), 1, "only the manual one");
     }
 
     #[test]
@@ -3594,10 +3767,105 @@ mod tests {
         let w = working();
         w.state.ask_permission(PermissionKind::Screen);
         w.state.ask_permission(PermissionKind::Camera);
+        w.state.ask_permission(PermissionKind::Accessibility);
         assert_eq!(
             w.platform.snapshot().permission_requests,
-            [PermissionKind::Screen, PermissionKind::Camera]
+            [
+                PermissionKind::Screen,
+                PermissionKind::Camera,
+                PermissionKind::Accessibility
+            ]
         );
+    }
+
+    // --- Optional Accessibility for browser domains (#169; AGT-03, ACT-01) -------------
+
+    #[test]
+    fn the_accessibility_card_shows_only_while_domains_are_collected() {
+        let w = working();
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+
+        let on = w.state.onboarding_state();
+        assert!(on.domains, "activity sampling is on");
+        assert_eq!(on.accessibility, PermissionState::Denied);
+
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "activity_sampling": false })),
+        );
+        assert!(
+            !w.state.onboarding_state().domains,
+            "the org turned domains off: nothing to ask"
+        );
+    }
+
+    #[test]
+    fn onboarding_finishes_without_accessibility() {
+        let w = working();
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+        let state = w.state.onboarding_state();
+        assert!(state.domains && state.ready, "optional: it never gates");
+        w.state.finish_onboarding().unwrap();
+        assert!(w.state.onboarding_state().completed);
+    }
+
+    #[test]
+    fn the_tray_banner_needs_domains_on_and_accessibility_off() {
+        let w = working();
+        assert!(
+            !w.state.status().accessibility_missing,
+            "granted: no banner"
+        );
+
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+        assert!(w.state.status().accessibility_missing);
+
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "activity_sampling": false })),
+        );
+        assert!(
+            !w.state.status().accessibility_missing,
+            "domains off by policy: no banner"
+        );
+
+        apply_policy(&w, collection(serde_json::json!({})));
+        assert!(w.state.status().accessibility_missing, "domains back on");
+    }
+
+    #[test]
+    fn windows_has_no_accessibility_step_or_banner() {
+        let w = working();
+        // What the Windows platform reports: nothing to ask for.
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Unsupported);
+        let state = w.state.onboarding_state();
+        assert!(!state.domains && state.ready);
+        assert!(!w.state.status().accessibility_missing);
+    }
+
+    #[test]
+    fn a_missing_accessibility_is_not_a_capture_permission_problem() {
+        let w = working();
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+        let status = w.state.status();
+        assert_eq!(status.permissions.screen, PermissionState::Granted);
+        assert_eq!(status.permissions.camera, PermissionState::Granted);
+        w.state.permission_tick();
+        assert!(
+            w.platform.snapshot().notifications.is_empty(),
+            "no notification nags about an optional permission"
+        );
+        let payloads = w.events("permission_change");
+        assert!(payloads.iter().all(|p| p
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|k| k == "screen" || k == "camera")));
     }
 
     #[test]
@@ -3742,6 +4010,15 @@ mod tests {
         assert_eq!(
             settings_url("camera_settings", true),
             Some("ms-settings:privacy-webcam")
+        );
+        assert_eq!(
+            settings_url("accessibility_settings", false),
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        );
+        assert_eq!(
+            settings_url("accessibility_settings", true),
+            None,
+            "Windows has no Accessibility permission"
         );
         assert_eq!(
             settings_url("screen_settings", true),

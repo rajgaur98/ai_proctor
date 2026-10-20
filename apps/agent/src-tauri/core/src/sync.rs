@@ -77,7 +77,18 @@ struct RejectedEvent {
 pub struct HeartbeatReply {
     pub server_time: DateTime<Utc>,
     pub policy_version: i64,
+    /// The org's policy version combined with this person's own; older servers
+    /// don't send it.
+    #[serde(default)]
+    pub config_version: Option<i64>,
     pub commands: Vec<String>,
+}
+
+impl HeartbeatReply {
+    /// What the config in use is compared with (`AgentConfig::version`).
+    pub fn config_version(&self) -> i64 {
+        self.config_version.unwrap_or(self.policy_version)
+    }
 }
 
 /// What the agent reports every 60 s while clocked in (STS-01).
@@ -634,6 +645,20 @@ mod tests {
             object_path(&identity, NaiveDate::from_ymd_opt(2026, 10, 19).unwrap(), checkin, "screen-1.webp"),
             "00000000-0000-4000-8000-000000000001/00000000-0000-4000-8000-0000000000c1/2026-10-19/00000000-0000-4000-8000-0000000000f1/screen-1.webp"
         );
+    }
+
+    #[test]
+    fn the_heartbeat_config_version_falls_back_to_the_policy_version() {
+        let reply = |v: Value| -> HeartbeatReply { serde_json::from_value(v).unwrap() };
+        let old = reply(json!({
+            "server_time": "2026-10-19T09:00:00Z", "policy_version": 3, "commands": []
+        }));
+        assert_eq!(old.config_version(), 3);
+        let new = reply(json!({
+            "server_time": "2026-10-19T09:00:00Z", "policy_version": 3, "config_version": 8,
+            "commands": []
+        }));
+        assert_eq!(new.config_version(), 8);
     }
 
     #[test]

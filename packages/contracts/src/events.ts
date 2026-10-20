@@ -29,8 +29,9 @@ const payloads = {
     reason: z.enum(["manual", "auto"]),
   }),
   clock_out: z.strictObject({
-    // auto: forgotten clock-out (SHF-04)
-    reason: z.enum(["manual", "auto"]),
+    // auto: forgotten clock-out (SHF-04); session_end: the OS ended the session (logout,
+    // restart, shutdown), so the shift ends there (ANT-01), never as Tamper
+    reason: z.enum(["manual", "auto", "session_end"]),
   }),
   break_start: z.strictObject({
     planned_min: z
@@ -85,11 +86,13 @@ const payloads = {
   }),
   permission_change: z.strictObject({ screen: PermissionState, camera: PermissionState }),
   // The watchdog started the agent again after a run that ended during a shift (ANT-01).
-  // killed: it never exited normally; exited: a normal exit; rebooted: the device started
-  // up since. Only killed is Tamper, for the time since last_alive_at.
+  // killed: it never exited normally (a kill, or a quit while clocked in that the OS did not
+  // announce); exited: a normal exit; session_end: the OS announced a logout, restart or
+  // shutdown but the clock-out was not recorded; rebooted: the device started up since.
+  // Only killed is Tamper, for the time since last_alive_at.
   agent_restart: z.strictObject({
     last_alive_at: timestamp,
-    reason: z.enum(["killed", "exited", "rebooted"]),
+    reason: z.enum(["killed", "exited", "session_end", "rebooted"]),
   }),
 } as const;
 

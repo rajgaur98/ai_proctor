@@ -1,7 +1,8 @@
 // Org policy (#52, ADM-01): every key of orgs.policy that the settings page edits, with
-// the same ranges update_policy enforces (supabase/migrations/20261020180000_policy_settings.sql
-// is the source of truth; the dashboard validates the same rules before sending). The
-// presets themselves come from the database with the settings, so they are not repeated here.
+// the same ranges update_policy enforces (policy_spec in
+// supabase/migrations/20261020196000_reminder_shift_day.sql, its latest definition, is the
+// source of truth; the dashboard validates the same rules before sending). The presets
+// themselves come from the database with the settings, so they are not repeated here.
 import { z } from "zod";
 
 export const Region = z.enum(["us", "eu", "india"]);
@@ -98,6 +99,8 @@ export const PolicyKeys = z.strictObject({
   alert_tamper_enabled: flag,
   alert_late_clock_in_enabled: flag,
   alert_pause_over_cap_enabled: flag,
+  // Timesheet reminders (submit, approval, escalation) for the whole org (#177).
+  reminders_enabled: flag,
   image_retention_days: whole("image_retention_days"),
   event_retention_months: whole("event_retention_months"),
   timesheet_retention_years: whole("timesheet_retention_years"),

@@ -507,6 +507,16 @@ function PolicyForm({
                 onChange={(v) => set("late_clock_in_min", v as number)}
               />
             </Row>
+            <Row
+              title="Timesheet reminders"
+              hint="Remind people to submit on their last shift day of the week (the last day of the week if they have no shifts), and remind managers, then admins, when a week waits for approval."
+            >
+              <OnOff
+                label="Timesheet reminders"
+                value={draft.reminders_enabled}
+                onChange={(v) => set("reminders_enabled", v)}
+              />
+            </Row>
           </Group>
 
           <Group title="Manager alerts">

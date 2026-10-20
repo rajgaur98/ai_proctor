@@ -196,6 +196,26 @@ jobs:
         env:
           CI: "true"
 
+  # The integration checks (Edge Functions, pg_cron through pg_net, Storage, Mailpit),
+  # each on a freshly reset database (#191).
+  integration:
+    name: Integration checks (functions, cron, storage, email)
+    needs: changes
+    if: >-
+      always() && needs.changes.result != 'failure' && (
+      github.event_name != 'pull_request' || needs.changes.outputs.web == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm supabase start -x studio,imgproxy,postgres-meta,supavisor
+      - run: bash scripts/integration.sh
+
   # Edge Functions run on Deno, outside the pnpm workspace's tsc.
   deno:
     name: Edge Functions (deno check)
@@ -276,7 +296,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [js, rust, db, sync-it, web-e2e, deno, secrets, windows, macos]
+    needs: [js, rust, db, sync-it, web-e2e, integration, deno, secrets, windows, macos]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
