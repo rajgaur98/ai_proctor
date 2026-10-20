@@ -401,7 +401,18 @@
                 },
                 "outcome": {
                   "type": "string",
-                  "enum": ["pass", "miss", "failed"]
+                  "enum": ["pass", "miss", "failed", "deferred"]
+                },
+                "deferral_reason": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": ["call", "screen_share", "presenting"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "response_ms": {
                   "anyOf": [

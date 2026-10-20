@@ -25,6 +25,8 @@ pub struct SessionPolicy {
     /// SHF-04: minutes without input after shift end before auto clock-out.
     pub forgotten_clock_out_after: Duration,
     pub shifts: Vec<Shift>,
+    /// The employee's time zone, for "today".
+    pub timezone: chrono_tz::Tz,
 }
 
 impl Default for SessionPolicy {
@@ -33,6 +35,7 @@ impl Default for SessionPolicy {
             auto_clock_in: false,
             forgotten_clock_out_after: Duration::minutes(30),
             shifts: Vec::new(),
+            timezone: chrono_tz::UTC,
         }
     }
 }
@@ -53,6 +56,31 @@ pub struct SessionSnapshot {
     pub clocked_in_at: Option<DateTime<Utc>>,
     pub project_id: Option<Uuid>,
     pub pause_until: Option<DateTime<Utc>>,
+    /// When the current phase (working, break, pause) began.
+    #[serde(default)]
+    pub phase_started_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub pause_planned_min: Option<u32>,
+    #[serde(default)]
+    pub today: DayTally,
+}
+
+/// Closed time for the tray's "Time today" and pause allowance (EMP-01). For
+/// display only: the timesheet is computed on the server (#40, #41).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DayTally {
+    /// The employee-local day these totals belong to.
+    pub date: Option<chrono::NaiveDate>,
+    /// Working and pause time (pauses count as worked within the cap; breaks don't).
+    pub worked_s: i64,
+    pub pause_s: i64,
+}
+
+/// What the tray shows for today, open phase included.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Today {
+    pub worked_s: i64,
+    pub pause_s: i64,
 }
 
 /// Serializable mirror of `ShiftState` (the contract type has no `Default`).
@@ -258,7 +286,7 @@ impl Session {
             return Err(TransitionError::InvalidDuration(min));
         }
         self.emit("break_start", json!({ "planned_min": planned_min }))?;
-        self.state.shift = ShiftPhase::OnBreak;
+        self.enter(ShiftPhase::OnBreak, self.clock.now());
         self.save();
         Ok(())
     }
@@ -268,13 +296,22 @@ impl Session {
             return Err(TransitionError::NotOnBreak);
         }
         self.emit("break_end", json!({}))?;
-        self.state.shift = ShiftPhase::Working;
+        self.enter(ShiftPhase::Working, self.clock.now());
         self.save();
         Ok(())
     }
 
-    /// BRK-03: pause for a preset; extending is a new pause (BRK-05).
+    /// BRK-03: pause for a preset; extending is a new pause (BRK-05). The
+    /// optional reason stays private to the employee on the server.
     pub fn start_pause(&mut self, minutes: u32) -> Result<(), TransitionError> {
+        self.start_pause_with_reason(minutes, None)
+    }
+
+    pub fn start_pause_with_reason(
+        &mut self,
+        minutes: u32,
+        reason: Option<&str>,
+    ) -> Result<(), TransitionError> {
         if self.state.shift == ShiftPhase::Paused {
             self.end_pause()?;
         }
@@ -282,9 +319,15 @@ impl Session {
         if !PAUSE_PRESETS.contains(&minutes) {
             return Err(TransitionError::InvalidDuration(minutes));
         }
-        self.emit("pause_start", json!({ "planned_min": minutes }))?;
-        self.state.shift = ShiftPhase::Paused;
-        self.state.pause_until = Some(self.clock.now() + Duration::minutes(minutes.into()));
+        let mut payload = json!({ "planned_min": minutes });
+        if let Some(reason) = reason.map(str::trim).filter(|r| !r.is_empty()) {
+            payload["reason"] = json!(reason.chars().take(200).collect::<String>());
+        }
+        self.emit("pause_start", payload)?;
+        let now = self.clock.now();
+        self.enter(ShiftPhase::Paused, now);
+        self.state.pause_until = Some(now + Duration::minutes(minutes.into()));
+        self.state.pause_planned_min = Some(minutes);
         self.save();
         Ok(())
     }
@@ -294,8 +337,9 @@ impl Session {
             return Err(TransitionError::NotPaused);
         }
         self.emit("pause_end", json!({}))?;
-        self.state.shift = ShiftPhase::Working;
+        self.enter(ShiftPhase::Working, self.clock.now());
         self.state.pause_until = None;
+        self.state.pause_planned_min = None;
         self.save();
         Ok(())
     }
@@ -379,8 +423,9 @@ impl Session {
             "clock_in",
             json!({ "project_id": project_id, "reason": reason }),
         )?;
-        self.state.shift = ShiftPhase::Working;
-        self.state.clocked_in_at = Some(self.clock.now());
+        let now = self.clock.now();
+        self.enter(ShiftPhase::Working, now);
+        self.state.clocked_in_at = Some(now);
         self.state.project_id = project_id;
         self.save();
         Ok(())
@@ -390,9 +435,10 @@ impl Session {
         self.sink
             .emit("clock_out", at, json!({ "reason": reason }))
             .map_err(TransitionError::Sink)?;
-        self.state.shift = ShiftPhase::OffShift;
+        self.enter(ShiftPhase::OffShift, at);
         self.state.clocked_in_at = None;
         self.state.pause_until = None;
+        self.state.pause_planned_min = None;
         self.save();
         Ok(())
     }
@@ -414,6 +460,67 @@ impl Session {
             ShiftPhase::Paused => Err(TransitionError::Paused),
             _ => Ok(()),
         }
+    }
+
+    /// Closes the current phase into today's tally and starts `phase` at `at`.
+    fn enter(&mut self, phase: ShiftPhase, at: DateTime<Utc>) {
+        self.add_to_tally(at);
+        self.state.shift = phase;
+        self.state.phase_started_at = (phase != ShiftPhase::OffShift).then_some(at);
+    }
+
+    fn add_to_tally(&mut self, at: DateTime<Utc>) {
+        let date = at.with_timezone(&self.policy.timezone).date_naive();
+        if self.state.today.date != Some(date) {
+            self.state.today = DayTally {
+                date: Some(date),
+                ..DayTally::default()
+            };
+        }
+        let (worked, paused) = self.open_phase(at);
+        self.state.today.worked_s += worked;
+        self.state.today.pause_s += paused;
+    }
+
+    /// Worked and pause seconds of the open phase up to `at`, from today's
+    /// local midnight at the earliest.
+    fn open_phase(&self, at: DateTime<Utc>) -> (i64, i64) {
+        let Some(start) = self.state.phase_started_at else {
+            return (0, 0);
+        };
+        let midnight = at
+            .with_timezone(&self.policy.timezone)
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .and_then(|m| m.and_local_timezone(self.policy.timezone).earliest())
+            .map(|m| m.with_timezone(&Utc))
+            .unwrap_or(start);
+        let secs = (at - start.max(midnight)).num_seconds().max(0);
+        match self.state.shift {
+            ShiftPhase::Working => (secs, 0),
+            ShiftPhase::Paused => (secs, secs),
+            ShiftPhase::OnBreak | ShiftPhase::OffShift => (0, 0),
+        }
+    }
+
+    /// Time today for the tray (EMP-01): closed phases plus the open one.
+    pub fn today(&self) -> Today {
+        let now = self.clock.now();
+        let date = now.with_timezone(&self.policy.timezone).date_naive();
+        let (closed_worked, closed_pause) = if self.state.today.date == Some(date) {
+            (self.state.today.worked_s, self.state.today.pause_s)
+        } else {
+            (0, 0)
+        };
+        let (worked, paused) = self.open_phase(now);
+        Today {
+            worked_s: closed_worked + worked,
+            pause_s: closed_pause + paused,
+        }
+    }
+
+    pub fn snapshot(&self) -> &SessionSnapshot {
+        &self.state
     }
 
     fn emit(&self, event_type: &str, payload: serde_json::Value) -> Result<(), TransitionError> {
@@ -522,6 +629,7 @@ mod tests {
                 end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
                 tz: chrono_tz::America::Los_Angeles,
             }],
+            timezone: chrono_tz::America::Los_Angeles,
         }
     }
 
@@ -729,5 +837,54 @@ mod tests {
         };
         store.save(&snapshot);
         assert_eq!(store.load(), Some(snapshot));
+    }
+
+    #[test]
+    fn today_counts_work_and_pauses_but_not_breaks() {
+        let mut r = rig(SessionPolicy::default());
+        let (s, clock) = (&mut r.session, &r.clock);
+        s.clock_in(None).unwrap();
+        clock.advance(Duration::minutes(60));
+        s.start_pause_with_reason(10, Some("  doctor  ")).unwrap();
+        clock.advance(Duration::minutes(10));
+        s.end_pause().unwrap();
+        s.start_break(None).unwrap();
+        clock.advance(Duration::minutes(30));
+        s.end_break().unwrap();
+        clock.advance(Duration::minutes(20));
+        let pause = r
+            .sink
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(t, _, _)| t == "pause_start")
+            .cloned()
+            .unwrap();
+        assert_eq!(
+            pause.2["reason"], "doctor",
+            "trimmed, kept private on the server"
+        );
+        let today = r.session.today();
+        assert_eq!(
+            today.worked_s,
+            90 * 60,
+            "60 + 10 paused + 20, break excluded"
+        );
+        assert_eq!(today.pause_s, 10 * 60);
+    }
+
+    #[test]
+    fn today_starts_over_at_local_midnight() {
+        let mut r = rig(SessionPolicy::default());
+        // 15:50 UTC → clock in at 23:00 UTC (the default zone), 3 h later it's 02:00.
+        r.clock.advance(Duration::minutes(7 * 60 + 10));
+        r.session.clock_in(None).unwrap();
+        r.clock.advance(Duration::hours(3));
+        assert_eq!(
+            r.session.today().worked_s,
+            2 * 3600,
+            "only the hours after midnight are today"
+        );
     }
 }

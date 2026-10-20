@@ -1,0 +1,580 @@
+/* Signed-in tray popover (#37). Ported from the Claude Design "Tray" screen
+   (docs/design/screens/Tray.dc.html); everything is scoped under .tray so the
+   sign-in view's plain element styles in styles.css keep working. */
+.tray {
+  --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", monospace;
+  box-sizing: border-box;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+.tray p,
+.tray h2 {
+  margin: 0;
+}
+.tray h2 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+}
+.tray .mono,
+.tray .num {
+  font-variant-numeric: tabular-nums;
+}
+.tray .mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+/* Header and footer */
+.t-head {
+  flex: none;
+  height: 52px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+.t-logo {
+  position: relative;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--acc);
+}
+.t-logo .hand-v,
+.t-logo .hand-h {
+  position: absolute;
+  background: var(--accink);
+  border-radius: 1px;
+}
+.t-logo .hand-v {
+  left: 10px;
+  top: 5px;
+  width: 2px;
+  height: 7px;
+}
+.t-logo .hand-h {
+  left: 10px;
+  top: 10px;
+  width: 6px;
+  height: 2px;
+}
+.t-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.t-date {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink3);
+}
+.t-foot {
+  flex: none;
+  min-height: 48px;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 20px;
+  padding: 0 16px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.t-foot .account {
+  margin-left: auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.t-foot .email {
+  min-width: 0;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink3);
+}
+.t-foot .foot-error {
+  flex-basis: 100%;
+  padding-bottom: 8px;
+}
+
+/* Body */
+.t-body {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.t-body > * {
+  flex: none;
+}
+.t-bottom {
+  margin-top: auto;
+}
+.t-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.t-grid2,
+.t-grid3 {
+  display: grid;
+  gap: 8px;
+}
+.t-grid2 {
+  grid-template-columns: 1fr 1fr;
+}
+.t-grid3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* Text */
+.t-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.t-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink2);
+}
+.t-label,
+.t-meta {
+  font-size: 12px;
+  color: var(--ink3);
+}
+.t-figure {
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.t-unit {
+  font-family: system-ui, sans-serif;
+  font-size: 15px;
+  letter-spacing: 0;
+  color: var(--ink2);
+}
+.t-muted {
+  color: var(--ink2);
+}
+.t-faint {
+  color: var(--ink3);
+}
+.t-small {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink2);
+  text-wrap: pretty;
+}
+.t-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink3);
+}
+.t-error {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--stamper);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Status chip: colour + shape + label (never colour alone) */
+.t-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 10px 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.t-chip .dot {
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dot-active {
+  background: var(--sactive);
+}
+.dot-break {
+  background: var(--sbreak);
+}
+.dot-paused {
+  border-radius: 2px;
+  background: var(--spaused);
+}
+.dot-blocked {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--stamper);
+  transform: rotate(45deg);
+}
+.dot-off {
+  border: 1.5px dashed var(--soff);
+}
+
+.t-select {
+  position: relative;
+  display: block;
+}
+.t-select select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 0 34px 0 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  appearance: none;
+  cursor: pointer;
+}
+.t-select::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ink3);
+  border-bottom: 1.5px solid var(--ink3);
+  transform: rotate(45deg) translateY(-3px);
+  pointer-events: none;
+}
+/* Cards and rows */
+.t-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sunk);
+  font-size: 13px;
+}
+.t-note {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.t-note strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.t-note span {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink2);
+}
+.t-info .line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+}
+.t-info .line + .line {
+  border-top: 1px solid var(--line);
+}
+.t-info .key {
+  flex: none;
+  width: 92px;
+  color: var(--ink3);
+}
+.t-info .val {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.t-info .btn-text {
+  margin-left: auto;
+}
+.t-info .t-select {
+  flex: 1;
+  min-width: 0;
+}
+.t-info .t-select select {
+  height: 32px;
+  font-size: 13px;
+}
+.t-info .t-select::after {
+  right: 12px;
+}
+.t-allowance {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.t-allowance .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+.t-allowance .bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.t-allowance .fill {
+  height: 100%;
+  background: var(--spaused);
+}
+.t-extend {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12.5px;
+}
+.t-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+.t-total .mono {
+  color: var(--ink);
+}
+.t-sheet {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sunk);
+}
+.t-sheet .btn-text {
+  align-self: flex-start;
+}
+.t-missed {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.t-missed h2 {
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+}
+.t-picks {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.t-picks legend {
+  margin-bottom: 7px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink3);
+}
+.t-picks .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Permission warning */
+.t-warn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--warnline);
+  border-radius: 10px;
+  background: var(--warnbg);
+}
+.t-warn .msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.t-warn .msg p {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--warnink);
+}
+.t-warn .mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--warnink);
+  color: var(--warnbg);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Form controls */
+.tray .t-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tray label {
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+.tray input[type="text"] {
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+}
+.tray input::placeholder {
+  color: var(--ink3);
+}
+.tray select:disabled,
+.tray input:disabled {
+  opacity: 0.6;
+}
+
+/* Buttons: reset the plain `button` rule from styles.css, then one class per look */
+.tray button {
+  box-sizing: border-box;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+.tray .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.tray :focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.tray .btn-primary,
+.tray .btn-outline,
+.tray .btn-warn,
+.tray .btn-quiet,
+.tray .btn-pick {
+  height: 44px;
+  border-radius: 9px;
+}
+.tray .btn-primary {
+  background: var(--acc);
+  color: var(--accink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.tray .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.tray .btn-big {
+  height: 48px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.tray .btn-outline {
+  border: 1px solid var(--line2);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+.tray .btn-small {
+  height: 36px;
+  font-size: 13px;
+}
+.tray .btn-outline:hover:not(:disabled),
+.tray .btn-warn:hover:not(:disabled) {
+  background: var(--sunk);
+}
+.tray .btn-warn {
+  border: 1px solid var(--warnline);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.tray .btn-quiet {
+  color: var(--ink2);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.tray .btn-quiet:hover:not(:disabled) {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.tray .btn-pick {
+  padding: 0 14px;
+  border: 1.5px solid var(--line2);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.tray .btn-pick[aria-pressed="true"] {
+  border-color: var(--acc);
+  background: var(--accsoft);
+}
+.tray .btn-text {
+  padding: 4px 0;
+  color: var(--acctext);
+  font-size: 13px;
+  font-weight: 500;
+}
+.tray .btn-text:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.tray .btn-quiet-small {
+  padding: 4px 2px;
+  color: var(--ink2);
+  font-size: 12.5px;
+}
+.tray .btn-quiet-small:hover:not(:disabled) {
+  color: var(--ink);
+  text-decoration: underline;
+}
