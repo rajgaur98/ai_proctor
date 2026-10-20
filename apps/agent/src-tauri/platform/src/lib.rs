@@ -11,6 +11,8 @@ pub mod keychain;
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+mod macos_notify;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod unsupported;
 #[cfg(target_os = "windows")]
@@ -21,6 +23,14 @@ mod windows;
 pub fn request_permissions() {
     #[cfg(target_os = "macos")]
     macos::request_permissions();
+}
+
+/// Asks for permission to show notifications (macOS prompt; first call only). Until
+/// guided onboarding (#59) the app calls it only from the debug permission path;
+/// `Platform::notify` never asks, it does nothing without permission.
+pub fn request_notification_permission() {
+    #[cfg(target_os = "macos")]
+    macos_notify::request_permission();
 }
 
 /// The platform for the OS this binary was built for.

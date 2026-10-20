@@ -310,6 +310,7 @@ export type Database = {
           id: string;
           idle_s_at_show: number | null;
           missed_reason: string | null;
+          missed_reason_kind: string | null;
           object_keys: string[];
           org_id: string;
           outcome: Database["public"]["Enums"]["checkin_outcome"];
@@ -333,6 +334,7 @@ export type Database = {
           id: string;
           idle_s_at_show?: number | null;
           missed_reason?: string | null;
+          missed_reason_kind?: string | null;
           object_keys?: string[];
           org_id: string;
           outcome: Database["public"]["Enums"]["checkin_outcome"];
@@ -355,6 +357,7 @@ export type Database = {
           id?: string;
           idle_s_at_show?: number | null;
           missed_reason?: string | null;
+          missed_reason_kind?: string | null;
           object_keys?: string[];
           org_id?: string;
           outcome?: Database["public"]["Enums"]["checkin_outcome"];
@@ -1177,6 +1180,10 @@ export type Database = {
       retention_mark_captures_purged: { Args: { p_checkin_ids: string[] }; Returns: number };
       retention_purge_rows: { Args: Record<PropertyKey, never>; Returns: Json };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
+      set_miss_reason: {
+        Args: { p_checkin_id: string; p_kind: string; p_note?: string };
+        Returns: undefined;
+      };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
       update_member: {
