@@ -2244,6 +2244,7 @@ export type Database = {
         }[];
       };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
+      policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
       register_device: {
         Args: {
@@ -2289,6 +2290,10 @@ export type Database = {
         Returns: string;
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      set_approval_required: {
+        Args: { p_required: boolean; p_user_id: string };
+        Returns: undefined;
+      };
       set_delegation: {
         Args: {
           p_delegate_id: string;
@@ -2368,6 +2373,10 @@ export type Database = {
           p_work_state: string;
         };
         Returns: undefined;
+      };
+      update_policy: {
+        Args: { p_dpia_confirmed?: boolean; p_policy: Json; p_works_council_confirmed?: boolean };
+        Returns: Json;
       };
     };
     Enums: {

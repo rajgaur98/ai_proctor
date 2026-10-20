@@ -1,0 +1,44 @@
+// The US and EU presets as the database returns them (PRD 5.1), for the page's tests.
+import type { Policy } from "@ai-proctor/contracts";
+
+export const us: Policy = {
+  checkin_min_interval_min: 20,
+  checkin_max_interval_min: 90,
+  checkin_response_s: 90,
+  idle_threshold_min: 10,
+  screenshots: "full",
+  webcam: true,
+  window_titles: true,
+  excluded_apps: ["1Password", "Bitwarden"],
+  activity_sampling: true,
+  auto_clock_in: false,
+  forgotten_clock_out_min: 30,
+  breaks_paid: false,
+  break_daily_max_min: null,
+  pause_max_min: 15,
+  pause_daily_max_min: 60,
+  week_start: "monday",
+  late_clock_in_min: 15,
+  alert_consecutive_misses_enabled: true,
+  alert_consecutive_misses: 3,
+  alert_offline_enabled: true,
+  alert_offline_min: 15,
+  alert_tamper_enabled: true,
+  alert_late_clock_in_enabled: true,
+  alert_pause_over_cap_enabled: true,
+  image_retention_days: 30,
+  event_retention_months: 12,
+  timesheet_retention_years: 3,
+  anticheat_min_passes: 5,
+  anticheat_max_cv: 0.1,
+  require_admin_mfa: false,
+};
+
+export const eu: Policy = {
+  ...us,
+  checkin_min_interval_min: 45,
+  checkin_max_interval_min: 120,
+  screenshots: "blurred",
+  webcam: false,
+  window_titles: false,
+};
