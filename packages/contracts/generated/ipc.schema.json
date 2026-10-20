@@ -232,6 +232,9 @@
               "type": "null"
             }
           ]
+        },
+        "accessibility_missing": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -251,7 +254,8 @@
         "projects",
         "last_checkin",
         "missed_checkin",
-        "notice"
+        "notice",
+        "accessibility_missing"
       ],
       "additionalProperties": false
     },
@@ -323,7 +327,7 @@
     },
     "PermissionKind": {
       "type": "string",
-      "enum": ["screen", "camera"]
+      "enum": ["screen", "camera", "accessibility"]
     },
     "OnboardingPlatform": {
       "type": "string",
@@ -339,6 +343,12 @@
           "$ref": "#/definitions/Permissions"
         },
         "webcam": {
+          "type": "boolean"
+        },
+        "accessibility": {
+          "$ref": "#/definitions/PermissionState"
+        },
+        "domains": {
           "type": "boolean"
         },
         "ready": {
@@ -360,6 +370,8 @@
         "platform",
         "permissions",
         "webcam",
+        "accessibility",
+        "domains",
         "ready",
         "restart_needed",
         "completed",

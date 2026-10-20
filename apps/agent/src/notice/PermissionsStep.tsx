@@ -2,7 +2,12 @@
 // status, a stylised picture of the settings pane (HTML and CSS, no screenshots), the
 // three instructions and the button that asks the OS and opens the right settings page.
 import type { OnboardingState, PermissionKind } from "@ai-proctor/contracts";
-import { needsRestart, type PermissionCard, permissionCards } from "./onboardingModel";
+import {
+  needsRestart,
+  type PermissionCard,
+  permissionCards,
+  permissionsHeading,
+} from "./onboardingModel";
 
 interface Props {
   state: OnboardingState;
@@ -13,14 +18,16 @@ interface Props {
 
 export function PermissionsStep({ state, busy, onRequest, onRestart }: Props) {
   const cards = permissionCards(state);
+  const hasOptional = cards.some((c) => c.optional);
   return (
     <>
       <header>
-        <h1>{cards.length > 1 ? "Allow two permissions" : "Allow a permission"}</h1>
+        <h1>{permissionsHeading(cards)}</h1>
         <p className="n-intro">
           {state.platform === "windows"
             ? "Windows asks nothing for the screen. AI Proctor only uses the camera during a check-in you pass."
-            : "macOS asks once. AI Proctor only uses these during a check-in you pass."}
+            : "macOS asks once. AI Proctor only uses Screen Recording and Camera during a check-in you pass."}
+          {hasOptional && " Accessibility is optional: you can skip it and carry on."}
         </p>
       </header>
       {needsRestart(state) && (
@@ -34,7 +41,7 @@ export function PermissionsStep({ state, busy, onRequest, onRestart }: Props) {
           </button>
         </div>
       )}
-      <div className={cards.length > 1 ? "n-perms" : "n-perms n-perms-one"}>
+      <div className={`n-perms ${permsLayout(cards.length)}`}>
         {cards.map((card) => (
           <PermissionCardView
             key={card.kind}
@@ -46,6 +53,12 @@ export function PermissionsStep({ state, busy, onRequest, onRestart }: Props) {
       </div>
     </>
   );
+}
+
+/** One card is centred, two sit side by side, three share the row. */
+function permsLayout(count: number): string {
+  if (count > 2) return "n-perms-three";
+  return count === 1 ? "n-perms-one" : "";
 }
 
 function PermissionCardView({
@@ -60,13 +73,17 @@ function PermissionCardView({
   return (
     <section className="n-perm" aria-labelledby={`perm-${card.kind}`}>
       <div className="n-perm-head">
-        <h2 id={`perm-${card.kind}`}>{card.name}</h2>
+        <h2 id={`perm-${card.kind}`}>
+          {card.name}
+          {card.optional && <span className="n-optional"> · Optional</span>}
+        </h2>
         <span className="n-pill" aria-live="polite">
           <span className={card.on ? "n-dot n-dot-on" : "n-dot n-dot-off"} aria-hidden="true" />
           {card.status}
         </span>
       </div>
       <SettingsPicture card={card} />
+      {card.note && <p className="n-perm-note">{card.note}</p>}
       <ol className="n-perm-steps">
         {card.steps.map((text) => (
           <li key={text}>{text}</li>
