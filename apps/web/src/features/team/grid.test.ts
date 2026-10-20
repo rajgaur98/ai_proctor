@@ -17,6 +17,7 @@ function row(name: string, status: TeamRow["status"], extra: Partial<TeamRow> = 
     checkins_shown_today: 0,
     checkins_passed_today: 0,
     scheduled_today: true,
+    tamper_reason: null,
     ...extra,
   };
 }
@@ -87,5 +88,20 @@ describe("applyPresence", () => {
     });
     expect(next.find((r) => r.user_id === "Lucas")?.status).toBe("active");
     expect(next.find((r) => r.user_id === "Priya")).toBe(rows[0]);
+  });
+
+  it("carries the Tamper reason, and clears it when the status moves on", () => {
+    const blocked = applyPresence(rows, {
+      user_id: "Emily",
+      status: "tamper",
+      tamper_reason: "capture_blocked",
+    });
+    expect(blocked.find((r) => r.user_id === "Emily")?.tamper_reason).toBe("capture_blocked");
+    const back = applyPresence(blocked, {
+      user_id: "Emily",
+      status: "active",
+      tamper_reason: null,
+    });
+    expect(back.find((r) => r.user_id === "Emily")?.tamper_reason).toBeNull();
   });
 });
