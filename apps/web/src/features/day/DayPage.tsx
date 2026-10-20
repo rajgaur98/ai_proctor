@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useMemo, useRef, useState } from "react";
-import { StatusChip, statusStyle } from "../../components/StatusChip";
+import { StatusChip, statusLabel, statusStyle } from "../../components/StatusChip";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
@@ -77,7 +77,7 @@ export function DayPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, timezone, presence(status)")
+        .select("id, full_name, timezone, presence(status, tamper_reason)")
         .eq("id", userId)
         .maybeSingle();
       if (error) throw error;
@@ -101,7 +101,7 @@ export function DayPage() {
       const [periods, checkins] = await Promise.all([
         supabase
           .from("status_periods")
-          .select("status, start_at, end_at")
+          .select("status, reason, start_at, end_at")
           .eq("user_id", userId)
           .lt("start_at", to)
           .or(`end_at.is.null,end_at.gt.${from}`)
@@ -121,7 +121,12 @@ export function DayPage() {
       return {
         now: Date.now(),
         periods: periods.data.map(
-          (p): Period => ({ status: p.status, start: p.start_at, end: p.end_at }),
+          (p): Period => ({
+            status: p.status,
+            reason: p.reason,
+            start: p.start_at,
+            end: p.end_at,
+          }),
         ),
         checkins: checkins.data.map(
           (c): CheckinRow => ({
@@ -203,7 +208,9 @@ export function DayPage() {
             {DateTime.fromISO(date).toFormat("cccc d LLLL yyyy")} · their time zone {zone}
           </p>
         </div>
-        {status && isToday && <StatusChip status={status} />}
+        {status && isToday && (
+          <StatusChip status={status} reason={person.data.presence?.tamper_reason} />
+        )}
         {unreviewed > 0 && <NeedsReviewBadge />}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="secondary" className="h-10" onClick={() => shift(-1)}>
@@ -245,7 +252,7 @@ export function DayPage() {
                 aria-label={
                   segs.length
                     ? `Status over the day: ${totals(segs)
-                        .map((t) => `${statusStyle[t.status].label} ${minutesText(t.minutes)}`)
+                        .map((t) => `${statusLabel(t.status, t.reason)} ${minutesText(t.minutes)}`)
                         .join(", ")}`
                     : "No activity recorded on this day"
                 }
@@ -254,7 +261,7 @@ export function DayPage() {
                 {segs.map((s) => (
                   <span
                     key={`${s.status}-${s.start}`}
-                    title={`${statusStyle[s.status].label}, ${DateTime.fromMillis(s.start, { zone: viewer }).toFormat("HH:mm")}–${DateTime.fromMillis(s.end, { zone: viewer }).toFormat("HH:mm")}`}
+                    title={`${statusLabel(s.status, s.reason)}, ${DateTime.fromMillis(s.start, { zone: viewer }).toFormat("HH:mm")}–${DateTime.fromMillis(s.end, { zone: viewer }).toFormat("HH:mm")}`}
                     className="absolute inset-y-0"
                     style={{
                       left: `${s.left}%`,
@@ -295,13 +302,13 @@ export function DayPage() {
 
             <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-ink2">
               {totals(segs).map((t) => (
-                <li key={t.status} className="flex items-center gap-2">
+                <li key={`${t.status}:${t.reason}`} className="flex items-center gap-2">
                   <span
                     aria-hidden
                     className="h-2.5 w-2.5 rounded-sm"
                     style={{ background: statusStyle[t.status].color }}
                   />
-                  {statusStyle[t.status].label} · {minutesText(t.minutes)}
+                  {statusLabel(t.status, t.reason)} · {minutesText(t.minutes)}
                 </li>
               ))}
               <li className="flex items-center gap-4 text-ink3">
