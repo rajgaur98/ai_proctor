@@ -9,9 +9,18 @@
 //! "granted" after Screen Recording is revoked (spike #13), so a capture that fails
 //! for lack of permission twice in a row counts as the permission being off until a
 //! capture works again.
+//!
+//! What counts as missing is what this person's collection needs (`Required`), the
+//! same rule the server applies (`internal.capture_needs`), so the tray, the prompt
+//! and the Tamper status agree. A person who fixes a permission and finds the warning
+//! still up has three ways out, none of them waiting for the next check-in: the OS
+//! answer going from off to on, a test capture that works (onboarding's "Fix" flow),
+//! or the permission no longer being needed.
 
 use chrono::{DateTime, Duration, Utc};
 
+use crate::activity::ActivityPolicy;
+use crate::capture::{CapturePolicy, ScreenshotMode};
 use crate::contracts::{PermissionState, Permissions, ShiftState};
 use crate::platform::{CaptureError, Platform};
 
@@ -30,11 +39,26 @@ pub fn blocks(state: &PermissionState) -> bool {
     )
 }
 
-/// What this agent needs: Screen Recording always (screenshots, window titles),
-/// the camera only while the org's webcam setting is on.
+/// What this person's collection needs from the OS (CAP-02, CAP-05, ACT-03):
+/// Screen Recording for screenshots, and for window titles (on macOS they need it
+/// too); the camera only while the webcam is on. A permission nothing uses is not
+/// missing, so it is neither asked for nor Tamper.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Required {
+    pub screen: bool,
     pub camera: bool,
+}
+
+impl Required {
+    /// From the effective policies (what the person acknowledged and the org
+    /// allows; nothing before they acknowledge a notice).
+    pub fn for_collection(capture: &CapturePolicy, activity: &ActivityPolicy) -> Self {
+        Self {
+            screen: capture.screenshots != ScreenshotMode::Off
+                || (activity.sampling && activity.window_titles),
+            camera: capture.webcam,
+        }
+    }
 }
 
 /// A notification to show.
@@ -98,6 +122,20 @@ impl PermissionMonitor {
         permissions
     }
 
+    /// What the tray warns about: `effective`, with a permission this person's
+    /// collection doesn't need shown as `Unsupported` (nothing for them to fix), so
+    /// the warning and "Capture blocked" match what the server counts as Tamper.
+    pub fn for_tray(&self, os: Permissions, required: Required) -> Permissions {
+        let mut permissions = self.effective(os);
+        if !required.screen {
+            permissions.screen = PermissionState::Unsupported;
+        }
+        if !required.camera {
+            permissions.camera = PermissionState::Unsupported;
+        }
+        permissions
+    }
+
     /// One look: what to report and whether to ask. Call every few seconds.
     /// Reports from the first look after launch, once signed in, then on changes.
     pub fn poll(
@@ -118,6 +156,14 @@ impl PermissionMonitor {
             if blocks(&before.camera) && !blocks(&os.camera) {
                 self.camera_failures = 0;
             }
+        }
+        // Nothing needs it any more (the org turned a setting off): failures from
+        // when it did must not come back with the setting.
+        if !required.screen {
+            self.screen_failures = 0;
+        }
+        if !required.camera {
+            self.camera_failures = 0;
         }
         self.last_os = Some(os.clone());
         let permissions = self.effective(os);
@@ -169,7 +215,7 @@ impl PermissionMonitor {
 
 fn missing_names(permissions: &Permissions, required: Required) -> Vec<&'static str> {
     let mut names = Vec::new();
-    if blocks(&permissions.screen) {
+    if required.screen && blocks(&permissions.screen) {
         names.push("Screen Recording");
     }
     if required.camera && blocks(&permissions.camera) {
@@ -197,7 +243,10 @@ mod tests {
     use super::*;
     use crate::fake::FakePlatform;
 
-    const NEEDS_BOTH: Required = Required { camera: true };
+    const NEEDS_BOTH: Required = Required {
+        screen: true,
+        camera: true,
+    };
 
     fn t(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
@@ -390,7 +439,10 @@ mod tests {
         fake.update(|s| s.permissions.camera = PermissionState::Denied);
         let mut m = PermissionMonitor::default();
         let now = t("2026-10-20T09:00:00Z");
-        let no_webcam = Required { camera: false };
+        let no_webcam = Required {
+            screen: true,
+            camera: false,
+        };
         assert_eq!(
             m.poll(&fake, no_webcam, true, ShiftState::Working, now)
                 .prompt,
@@ -599,5 +651,157 @@ mod tests {
         );
         assert_eq!(p.report.unwrap().screen, PermissionState::Denied);
         assert!(p.prompt.is_some());
+    }
+
+    fn collection(
+        screenshots: ScreenshotMode,
+        webcam: bool,
+        sampling: bool,
+        titles: bool,
+    ) -> Required {
+        Required::for_collection(
+            &CapturePolicy {
+                screenshots,
+                webcam,
+                ..CapturePolicy::default()
+            },
+            &ActivityPolicy {
+                sampling,
+                window_titles: titles,
+                ..ActivityPolicy::default()
+            },
+        )
+    }
+
+    #[test]
+    fn screen_recording_is_needed_for_screenshots_and_for_window_titles() {
+        use ScreenshotMode::{Blurred, Full, Off};
+        let screen = |r: Required| r.screen;
+        assert!(screen(collection(Full, false, false, false)));
+        assert!(screen(collection(Blurred, false, false, false)));
+        assert!(
+            screen(collection(Off, false, true, true)),
+            "titles need it on macOS"
+        );
+        assert!(
+            !screen(collection(Off, false, true, false)),
+            "the app name alone doesn't"
+        );
+        assert!(
+            !screen(collection(Off, false, false, true)),
+            "titles aren't read when sampling is off"
+        );
+        assert!(!screen(collection(Off, false, false, false)));
+        assert!(collection(Off, true, false, false).camera);
+        assert!(!collection(Full, false, true, true).camera);
+        assert_eq!(
+            Required::for_collection(&CapturePolicy::off(), &ActivityPolicy::off()),
+            Required {
+                screen: false,
+                camera: false
+            },
+            "nothing acknowledged yet: nothing is needed"
+        );
+    }
+
+    #[test]
+    fn a_screen_permission_nothing_uses_is_neither_asked_for_nor_warned_about() {
+        let fake = FakePlatform::default();
+        deny_screen(&fake);
+        let mut m = PermissionMonitor::default();
+        let now = t("2026-10-20T09:00:00Z");
+        let nothing = Required {
+            screen: false,
+            camera: true,
+        };
+        let p = m.poll(&fake, nothing, true, ShiftState::Working, now);
+        assert_eq!(p.prompt, None);
+        assert_eq!(
+            p.report.unwrap().screen,
+            PermissionState::Denied,
+            "the report stays raw: the server decides"
+        );
+        assert_eq!(
+            m.for_tray(fake.permissions(), nothing).screen,
+            PermissionState::Unsupported,
+            "and the tray has nothing to show"
+        );
+        assert_eq!(
+            m.for_tray(fake.permissions(), NEEDS_BOTH).screen,
+            PermissionState::Denied
+        );
+        // The setting comes back on: asked at once.
+        assert!(m
+            .poll(&fake, NEEDS_BOTH, true, ShiftState::Working, now)
+            .prompt
+            .is_some());
+    }
+
+    #[test]
+    fn failures_from_before_a_setting_was_turned_off_do_not_return_with_it() {
+        let fake = FakePlatform::default();
+        let mut m = PermissionMonitor::default();
+        let now = t("2026-10-20T09:00:00Z");
+        let failed = Some(CaptureError::PermissionMissing);
+        m.capture_finished(Some(&failed), Some(&failed));
+        m.capture_finished(Some(&failed), Some(&failed));
+        assert_eq!(
+            m.effective(fake.permissions()).camera,
+            PermissionState::Denied
+        );
+
+        let no_camera = Required {
+            screen: true,
+            camera: false,
+        };
+        m.poll(&fake, no_camera, true, ShiftState::Working, now);
+        m.poll(&fake, NEEDS_BOTH, true, ShiftState::Working, now);
+        let back = m.effective(fake.permissions());
+        assert_eq!(
+            back.camera,
+            PermissionState::Granted,
+            "the camera starts clean"
+        );
+        assert_eq!(
+            back.screen,
+            PermissionState::Denied,
+            "Screen Recording was needed throughout: still counted"
+        );
+    }
+
+    #[test]
+    fn a_stale_denied_is_cleared_by_a_capture_that_works_without_the_os_changing_its_answer() {
+        // The OS said "granted" the whole time (so the off-to-on rule never fires),
+        // two captures failed, and a test capture (the Fix flow) then works.
+        let fake = FakePlatform::default();
+        let mut m = PermissionMonitor::default();
+        let now = t("2026-10-20T09:00:00Z");
+        let failed = Some(CaptureError::PermissionMissing);
+        m.capture_finished(Some(&failed), None);
+        m.capture_finished(Some(&failed), None);
+        let p = m.poll(&fake, NEEDS_BOTH, true, ShiftState::Working, now);
+        assert_eq!(p.report.unwrap().screen, PermissionState::Denied);
+        assert!(p.prompt.is_some());
+
+        m.capture_finished(Some(&None), None);
+        let p = m.poll(
+            &fake,
+            NEEDS_BOTH,
+            true,
+            ShiftState::Working,
+            now + Duration::seconds(5),
+        );
+        assert_eq!(p.report.unwrap().screen, PermissionState::Granted);
+        assert_eq!(
+            m.for_tray(fake.permissions(), NEEDS_BOTH).screen,
+            PermissionState::Granted,
+            "the banner is gone"
+        );
+        // The next failed capture starts a fresh count.
+        m.capture_finished(Some(&failed), None);
+        assert_eq!(
+            m.effective(fake.permissions()).screen,
+            PermissionState::Granted
+        );
     }
 }

@@ -224,6 +224,38 @@ describe("buildSegments", () => {
     );
     expect(show(segments)).toEqual(["09:00-10:00 verified", "10:00-10:30 break"]);
   });
+
+  // ANT-01 / AGT-07: the Tamper periods the server records for a killed agent
+  // (agent_stopped) and a silent one (no_heartbeat) are ordinary Tamper status periods
+  // here, whatever the reason; the time is unverified (flagged, still counted, TS-02).
+  it("turns restart-gap and heartbeat-gap Tamper periods into unverified segments", () => {
+    const segments = buildSegments(
+      input({
+        clockSessions: [{ start: t("09:00"), end: t("13:00"), projectId: null }],
+        statusPeriods: [
+          { status: "active", start: t("09:00"), end: t("10:00") },
+          // Killed 10:00, back 10:05: the offline minutes inside the gap were removed.
+          { status: "tamper", start: t("10:00"), end: t("10:05") },
+          { status: "active", start: t("10:05"), end: t("11:00") },
+          // Silent 11:00 to 11:10: the offline period the sweep opened ends empty.
+          { status: "tamper", start: t("11:00"), end: t("11:10") },
+          { status: "offline", start: t("11:03"), end: t("11:03") },
+          { status: "active", start: t("11:10"), end: null },
+        ],
+      }),
+    );
+    expect(show(segments)).toEqual([
+      "09:00-10:00 verified",
+      "10:00-10:05 unverified",
+      "10:05-11:00 verified",
+      "11:00-11:10 unverified",
+      "11:10-13:00 verified",
+    ]);
+    const totals = segmentTotals(segments);
+    expect(totals.byType.unverified).toBe(15 * 60);
+    expect(totals.flagged).toBe(15 * 60);
+    expect(totals.worked).toBe(4 * 3600);
+  });
 });
 
 describe("local days (golden: midnight and DST)", () => {
