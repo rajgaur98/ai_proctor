@@ -71,16 +71,38 @@ export interface PermissionCard {
   cta: string | null;
   /** The pane name drawn in the illustration. */
   pane: string;
+  /** Optional permissions can be skipped: the flow finishes without them. */
+  optional: boolean;
+  /** One line under the name saying what the permission is for; null when obvious. */
+  note: string | null;
 }
+
+/** What each permission is called on the card and in the settings pane. */
+const permissionNames: Record<PermissionKind, string> = {
+  screen: "Screen Recording",
+  camera: "Camera",
+  accessibility: "Accessibility",
+};
 
 function card(
   kind: PermissionKind,
   platform: OnboardingPlatform,
   state: PermissionState,
 ): PermissionCard {
-  const name = kind === "screen" ? "Screen Recording" : "Camera";
+  const name = permissionNames[kind];
   const app = settingsApp(platform);
-  const base = { kind, name, on: isOn(state), status: statusLabel(state), pane: name };
+  const optional = kind === "accessibility";
+  const base = {
+    kind,
+    name,
+    on: isOn(state),
+    status: statusLabel(state),
+    pane: name,
+    optional,
+    note: optional
+      ? "Optional. Lets AI Proctor note the website’s domain (not the full address) while you use a browser. Skip it if you prefer."
+      : null,
+  };
 
   if (platform === "windows") {
     if (kind === "screen") {
@@ -116,11 +138,25 @@ function card(
   };
 }
 
-/** The cards the permission step shows: the camera only when the org's webcam setting is on. */
+/**
+ * The cards the permission step shows: the camera only when the org's webcam setting is on,
+ * and the optional Accessibility card only when browser domains are collected and the OS has
+ * that permission (the core says so with `domains`; never on Windows).
+ */
 export function permissionCards(state: OnboardingState): PermissionCard[] {
   const cards = [card("screen", state.platform, state.permissions.screen)];
   if (state.webcam) cards.push(card("camera", state.platform, state.permissions.camera));
+  if (state.domains && state.platform === "macos") {
+    cards.push(card("accessibility", state.platform, state.accessibility));
+  }
   return cards;
+}
+
+/** The heading: counts only the permissions the flow needs, not the optional ones. */
+export function permissionsHeading(cards: PermissionCard[]): string {
+  return cards.filter((c) => !c.optional).length > 1
+    ? "Allow two permissions"
+    : "Allow a permission";
 }
 
 /** Continue is enabled once what the core requires is on. */

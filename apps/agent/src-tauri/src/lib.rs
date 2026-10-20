@@ -31,7 +31,7 @@ use agent_core::onboarding::{
     self, FileOnboardingStore, MemoryOnboardingStore, Onboarding, OnboardingStore,
 };
 use agent_core::outbox::{Outbox, OutboxError, UPLOAD_MAX_BYTES};
-use agent_core::permissions::{PermissionMonitor, Required};
+use agent_core::permissions::{self, PermissionMonitor, Required};
 use agent_core::platform::{Platform, ScreenRect, SessionState};
 use agent_core::presence::PresenceTracker;
 use agent_core::scheduler::{
@@ -316,6 +316,7 @@ impl AgentState {
                 }),
             notice,
             permissions: Some(self.effective_permissions()),
+            accessibility_missing: self.accessibility_missing(),
         };
         agent_core::status::agent_status(
             self.platform.as_ref(),
@@ -525,6 +526,21 @@ impl AgentState {
         self.capture_policy.lock().unwrap().webcam
     }
 
+    /// Whether browser domains are collected: activity sampling is on (ACT-01/03), which
+    /// it isn't before a notice is acknowledged or while signed out.
+    fn domains_collected(&self) -> bool {
+        self.activity.lock().unwrap().sampling()
+    }
+
+    /// The tray's Accessibility banner (#169): domains are collected but the optional
+    /// Accessibility permission is off. Never on Windows, which has none.
+    fn accessibility_missing(&self) -> bool {
+        permissions::accessibility_missing(
+            self.domains_collected(),
+            self.platform.accessibility_permission(),
+        )
+    }
+
     // --- Guided onboarding (#59; AGT-03) ---------------------------------------------
 
     /// What the onboarding window's permission and finish steps show.
@@ -533,6 +549,8 @@ impl AgentState {
             current_os(),
             self.effective_permissions(),
             self.webcam_on(),
+            self.platform.accessibility_permission(),
+            self.domains_collected(),
             &self.onboarding.lock().unwrap(),
         )
     }
@@ -1283,7 +1301,7 @@ async fn set_miss_reason(
 }
 
 /// The OS settings page to fix a permission, or `None` for a target with none on this
-/// OS (Windows needs no Screen Recording permission).
+/// OS (Windows needs no Screen Recording or Accessibility permission).
 fn settings_url(target: &str, windows: bool) -> Option<&'static str> {
     match (target, windows) {
         ("screen_settings", false) => {
@@ -1291,6 +1309,9 @@ fn settings_url(target: &str, windows: bool) -> Option<&'static str> {
         }
         ("camera_settings", false) => {
             Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")
+        }
+        ("accessibility_settings", false) => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         }
         ("camera_settings", true) => Some("ms-settings:privacy-webcam"),
         _ => None,
@@ -1346,6 +1367,7 @@ async fn request_permission(app: AppHandle, kind: PermissionKind) -> CommandResu
         let target = match kind {
             PermissionKind::Screen => "screen_settings",
             PermissionKind::Camera => "camera_settings",
+            PermissionKind::Accessibility => "accessibility_settings",
         };
         match settings_url(target, cfg!(target_os = "windows")) {
             Some(url) => open_url(url),
@@ -1629,8 +1651,8 @@ pub fn run() {
                 }
             };
             let clock: Arc<dyn Clock> = Arc::new(SystemClock::default());
-            // Debug builds only. Screen Recording and Camera come from the onboarding
-            // flow; Accessibility (browser domains, #25) isn't part of it.
+            // Debug builds only. The permissions come from the onboarding flow (Accessibility,
+            // browser domains, is its optional card, #169); this asks at launch for a dev run.
             #[cfg(debug_assertions)]
             if std::env::var("AI_PROCTOR_DEV_REQUEST_PERMISSIONS").as_deref() == Ok("1") {
                 agent_platform::request_accessibility();
@@ -3594,10 +3616,105 @@ mod tests {
         let w = working();
         w.state.ask_permission(PermissionKind::Screen);
         w.state.ask_permission(PermissionKind::Camera);
+        w.state.ask_permission(PermissionKind::Accessibility);
         assert_eq!(
             w.platform.snapshot().permission_requests,
-            [PermissionKind::Screen, PermissionKind::Camera]
+            [
+                PermissionKind::Screen,
+                PermissionKind::Camera,
+                PermissionKind::Accessibility
+            ]
         );
+    }
+
+    // --- Optional Accessibility for browser domains (#169; AGT-03, ACT-01) -------------
+
+    #[test]
+    fn the_accessibility_card_shows_only_while_domains_are_collected() {
+        let w = working();
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+
+        let on = w.state.onboarding_state();
+        assert!(on.domains, "activity sampling is on");
+        assert_eq!(on.accessibility, PermissionState::Denied);
+
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "activity_sampling": false })),
+        );
+        assert!(
+            !w.state.onboarding_state().domains,
+            "the org turned domains off: nothing to ask"
+        );
+    }
+
+    #[test]
+    fn onboarding_finishes_without_accessibility() {
+        let w = working();
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+        let state = w.state.onboarding_state();
+        assert!(state.domains && state.ready, "optional: it never gates");
+        w.state.finish_onboarding().unwrap();
+        assert!(w.state.onboarding_state().completed);
+    }
+
+    #[test]
+    fn the_tray_banner_needs_domains_on_and_accessibility_off() {
+        let w = working();
+        assert!(
+            !w.state.status().accessibility_missing,
+            "granted: no banner"
+        );
+
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+        assert!(w.state.status().accessibility_missing);
+
+        apply_policy(
+            &w,
+            collection(serde_json::json!({ "activity_sampling": false })),
+        );
+        assert!(
+            !w.state.status().accessibility_missing,
+            "domains off by policy: no banner"
+        );
+
+        apply_policy(&w, collection(serde_json::json!({})));
+        assert!(w.state.status().accessibility_missing, "domains back on");
+    }
+
+    #[test]
+    fn windows_has_no_accessibility_step_or_banner() {
+        let w = working();
+        // What the Windows platform reports: nothing to ask for.
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Unsupported);
+        let state = w.state.onboarding_state();
+        assert!(!state.domains && state.ready);
+        assert!(!w.state.status().accessibility_missing);
+    }
+
+    #[test]
+    fn a_missing_accessibility_is_not_a_capture_permission_problem() {
+        let w = working();
+        w.platform
+            .update(|s| s.accessibility = PermissionState::Denied);
+        let status = w.state.status();
+        assert_eq!(status.permissions.screen, PermissionState::Granted);
+        assert_eq!(status.permissions.camera, PermissionState::Granted);
+        w.state.permission_tick();
+        assert!(
+            w.platform.snapshot().notifications.is_empty(),
+            "no notification nags about an optional permission"
+        );
+        let payloads = w.events("permission_change");
+        assert!(payloads.iter().all(|p| p
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|k| k == "screen" || k == "camera")));
     }
 
     #[test]
@@ -3742,6 +3859,15 @@ mod tests {
         assert_eq!(
             settings_url("camera_settings", true),
             Some("ms-settings:privacy-webcam")
+        );
+        assert_eq!(
+            settings_url("accessibility_settings", false),
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        );
+        assert_eq!(
+            settings_url("accessibility_settings", true),
+            None,
+            "Windows has no Accessibility permission"
         );
         assert_eq!(
             settings_url("screen_settings", true),

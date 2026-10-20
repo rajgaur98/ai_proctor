@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::contracts::{PermissionKind, Permissions};
+use crate::contracts::{PermissionKind, PermissionState, Permissions};
 use crate::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 
 /// Whether the user's session is usable right now.
@@ -129,9 +129,15 @@ pub trait Platform: Send + Sync {
     fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError>;
     /// Current Screen Recording / Camera permission. Must never show a prompt.
     fn permissions(&self) -> Permissions;
+    /// Accessibility (macOS; reading the browser's domain, #114), kept apart from
+    /// `permissions()`: it is optional, so it is never reported as a permission change
+    /// (the server would read that as Tamper). `Unsupported` where the OS has no such
+    /// permission (Windows). Must never show a prompt.
+    fn accessibility_permission(&self) -> PermissionState;
     /// Asks the OS for a permission, showing its own prompt where it has one (macOS
-    /// Screen Recording and Camera, onboarding #59). Returns without waiting for the
-    /// answer; `permissions()` reports it. A no-op where there is nothing to ask.
+    /// Screen Recording, Camera and Accessibility, onboarding #59, #169). Returns
+    /// without waiting for the answer; `permissions()` and `accessibility_permission()`
+    /// report it. A no-op where there is nothing to ask.
     fn request_permission(&self, kind: PermissionKind);
     /// Starts watching for injected mouse clicks inside `area` (the card window)
     /// and swallowing them, so they never reach the card (ANT-02). Called when the

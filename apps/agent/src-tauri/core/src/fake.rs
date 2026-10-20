@@ -26,6 +26,8 @@ pub struct FakeState {
     pub screen_share: Option<ScreenShare>,
     pub foreground: Option<Foreground>,
     pub permissions: Permissions,
+    /// macOS Accessibility (browser domains); `Unsupported` stands for Windows.
+    pub accessibility: PermissionState,
     /// The permissions `request_permission` was called for, in order.
     pub permission_requests: Vec<PermissionKind>,
     pub displays: u32,
@@ -61,6 +63,7 @@ impl Default for FakeState {
                 screen: PermissionState::Granted,
                 camera: PermissionState::Granted,
             },
+            accessibility: PermissionState::Granted,
             permission_requests: Vec::new(),
             displays: 1,
             screen: Ok(()),
@@ -169,6 +172,10 @@ impl Platform for FakePlatform {
 
     fn permissions(&self) -> Permissions {
         self.state.lock().unwrap().permissions.clone()
+    }
+
+    fn accessibility_permission(&self) -> PermissionState {
+        self.state.lock().unwrap().accessibility
     }
 
     fn request_permission(&self, kind: PermissionKind) {

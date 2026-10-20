@@ -240,6 +240,12 @@ impl Platform for WindowsPlatform {
         }
     }
 
+    /// Windows has no Accessibility permission to ask for: reading the browser's domain
+    /// through UI Automation needs none.
+    fn accessibility_permission(&self) -> PermissionState {
+        PermissionState::Unsupported
+    }
+
     /// Windows has no prompt to trigger: the person turns the camera switches on in
     /// Settings (`ms-settings:privacy-webcam`, opened by the onboarding window).
     fn request_permission(&self, _kind: PermissionKind) {}

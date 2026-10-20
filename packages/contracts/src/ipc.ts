@@ -87,11 +87,22 @@ export const AgentStatus = z
     missed_checkin: MissedCheckin.nullable(),
     /** The monitoring notice; null before the first config from the server. */
     notice: NoticeStatus.nullable(),
+    /**
+     * Browser domains are collected here (activity sampling is on) but macOS Accessibility is
+     * off, so the tray offers Fix. Optional permission: never Capture blocked, never Tamper.
+     * Always false on Windows, which has no such permission.
+     */
+    accessibility_missing: z.boolean(),
   })
   .meta({ id: "AgentStatus" });
 
-/** The two permissions the onboarding flow asks for (AGT-03). */
-export const PermissionKind = z.enum(["screen", "camera"]).meta({ id: "PermissionKind" });
+/**
+ * The permissions the onboarding flow asks for (AGT-03). Accessibility (macOS, browser domains)
+ * is optional: the flow finishes without it.
+ */
+export const PermissionKind = z
+  .enum(["screen", "camera", "accessibility"])
+  .meta({ id: "PermissionKind" });
 
 export const OnboardingPlatform = z
   .enum(["macos", "windows", "other"])
@@ -107,6 +118,13 @@ export const OnboardingState = z
     permissions: Permissions,
     /** The org's webcam setting; when off, the Camera card is skipped. */
     webcam: z.boolean(),
+    /** Accessibility as the OS reports it. Optional: it never gates `ready`. */
+    accessibility: PermissionState,
+    /**
+     * Browser domains are collected (activity sampling is on) and the OS has an Accessibility
+     * permission: the optional Accessibility card shows. False on Windows.
+     */
+    domains: z.boolean(),
     ready: z.boolean(),
     /** The OS says Screen Recording is on but a capture still failed: reopen the app. */
     restart_needed: z.boolean(),
@@ -203,7 +221,15 @@ export const ipcCommands = {
   },
   /** Opens My data, the monitoring notice, or the macOS privacy settings to fix a permission. */
   open_link: {
-    args: z.object({ target: z.enum(["my_data", "notice", "screen_settings", "camera_settings"]) }),
+    args: z.object({
+      target: z.enum([
+        "my_data",
+        "notice",
+        "screen_settings",
+        "camera_settings",
+        "accessibility_settings",
+      ]),
+    }),
     result: CommandResult,
   },
   /** The notice window's content: the current notice, or null before the server has sent one. */
