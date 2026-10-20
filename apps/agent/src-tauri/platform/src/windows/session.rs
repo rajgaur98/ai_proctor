@@ -1,18 +1,21 @@
-//! Idle time, lock and sleep (ACT-01). Idle is `GetLastInputInfo`. Lock and sleep
-//! come from a hidden window on its own thread that receives
-//! `WM_WTSSESSION_CHANGE` (session lock/unlock) and `WM_POWERBROADCAST` (suspend/
-//! resume), the Windows counterpart of the macOS workspace observers. If that
-//! window can't be created, the lock state is read from the session each time and
-//! sleep is not reported.
+//! Idle time, lock, sleep and session end (ACT-01, ANT-01). Idle is
+//! `GetLastInputInfo`. Lock and sleep come from a hidden window on its own thread
+//! that receives `WM_WTSSESSION_CHANGE` (session lock/unlock/logoff) and
+//! `WM_POWERBROADCAST` (suspend/resume), the Windows counterpart of the macOS
+//! workspace observers. The same window gets `WM_ENDSESSION` when a logoff, restart
+//! or shutdown is going ahead (#159). If that window can't be created, the lock
+//! state is read from the session each time, and sleep and session end are not
+//! reported.
 
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
-use agent_core::platform::SessionState;
+use agent_core::platform::{SessionEndHandler, SessionState};
 use agent_core::session_signals::{
-    idle_seconds, power_event, session_event, session_flags_locked, SessionEvent, SessionFlags,
+    ends_session, idle_seconds, power_event, session_event, session_flags_locked, session_logoff,
+    SessionEvent, SessionFlags,
 };
 use windows::core::{w, PWSTR};
 use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, WPARAM};
@@ -26,8 +29,8 @@ use windows::Win32::System::SystemInformation::GetTickCount;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
-    TranslateMessage, DEVICE_NOTIFY_WINDOW_HANDLE, MSG, WM_POWERBROADCAST, WM_WTSSESSION_CHANGE,
-    WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
+    TranslateMessage, DEVICE_NOTIFY_WINDOW_HANDLE, MSG, WM_ENDSESSION, WM_POWERBROADCAST,
+    WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
 };
 
 /// What the notifications have said so far.
@@ -35,6 +38,8 @@ static FLAGS: Mutex<SessionFlags> = Mutex::new(SessionFlags {
     asleep: false,
     locked: false,
 });
+/// What to call when the session is ending (#159).
+static END_HANDLER: Mutex<Option<SessionEndHandler>> = Mutex::new(None);
 /// True once the notification window is up and `FLAGS` can be trusted.
 static LISTENING: AtomicBool = AtomicBool::new(false);
 /// The window thread is started at most once (the window class can be registered
@@ -86,6 +91,22 @@ pub fn start_listener() -> bool {
     up
 }
 
+/// Registers the handler for the end of the session. It runs on the window thread,
+/// inside the message: Windows may end the process as soon as that returns.
+pub fn set_end_handler(handler: SessionEndHandler) {
+    if let Ok(mut held) = END_HANDLER.lock() {
+        *held = Some(handler);
+    }
+}
+
+fn session_ending() {
+    tracing::info!("the session is ending (logoff, restart or shutdown)");
+    let handler = END_HANDLER.lock().ok().and_then(|h| h.clone());
+    if let Some(handler) = handler {
+        handler();
+    }
+}
+
 fn record(event: SessionEvent) {
     if let Ok(mut flags) = FLAGS.lock() {
         *flags = flags.apply(event);
@@ -106,6 +127,16 @@ unsafe extern "system" fn window_proc(
     };
     if let Some(event) = event {
         record(event);
+    }
+    // `WM_QUERYENDSESSION` is left to the default answer (yes): refusing would stall
+    // the logout. `WM_ENDSESSION` follows once nobody has vetoed it.
+    let ending = match msg {
+        WM_ENDSESSION => ends_session(wparam.0, lparam.0 as usize),
+        WM_WTSSESSION_CHANGE => session_logoff(wparam.0),
+        _ => false,
+    };
+    if ending {
+        session_ending();
     }
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }

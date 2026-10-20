@@ -8,6 +8,7 @@ import { DateTime } from "luxon";
 
 export type Status = Enums<"presence_status">;
 export type Outcome = Enums<"checkin_outcome">;
+export type TamperReason = Enums<"tamper_reason">;
 
 /** Why a due check-in was held back (CHK-03); the database stores it as text. */
 export const deferralLabel: Record<string, string> = {
@@ -18,6 +19,8 @@ export const deferralLabel: Record<string, string> = {
 
 export interface Period {
   status: Status;
+  /** Only on a Tamper period. */
+  reason?: TamperReason | null;
   start: string;
   end: string | null;
 }
@@ -38,6 +41,7 @@ export interface Span {
 
 export interface Segment {
   status: Status;
+  reason: TamperReason | null;
   start: number;
   end: number;
   /** Position on the bar, 0–100. */
@@ -91,7 +95,7 @@ export function segments(span: Span, periods: Period[], now: number): Segment[] 
     .map((p) => {
       const start = Math.max(Date.parse(p.start), span.start);
       const end = Math.min(p.end ? Date.parse(p.end) : now, span.end);
-      return { status: p.status, start, end };
+      return { status: p.status, reason: p.reason ?? null, start, end };
     })
     .filter((s) => s.end > s.start)
     .map((s) => ({
@@ -109,12 +113,19 @@ export function markerLeft(span: Span, c: Checkin): number | null {
   return ((t - span.start) / (span.end - span.start)) * 100;
 }
 
-/** Minutes per status within the span, largest first. */
-export function totals(segs: Segment[]): { status: Status; minutes: number }[] {
-  const by = new Map<Status, number>();
-  for (const s of segs) by.set(s.status, (by.get(s.status) ?? 0) + (s.end - s.start) / 60_000);
-  return [...by.entries()]
-    .map(([status, minutes]) => ({ status, minutes: Math.round(minutes) }))
+/** Minutes per status within the span, largest first. Tamper is split by reason. */
+export function totals(
+  segs: Segment[],
+): { status: Status; reason: TamperReason | null; minutes: number }[] {
+  const by = new Map<string, { status: Status; reason: TamperReason | null; ms: number }>();
+  for (const s of segs) {
+    const key = `${s.status}:${s.reason ?? ""}`;
+    const t = by.get(key) ?? { status: s.status, reason: s.reason, ms: 0 };
+    t.ms += s.end - s.start;
+    by.set(key, t);
+  }
+  return [...by.values()]
+    .map(({ status, reason, ms }) => ({ status, reason, minutes: Math.round(ms / 60_000) }))
     .sort((a, b) => b.minutes - a.minutes);
 }
 

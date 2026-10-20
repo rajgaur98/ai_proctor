@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(74);
+select plan(106);
 
 \set ada '''00000000-0000-4000-8000-0000000000a1'''
 \set max '''00000000-0000-4000-8000-0000000000b1'''
@@ -68,6 +68,10 @@ insert into public.time_segments (org_id, user_id, day, start_at, end_at, type, 
 values
   (:org, :erin, '2026-03-17', '2026-03-17 09:00:00-07', '2026-03-17 12:00:00-07', 'verified', true, false),
   (:org, :ada, '2026-03-17', '2026-03-17 09:00:00-04', '2026-03-17 12:00:00-04', 'verified', true, false);
+
+-- The seed gives Erin and Lucas shifts; the scenarios below are for people without them (the
+-- fallback: the last day of the week). The shift scenarios have their own section.
+delete from public.shifts;
 
 -- Priya is a second admin, in India (+05:30).
 insert into auth.users (id, email) values (:priya, 'priya@acme.test');
@@ -327,6 +331,126 @@ select internal.reminders_eval('2026-03-23 03:30:00+00');
 select is(pg_temp.sent('escalation', :priya), 0, 'escalation: not to the employee themselves');
 select is(pg_temp.sent('escalation', :ada, :priya), 1, 'escalation: but the other admins are');
 select is(pg_temp.sent('approval', :ada, :priya), 1, 'approval: Priya''s manager is Ada, who is reminded');
+
+-- Shifts: the submit reminder on the last shift day -----------------------------------------------
+-- Week of Monday 16 March 2026. Erin: Los Angeles (PDT, -07). Lucas: Chicago (CDT, -05).
+
+-- Weekday 9-to-5: the last shift day is Friday 20th, one hour before the end, 16:00 PDT = 23:00 UTC.
+select pg_temp.reset();
+insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone)
+values (:org, :erin, '{1,2,3,4,5}', '09:00', '17:00', 'America/Los_Angeles');
+select is(internal.submit_reminder_due(:erin, '2026-03-16', 'America/Los_Angeles'), '2026-03-20 23:00:00+00'::timestamptz,
+  'shifts: due one hour before the end of the last shift, on the last shift day');
+select internal.reminders_eval('2026-03-20 22:59:00+00');
+select is(pg_temp.sent('submit', :erin), 0, 'shifts: nothing before that on Friday');
+select internal.reminders_eval('2026-03-20 23:00:00+00');
+select is(pg_temp.sent('submit', :erin), 1, 'shifts: Erin is reminded on Friday, not on Sunday');
+select is(pg_temp.mails('erin@acme.test', 'reminder_submit'), 1, 'shifts: by email');
+select internal.reminders_eval('2026-03-22 23:00:00+00');
+select is(pg_temp.sent('submit', :erin), 1, 'shifts: and not again on the last calendar day');
+select pg_temp.reset();
+select internal.reminders_eval('2026-03-22 23:00:00+00');
+select is(pg_temp.sent('submit', :erin), 0, 'shifts: 24 hours after the due time the Sunday run finds nothing to send');
+
+-- Only the shifts of the person count, and only their days: Monday and Tuesday.
+update public.shifts set days = '{1,2}';
+select is(internal.submit_reminder_due(:erin, '2026-03-16', 'America/Los_Angeles'), '2026-03-17 23:00:00+00'::timestamptz,
+  'shifts: Monday and Tuesday shifts are due on Tuesday');
+select pg_temp.reset();
+select internal.reminders_eval('2026-03-17 23:00:00+00');
+select is(pg_temp.sent('submit', :erin), 1, 'shifts: so the reminder goes out on the Tuesday');
+select is(internal.submit_reminder_due(:lucas, '2026-03-16', 'America/Chicago'), '2026-03-22 21:00:00+00'::timestamptz,
+  'shifts: a person with no shifts is due on the last day of the week at 16:00 local (Chicago)');
+
+-- A weekend day is the last day when the shift runs on it (Saturday).
+update public.shifts set days = '{1,6}';
+select is(internal.submit_reminder_due(:erin, '2026-03-16', 'America/Los_Angeles'), '2026-03-21 23:00:00+00'::timestamptz,
+  'shifts: a Saturday shift makes Saturday the last shift day');
+
+-- The latest-ending shift of the last day decides.
+delete from public.shifts;
+insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone)
+values (:org, :erin, '{1,2,3,4,5}', '09:00', '13:00', 'America/Los_Angeles'),
+       (:org, :erin, '{5}', '14:00', '18:00', 'America/Los_Angeles');
+select is(internal.submit_reminder_due(:erin, '2026-03-16', 'America/Los_Angeles'), '2026-03-21 00:00:00+00'::timestamptz,
+  'shifts: with two shifts on the last day, one hour before the later one ends (17:00 PDT)');
+select pg_temp.reset();
+select internal.reminders_eval('2026-03-20 23:59:00+00');
+select is(pg_temp.sent('submit', :erin), 0, 'shifts: not at the end of the first shift');
+select internal.reminders_eval('2026-03-21 00:00:00+00');
+select is(pg_temp.sent('submit', :erin), 1, 'shifts: an hour before the second one ends');
+
+-- An early shift: due 11:00 local, inside the day window.
+delete from public.shifts;
+insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone)
+values (:org, :erin, '{1,2,3,4,5}', '08:00', '12:00', 'America/Los_Angeles');
+select is(internal.submit_reminder_due(:erin, '2026-03-16', 'America/Los_Angeles'), '2026-03-20 18:00:00+00'::timestamptz,
+  'shifts: a morning shift ending 12:00 is due at 11:00 local');
+
+-- A late shift would be due at night: it waits for 09:00 the next morning, as approval reminders do.
+delete from public.shifts;
+insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone)
+values (:org, :erin, '{1,2,3,4,5}', '12:00', '20:00', 'America/Los_Angeles');
+select is(internal.submit_reminder_due(:erin, '2026-03-16', 'America/Los_Angeles'), '2026-03-21 16:00:00+00'::timestamptz,
+  'shifts: due 19:00 local, so it waits for 09:00 on Saturday');
+select pg_temp.reset();
+select internal.reminders_eval('2026-03-21 15:59:00+00');
+select is(pg_temp.sent('submit', :erin), 0, 'shifts: nothing in the evening');
+select internal.reminders_eval('2026-03-21 16:00:00+00');
+select is(pg_temp.sent('submit', :erin), 1, 'shifts: sent at 09:00 the next morning, found through the previous week');
+
+-- A night shift belongs to the day it starts on: Thursday 22:00 to Friday 06:00 Chicago time.
+-- Due Friday 05:00 CDT, so it goes out at 09:00 CDT = 14:00 UTC. Lucas needs time that week.
+delete from public.shifts;
+insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone)
+values (:org, :lucas, '{1,2,3,4}', '22:00', '06:00', 'America/Chicago');
+select is(internal.submit_reminder_due(:lucas, '2026-03-16', 'America/Chicago'), '2026-03-20 14:00:00+00'::timestamptz,
+  'shifts: a night shift ending Friday 06:00 is due on Friday morning');
+insert into public.time_segments (org_id, user_id, day, start_at, end_at, type, counted, flagged)
+values (:org, :lucas, '2026-03-18', '2026-03-18 09:00:00-05', '2026-03-18 10:00:00-05', 'verified', true, false);
+select pg_temp.reset();
+select internal.reminders_eval('2026-03-20 13:59:00+00');
+select is(pg_temp.sent('submit', :lucas), 0, 'shifts: not before 09:00 on Friday');
+select internal.reminders_eval('2026-03-20 14:00:00+00');
+select is(pg_temp.sent('submit', :lucas), 1, 'shifts: the night shift worker is reminded on Friday morning');
+delete from public.time_segments where user_id = :lucas;
+
+-- The shift's own zone gives the instant: a Friday 09:00-17:00 shift in New York ends 21:00 UTC.
+delete from public.shifts;
+insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone)
+values (:org, :erin, '{5}', '09:00', '17:00', 'America/New_York');
+select is(internal.submit_reminder_due(:erin, '2026-03-16', 'America/Los_Angeles'), '2026-03-20 20:00:00+00'::timestamptz,
+  'shifts: the shift''s time zone decides when it ends (13:00 PDT for 16:00 New York)');
+delete from public.shifts;
+
+-- The reminders switch ------------------------------------------------------------------------------
+-- reminders_enabled false: nothing is queued, of any kind. Erin's week is submitted (approval and
+-- escalation due) and Ada, with no shifts and time, is due her submit reminder on Sunday.
+
+select pg_temp.reset();
+select pg_temp.sheet('submitted', '2026-03-17 15:00:00+00');
+update public.orgs set policy = '{"reminders_enabled": false}' where id = :org;
+select is(internal.reminders_eval('2026-03-22 20:00:00+00'), 0, 'switch: off, no submit reminder');
+select is(internal.reminders_eval('2026-03-19 15:00:00+00'), 0, 'switch: off, no approval reminder');
+select is(internal.reminders_eval('2026-03-23 03:30:00+00'), 0, 'switch: off, no escalation');
+select is((select count(*)::int from public.reminders_sent) + (select count(*)::int from public.email_outbox)
+          + (select count(*)::int from public.notifications), 0, 'switch: off, no reminder row, mail or notification');
+select is(internal.reminders_enabled(:org), false, 'switch: reminders_enabled reads the org policy');
+
+update public.orgs set policy = '{"reminders_enabled": true}' where id = :org;
+select internal.reminders_eval('2026-03-23 03:30:00+00');
+select is(pg_temp.sent('submit', :ada), 1, 'switch: on again, the submit reminder goes out (the window is 24 hours)');
+select is(pg_temp.sent('approval', :max), 1, 'switch: on again, so does the approval reminder');
+select is(pg_temp.sent('escalation', :ada), 1, 'switch: and the escalation');
+update public.orgs set policy = '{}' where id = :org;
+select is(internal.reminders_enabled(:org), true, 'switch: an org that has not stored the key sends reminders');
+
+-- Only the org that switched them off is silent.
+select pg_temp.reset();
+insert into public.orgs (id, name, policy)
+values ('00000000-0000-4000-8000-000000000099', 'Other Co', '{"reminders_enabled": false}');
+select is(internal.reminders_enabled('00000000-0000-4000-8000-000000000099'), false, 'switch: it is per org');
+select is(internal.reminders_enabled(:org), true, 'switch: another org is not affected');
 
 -- Closed to the API roles ------------------------------------------------------------------------
 

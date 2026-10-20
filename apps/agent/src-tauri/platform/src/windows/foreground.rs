@@ -10,7 +10,7 @@ use std::time::Duration;
 use agent_core::displays::{covers, display_of_window, display_order, Rect};
 use agent_core::foreground::{
     app_name, browser_kind, clean_title, domain_of_address, is_sharing_title, is_slide_show,
-    BrowserKind, CHROMIUM_OMNIBOX_CLASS, FIREFOX_URLBAR_ID,
+    is_uwp_frame_host, uwp_app_pid, BrowserKind, CHROMIUM_OMNIBOX_CLASS, FIREFOX_URLBAR_ID,
 };
 use agent_core::platform::{Foreground, ScreenShare};
 use windows::core::{BOOL, PWSTR};
@@ -27,8 +27,8 @@ use windows::Win32::UI::Accessibility::{
 };
 use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_PRESENTATION_MODE};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetForegroundWindow, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindowRect,
+    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
 };
 
 use super::com::Apartment;
@@ -116,6 +116,41 @@ fn display_index(hwnd: HWND) -> Option<u32> {
     display_of_window(&rect, &displays()).map(|i| i as u32 + 1)
 }
 
+unsafe extern "system" fn collect_child_pid(hwnd: HWND, data: LPARAM) -> BOOL {
+    let pids = unsafe { &mut *(data.0 as *mut Vec<u32>) };
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    pids.push(pid);
+    BOOL(1)
+}
+
+/// The executable's path for a window of `pid`. Store (UWP) apps are drawn inside a
+/// frame window that belongs to `ApplicationFrameHost.exe`; their own window is a
+/// child of that frame in the app's process. Without this every UWP app (Calculator,
+/// Mail, Teams from the store, ...) would be reported as the host, and an excluded
+/// app could never match one. The frame's own path is the answer when no child in
+/// another process is found (the app is suspended or still starting) or it can't be
+/// read.
+fn app_image_path(hwnd: HWND, pid: u32) -> Option<String> {
+    let frame_path = image_path(pid)?;
+    if !app_name(&frame_path).is_some_and(|app| is_uwp_frame_host(&app)) {
+        return Some(frame_path);
+    }
+    let mut pids: Vec<u32> = Vec::new();
+    let _ = unsafe {
+        EnumChildWindows(
+            Some(hwnd),
+            Some(collect_child_pid),
+            LPARAM(&mut pids as *mut Vec<u32> as isize),
+        )
+    };
+    Some(
+        uwp_app_pid(pid, pids)
+            .and_then(image_path)
+            .unwrap_or(frame_path),
+    )
+}
+
 /// The frontmost window's app, title and, for browsers, the page's domain. `None`
 /// when nothing is in front (locked, desktop transitions) or the process can't be
 /// read.
@@ -126,7 +161,7 @@ pub fn foreground() -> Option<Foreground> {
     }
     let mut pid = 0u32;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-    let app = app_name(&image_path(pid)?)?;
+    let app = app_name(&app_image_path(hwnd, pid)?)?;
     let title = clean_title(&window_text(hwnd));
     let domain = browser_kind(&app).and_then(|kind| browser_domain(hwnd, kind));
     // The display, in screenshot order, so an excluded app blanks only its own
