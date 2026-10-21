@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(48);
+select plan(49);
 
 \set ada '''00000000-0000-4000-8000-0000000000a1'''
 \set max '''00000000-0000-4000-8000-0000000000b1'''
@@ -225,16 +225,29 @@ select is(pg_temp.metric(:lucas, 'late_clock_ins'), '1', 'late: a night shift cr
 select is(pg_temp.metric(:erin, 'late_clock_ins', '2026-03-17', '2026-03-22'), '0', 'late: only occurrences in the range count');
 select is((public.report_rows('2026-03-16', '2026-03-22') ->> 'late_grace_min'), '15', 'the default grace is 15 minutes');
 
+-- The count is read from late_clock_ins (recorded when the session arrived, #238): editing
+-- the shift afterwards does not rewrite it.
 select pg_temp.act_as_postgres();
+update public.shifts set start_time = '12:00', end_time = '20:00', days = '{6,7}'
+where user_id = :erin;
+select pg_temp.act_as(:max);
+select is(pg_temp.metric(:erin, 'late_clock_ins'), '1',
+  'late: editing the shift after the clock-in does not change the report''s count');
+select pg_temp.act_as_postgres();
+update public.shifts set start_time = '09:00', end_time = '17:00', days = '{1,2,3,4,5}'
+where user_id = :erin;
+
+-- Nor does a policy change: the grace that applied at the time is the one recorded.
+-- late_grace_min is the current setting, for the label only.
 update public.orgs set policy = policy || '{"late_clock_in_min": 30}' where id = :org;
 select pg_temp.act_as(:max);
-select is(pg_temp.metric(:erin, 'late_clock_ins') || '/' || pg_temp.metric(:lucas, 'late_clock_ins'), '0/0',
-  'policy: a 30 minute grace makes 09:20 and 22:30 (exactly 30) on time');
+select is(pg_temp.metric(:erin, 'late_clock_ins') || '/' || pg_temp.metric(:lucas, 'late_clock_ins'), '1/1',
+  'policy: a later 30 minute grace does not rewrite recorded late clock-ins');
+select is((public.report_rows('2026-03-16', '2026-03-22') ->> 'late_grace_min'), '30', 'but the report says the current grace');
 select pg_temp.act_as_postgres();
 update public.orgs set policy = policy || '{"late_clock_in_min": 1}' where id = :org;
 select pg_temp.act_as(:max);
-select is(pg_temp.metric(:erin, 'late_clock_ins'), '3', 'policy: a grace below 5 minutes counts as 5 (Mon 09:20, Tue 09:10, Wed 09:15)');
-select is((public.report_rows('2026-03-16', '2026-03-22') ->> 'late_grace_min'), '5', 'and says so');
+select is((public.report_rows('2026-03-16', '2026-03-22') ->> 'late_grace_min'), '5', 'a grace below 5 minutes reads as 5');
 
 -- Invalid requests ---------------------------------------------------------------------------------
 
