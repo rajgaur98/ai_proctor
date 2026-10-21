@@ -14,15 +14,17 @@ body {
   user-select: none;
   cursor: default;
 }
+/* CHK-15: each card sets these within the design's limits (CardLook); the values here
+   are the design's own, for a card that hasn't said. */
 .card {
   box-sizing: border-box;
   height: 100vh;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 18px;
+  padding: var(--card-padding, 16px) calc(var(--card-padding, 16px) + 2px);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--card-radius, 12px);
 }
 .card.done {
   justify-content: center;
@@ -46,18 +48,18 @@ footer {
 }
 .options {
   display: flex;
-  gap: 12px;
+  gap: var(--card-gap, 12px);
 }
 .options button {
   flex: 1;
-  height: 56px;
+  height: var(--button-height, 56px);
   font: inherit;
-  font-size: 24px;
+  font-size: var(--digit-size, 24px);
   font-weight: 600;
   color: var(--acc);
-  background: var(--bg);
+  background: var(--button-fill, var(--bg));
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: calc(var(--card-radius, 12px) - 2px);
   outline: none;
   cursor: pointer;
 }

@@ -11,10 +11,12 @@ use agent_core::pixels::{
     bgra_to_rgba_scaled, fit_width, flip_rows, mean_luma_bgra, webcam_frame_ready,
 };
 use agent_core::platform::{CaptureError, Frame};
+use windows::core::PWSTR;
 use windows::Win32::Media::MediaFoundation::{
     IMFActivate, IMFAttributes, IMFMediaSource, IMFSourceReader, MFCreateAttributes,
     MFCreateMediaType, MFCreateSourceReaderFromMediaSource, MFEnumDeviceSources, MFMediaType_Video,
-    MFShutdown, MFStartup, MFVideoFormat_RGB32, MFSTARTUP_FULL, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+    MFShutdown, MFStartup, MFVideoFormat_RGB32, MFSTARTUP_FULL,
+    MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
     MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_SIZE,
     MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
     MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_VERSION,
@@ -55,6 +57,31 @@ impl Drop for Foundation {
 
 /// The first video capture device, activated as a media source.
 fn first_camera() -> Result<IMFMediaSource, CaptureError> {
+    let first = first_device()?;
+    unsafe { first.ActivateObject::<IMFMediaSource>() }.map_err(|e| failed("camera open", e))
+}
+
+/// The friendly name of the camera `capture` opens ("Integrated Webcam", "OBS Virtual
+/// Camera"), read without opening it (ANT-05). DirectShow-only virtual cameras that
+/// Media Foundation doesn't list are never opened by `capture` either.
+pub fn first_camera_name() -> Option<String> {
+    let _com = Apartment::enter();
+    let _mf = Foundation::start().ok()?;
+    let first = first_device().ok()?;
+    let mut name = PWSTR::null();
+    let mut len = 0u32;
+    unsafe { first.GetAllocatedString(&MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &mut name, &mut len) }
+        .ok()?;
+    if name.is_null() {
+        return None;
+    }
+    let text = unsafe { name.to_string() }.ok();
+    unsafe { CoTaskMemFree(Some(name.0 as *const _)) };
+    text
+}
+
+/// The first video capture device Media Foundation lists, not yet activated.
+fn first_device() -> Result<IMFActivate, CaptureError> {
     let mut attributes = None;
     unsafe { MFCreateAttributes(&mut attributes, 1) }.map_err(|e| failed("attributes", e))?;
     let attributes: IMFAttributes =
@@ -81,8 +108,7 @@ fn first_camera() -> Result<IMFMediaSource, CaptureError> {
         drop(device.take());
     }
     unsafe { CoTaskMemFree(Some(devices as *const _)) };
-    let first = first.ok_or(CaptureError::NoCamera)?;
-    unsafe { first.ActivateObject::<IMFMediaSource>() }.map_err(|e| failed("camera open", e))
+    first.ok_or(CaptureError::NoCamera)
 }
 
 /// A reader that hands out RGB32 frames at the camera's own size.

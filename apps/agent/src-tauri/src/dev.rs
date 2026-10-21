@@ -104,6 +104,12 @@ impl Platform for ActiveSession {
     fn stop_input_guard(&self) -> InjectedInput {
         self.0.stop_input_guard()
     }
+    fn camera_device(&self) -> Option<agent_core::platform::CameraDevice> {
+        self.0.camera_device()
+    }
+    fn run_environment(&self) -> agent_core::platform::RunEnvironment {
+        self.0.run_environment()
+    }
     fn notify(&self, title: &str, body: &str) {
         self.0.notify(title, body)
     }

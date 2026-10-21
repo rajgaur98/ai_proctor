@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 
 use crate::contracts::{PermissionKind, PermissionState, Permissions};
 use crate::platform::{
-    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionEndHandler, SessionState,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use crate::watchdog::{WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState};
 
@@ -47,6 +47,17 @@ pub struct FakeState {
     pub camera: Result<(), CaptureError>,
     /// Injected clicks the guard will report when it stops (ANT-02).
     pub injected_clicks: u32,
+    /// Synthetic-looking clicks the guard will report when it stops (ANT-03, macOS).
+    pub synthetic_clicks: u32,
+    /// The camera `camera_device` names (ANT-05).
+    pub camera_device: Option<CameraDevice>,
+    /// What `run_environment` reports (ANT-07).
+    pub environment: RunEnvironment,
+    /// The scene the webcam sees. `None`: a different one for every capture, as a real
+    /// camera never sends the same frame twice; a number repeats the same frame (ANT-06).
+    pub webcam_scene: Option<u64>,
+    /// Webcam captures so far (picks the next scene when none is set).
+    pub webcam_captures: u64,
     /// The area the input guard is watching; `None` when it isn't running.
     pub input_guard: Option<ScreenRect>,
     pub notifications: Vec<(String, String)>,
@@ -81,6 +92,14 @@ impl Default for FakeState {
             screen: Ok(()),
             camera: Ok(()),
             injected_clicks: 0,
+            synthetic_clicks: 0,
+            camera_device: Some(CameraDevice {
+                name: "FaceTime HD Camera".into(),
+                model: None,
+            }),
+            environment: RunEnvironment::default(),
+            webcam_scene: None,
+            webcam_captures: 0,
             input_guard: None,
             notifications: Vec::new(),
             watchdog: None,
@@ -153,6 +172,29 @@ impl FakePlatform {
             rgba,
         }
     }
+
+    /// A webcam-like test image: 16 px blocks of shades drawn from `scene`, so two
+    /// scenes hash far apart and the same scene hashes the same (ANT-06).
+    fn webcam_frame(width: u32, height: u32, scene: u64) -> Frame {
+        let columns = width.div_ceil(16);
+        let mut rng = fastrand::Rng::with_seed(scene);
+        let shades: Vec<u8> = (0..columns * height.div_ceil(16))
+            .map(|_| rng.u8(40..=220))
+            .collect();
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let v = shades[((y / 16) * columns + x / 16) as usize];
+                rgba.extend_from_slice(&[v, v.saturating_sub(10), v, 255]);
+            }
+        }
+        Frame {
+            display: None,
+            width,
+            height,
+            rgba,
+        }
+    }
 }
 
 impl Platform for FakePlatform {
@@ -188,14 +230,14 @@ impl Platform for FakePlatform {
     }
 
     fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError> {
-        let state = self.state.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         if state.permissions.camera != PermissionState::Granted {
             return Err(CaptureError::PermissionMissing);
         }
-        state
-            .camera
-            .clone()
-            .map(|()| Self::frame(None, width, height))
+        state.camera.clone()?;
+        state.webcam_captures += 1;
+        let scene = state.webcam_scene.unwrap_or(state.webcam_captures);
+        Ok(Self::webcam_frame(width, height, scene))
     }
 
     fn permissions(&self) -> Permissions {
@@ -217,12 +259,21 @@ impl Platform for FakePlatform {
     fn stop_input_guard(&self) -> InjectedInput {
         let mut state = self.state.lock().unwrap();
         // Like the real guard: what it counted is reported once, then it's clear.
-        let count = if state.input_guard.take().is_some() {
-            std::mem::take(&mut state.injected_clicks)
-        } else {
-            0
-        };
-        InjectedInput { count }
+        if state.input_guard.take().is_none() {
+            return InjectedInput::default();
+        }
+        InjectedInput {
+            count: std::mem::take(&mut state.injected_clicks),
+            synthetic: std::mem::take(&mut state.synthetic_clicks),
+        }
+    }
+
+    fn camera_device(&self) -> Option<CameraDevice> {
+        self.state.lock().unwrap().camera_device.clone()
+    }
+
+    fn run_environment(&self) -> RunEnvironment {
+        self.state.lock().unwrap().environment
     }
 
     fn notify(&self, title: &str, body: &str) {

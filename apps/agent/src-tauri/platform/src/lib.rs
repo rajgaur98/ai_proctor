@@ -15,6 +15,8 @@ mod launchd;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
+mod macos_anticheat;
+#[cfg(target_os = "macos")]
 mod macos_notify;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod unsupported;
