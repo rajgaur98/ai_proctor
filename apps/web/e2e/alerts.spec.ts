@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { agentFor, clientFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 const MAX = "00000000-0000-4000-8000-0000000000b1";
 const LUCAS = "00000000-0000-4000-8000-0000000000c2";
@@ -105,10 +105,7 @@ test("new alerts reach the bell without a reload, and the alerts page lists, fil
     .filter({ has: page.getByRole("button", { name: /^Mark read/ }) });
   await expect(unreadItems).toHaveCount(2);
 
-  const bellResults = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(bellResults.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   await unreadItems
     .first()
@@ -132,10 +129,7 @@ test("new alerts reach the bell without a reload, and the alerts page lists, fil
   await expect(row("Lucas Martin").first()).toBeVisible();
   await expect(unreadRow("Lucas Martin")).toHaveCount(1);
 
-  const pageResults = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(pageResults.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   const filter = (label: string) => page.getByLabel(label, { exact: true });
 
@@ -199,8 +193,5 @@ test("an employee has no alerts bell", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/me$/, { timeout: 15_000 });
   await expect(page.getByRole("button", { name: /^Alerts/ })).toHaveCount(0);
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 });

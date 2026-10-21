@@ -8,7 +8,7 @@ import { ReturnComment, TimesheetReason } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { DateTime } from "luxon";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { viewerZone } from "../../lib/time";
@@ -79,6 +79,17 @@ export function TimesheetPage() {
   const [projectTarget, setProjectTarget] = useState<FlaggedSegment | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
   const [reassignTarget, setReassignTarget] = useState<ReassignTarget | null>(null);
+  // A target is set while its dialog is open (the dialogs clear it when they close), and
+  // the dialog opens once the target is rendered into it.
+  useEffect(() => {
+    if (projectTarget && !projectRef.current?.open) projectRef.current?.showModal();
+  }, [projectTarget]);
+  useEffect(() => {
+    if (adjustTarget && !adjustRef.current?.open) adjustRef.current?.showModal();
+  }, [adjustTarget]);
+  useEffect(() => {
+    if (reassignTarget && !reassignRef.current?.open) reassignRef.current?.showModal();
+  }, [reassignTarget]);
 
   const person = useQuery({
     queryKey: ["timesheet-person", userId],
@@ -234,14 +245,8 @@ export function TimesheetPage() {
   const canReassign = canReassignWeek(isSelf, status);
   const myProjects = allowedProjects(projects.data ?? [], profile.id);
 
-  const openReassign = (target: ReassignTarget) => {
-    setReassignTarget(target);
-    reassignRef.current?.showModal();
-  };
-  const openAdjust = (target: AdjustTarget) => {
-    setAdjustTarget(target);
-    adjustRef.current?.showModal();
-  };
+  const openReassign = setReassignTarget;
+  const openAdjust = setAdjustTarget;
 
   return (
     <section className="flex flex-col gap-5">
@@ -510,10 +515,7 @@ export function TimesheetPage() {
             projectName={projectName}
             editable={editable}
             onChanged={refresh}
-            onChangeProject={(s) => {
-              setProjectTarget(s);
-              projectRef.current?.showModal();
-            }}
+            onChangeProject={setProjectTarget}
           />
         ) : (
           <div className="flex flex-col gap-5">
@@ -607,6 +609,7 @@ export function TimesheetPage() {
           zone={zone}
           projects={myProjects}
           target={reassignTarget}
+          onClose={() => setReassignTarget(null)}
           onSubmit={async (r) => {
             await reassignMyTime({
               startAt: r.startAt,
@@ -635,11 +638,11 @@ export function TimesheetPage() {
             }}
           />
           <ProjectDialog
-            key={projectTarget?.id ?? "none"}
             dialogRef={projectRef}
             projects={projects.data ?? []}
-            current={projectTarget?.projectId ?? null}
+            target={projectTarget}
             schema={TimesheetReason}
+            onClose={() => setProjectTarget(null)}
             onSubmit={async (projectId, reason) => {
               if (!projectTarget) return;
               await editSegment({
@@ -654,13 +657,13 @@ export function TimesheetPage() {
             }}
           />
           <AdjustDialog
-            key={adjustTarget?.entryId ?? `new-${adjustTarget?.start ?? ""}`}
             dialogRef={adjustRef}
             zone={zone}
             days={days}
             target={adjustTarget}
             projects={projects.data ?? []}
             schema={TimesheetReason}
+            onClose={() => setAdjustTarget(null)}
             onSubmit={async (r, entryId) => {
               await adjustTime(sheet.data.id, r, entryId);
               await refreshAfterRebuild();

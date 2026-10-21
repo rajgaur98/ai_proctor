@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { readXlsx, readZip, weekOf } from "@ai-proctor/core";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
-import { ERIN, ERIN_EMAIL, rebuildSegments, weekDays } from "./helpers";
+import { ERIN, ERIN_EMAIL, expectNoA11yViolations, rebuildSegments, weekDays } from "./helpers";
 
 const MANAGER_EMAIL = "manager@acme.test";
 const ADMIN_EMAIL = "admin@acme.test";
@@ -15,13 +14,6 @@ async function signIn(page: Page, email: string, landing: RegExp) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(landing, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** The newest export's audit metadata, as the admin. */

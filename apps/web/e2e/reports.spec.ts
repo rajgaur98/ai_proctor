@@ -1,8 +1,15 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
-import { ERIN, ERIN_EMAIL, flaggedTime, MANAGER_EMAIL, makeTeam, removeTeam } from "./helpers";
+import {
+  ERIN,
+  ERIN_EMAIL,
+  expectNoA11yViolations,
+  flaggedTime,
+  MANAGER_EMAIL,
+  makeTeam,
+  removeTeam,
+} from "./helpers";
 
 const LUCAS = "00000000-0000-4000-8000-0000000000c2";
 const MAX = "00000000-0000-4000-8000-0000000000b1";
@@ -20,13 +27,6 @@ async function signIn(page: Page, email: string, landing: RegExp) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(landing, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** "38 h 20 min" / "45 min", rounded to the minute like the dashboard. */
