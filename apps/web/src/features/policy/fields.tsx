@@ -50,24 +50,35 @@ export function Segmented<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
+  describedBy,
 }: {
   label: string;
   value: T;
   options: readonly (readonly [T, string])[];
   onChange: (value: T) => void;
+  /** Shown but not changeable, as the button's disabled style; say why in `describedBy`. */
+  disabled?: boolean | undefined;
+  describedBy?: string | undefined;
 }) {
   const name = useId();
   return (
     <div
       role="radiogroup"
       aria-label={label}
-      className="flex w-max max-w-full overflow-hidden rounded-[9px] border border-line2"
+      aria-disabled={disabled || undefined}
+      aria-describedby={describedBy}
+      className={cn(
+        "flex w-max max-w-full overflow-hidden rounded-[9px] border border-line2",
+        disabled && "opacity-45",
+      )}
     >
       {options.map(([v, text]) => (
         <label
           key={v}
           className={cn(
-            "flex h-11 cursor-pointer items-center border-l border-line2 px-[18px] text-[13.5px] font-medium first:border-l-0",
+            "flex h-11 items-center border-l border-line2 px-[18px] text-[13.5px] font-medium first:border-l-0",
+            disabled ? "cursor-not-allowed" : "cursor-pointer",
             "has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-acc",
             value === v ? "bg-ink text-panel" : "bg-panel text-ink",
           )}
@@ -77,8 +88,11 @@ export function Segmented<T extends string>({
             name={name}
             value={v}
             checked={value === v}
+            disabled={disabled}
             onChange={() => {}}
-            onClick={() => onChange(v)}
+            onClick={() => {
+              if (!disabled) onChange(v);
+            }}
             className="sr-only"
           />
           {text}
@@ -92,15 +106,21 @@ export function OnOff({
   label,
   value,
   onChange,
+  disabled,
+  describedBy,
 }: {
   label: string;
   value: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean | undefined;
+  describedBy?: string | undefined;
 }) {
   return (
     <Segmented
       label={label}
       value={value ? "on" : "off"}
+      disabled={disabled}
+      describedBy={describedBy}
       options={
         [
           ["on", "On"],

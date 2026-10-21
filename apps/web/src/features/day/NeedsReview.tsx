@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { supabase } from "../../lib/supabase";
 import { viewerZone } from "../../lib/time";
+import { NO_FACE } from "./checkinText";
 import { flagText } from "./flagText";
 
 export interface DayFlag {
@@ -49,6 +50,15 @@ export function NeedsReviewBadge() {
   return (
     <span className="inline-flex h-6 items-center rounded-full border border-warnline bg-warnbg px-2.5 text-[12px] font-medium text-warnink">
       Needs review
+    </span>
+  );
+}
+
+/** CAP-07: a pass whose webcam frame showed no face. A hint to look, in the needs-review style. */
+export function NoFaceBadge() {
+  return (
+    <span className="inline-flex h-6 items-center rounded-full border border-warnline bg-warnbg px-2.5 text-[12px] font-medium text-warnink">
+      {NO_FACE}
     </span>
   );
 }

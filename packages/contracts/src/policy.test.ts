@@ -21,6 +21,7 @@ const eu: Policy = {
   window_titles: false,
   excluded_apps: ["1Password"],
   activity_sampling: true,
+  face_presence: false,
   auto_clock_in: false,
   forgotten_clock_out_min: 30,
   breaks_paid: false,
@@ -121,6 +122,15 @@ describe("policySchema", () => {
     expect(r.excluded_apps).toEqual(["Slack"]);
   });
 
+  it("refuses face presence in an EU organisation only (CAP-07)", () => {
+    expect(issues({ ...eu, face_presence: true }, "eu")).toEqual([
+      "face_presence: Face presence detection isn't available to EU organisations",
+    ]);
+    expect(issues({ ...eu, face_presence: true }, "us")).toEqual([]);
+    expect(issues({ ...eu, face_presence: true }, "india")).toEqual([]);
+    expect(issues({ ...eu, face_presence: "yes" }, "us")).toHaveLength(1);
+  });
+
   it("refuses a key the database doesn't know, and a missing one", () => {
     expect(issues({ ...eu, surprise: 1 })).toHaveLength(1);
     const { webcam: _webcam, ...without } = eu;
@@ -137,6 +147,9 @@ describe("replies", () => {
       webcam_confirmed: false,
       members: 12,
       works_council_members: 2,
+      face_presence_available: false,
+      biometric_law_places: ["Illinois", "Texas"],
+      biometric_law_members: 1,
       presets: { us: eu, eu, india: eu },
     };
     expect(PolicySettings.parse(reply).policy_version).toBe(4);
@@ -151,10 +164,10 @@ describe("replies", () => {
 });
 
 // The ranges here and in update_policy must not drift apart: read them from the migration
-// that last defined policy_spec (#177 repeats the whole list when it adds a key).
+// that last defined policy_spec (#64 repeats the whole list when it adds a key).
 describe("the database's ranges", () => {
   const sql = readFileSync(
-    new URL("../../../supabase/migrations/20261020196000_reminder_shift_day.sql", import.meta.url),
+    new URL("../../../supabase/migrations/20261022140000_face_presence.sql", import.meta.url),
     "utf8",
   );
   const rows = [...sql.matchAll(/\('([a-z_]+)', '(int|num)', ([\d.]+), ([\d.]+)/g)].map((m) => ({

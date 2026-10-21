@@ -72,6 +72,9 @@ impl Platform for ActiveSession {
     fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError> {
         self.0.capture_webcam(width, height)
     }
+    fn detect_face(&self, frame: &Frame) -> Option<bool> {
+        self.0.detect_face(frame)
+    }
     fn permissions(&self) -> Permissions {
         self.0.permissions()
     }

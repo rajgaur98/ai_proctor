@@ -58,6 +58,11 @@ pub struct FakeState {
     pub webcam_scene: Option<u64>,
     /// Webcam captures so far (picks the next scene when none is set).
     pub webcam_captures: u64,
+    /// What `detect_face` answers (CAP-07): a face, no face, or `None` (detection
+    /// couldn't run).
+    pub face: Option<bool>,
+    /// Frames `detect_face` was asked about, so a test can see it never ran.
+    pub face_checks: u32,
     /// The area the input guard is watching; `None` when it isn't running.
     pub input_guard: Option<ScreenRect>,
     pub notifications: Vec<(String, String)>,
@@ -98,6 +103,8 @@ impl Default for FakeState {
             environment: RunEnvironment::default(),
             webcam_scene: None,
             webcam_captures: 0,
+            face: Some(true),
+            face_checks: 0,
             input_guard: None,
             notifications: Vec::new(),
             watchdog: None,
@@ -235,6 +242,16 @@ impl Platform for FakePlatform {
         state.webcam_captures += 1;
         let scene = state.webcam_scene.unwrap_or(state.webcam_captures);
         Ok(Self::webcam_frame(width, height, scene))
+    }
+
+    fn detect_face(&self, frame: &Frame) -> Option<bool> {
+        let mut state = self.state.lock().unwrap();
+        assert!(
+            frame.display.is_none(),
+            "faces are only looked for on the webcam frame"
+        );
+        state.face_checks += 1;
+        state.face
     }
 
     fn permissions(&self) -> Permissions {

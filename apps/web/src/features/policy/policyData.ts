@@ -32,6 +32,7 @@ const messages: Record<string, string> = {
   eu_image_retention_max: "EU organisations keep images 30 days at most.",
   dpia_required: "Confirm the DPIA to turn webcam capture on.",
   works_council_required: "Confirm the works council consultation to turn webcam capture on.",
+  face_presence_unavailable: "Face presence detection isn't available to EU organisations.",
 };
 
 /** `details` is the key the database refused, when it names one. */

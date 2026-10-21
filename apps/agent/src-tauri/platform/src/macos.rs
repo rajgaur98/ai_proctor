@@ -320,6 +320,11 @@ impl Platform for MacPlatform {
         capture_webcam(width, height)
     }
 
+    /// CAP-07: Vision face rectangles on the frame (detection only, `macos_face`).
+    fn detect_face(&self, frame: &Frame) -> Option<bool> {
+        crate::macos_face::detect_face(frame)
+    }
+
     fn permissions(&self) -> Permissions {
         Permissions {
             screen: if CGPreflightScreenCaptureAccess() {

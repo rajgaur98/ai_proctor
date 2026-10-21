@@ -1,6 +1,8 @@
 // Shared e2e setup for the seeded Acme org. Specs share the seed users and the local
 // database keeps every earlier run, so each spec creates what it reads and puts shared
 // state (Erin's week) back where it needs it: it must pass alone and after any other (#195).
+import AxeBuilder from "@axe-core/playwright";
+import { expect, type Page } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, clientFor } from "./agent";
 
@@ -133,4 +135,12 @@ export async function settleErinFlagged(
  */
 export function timeAt(iso: string): string {
   return `time[datetime^="${iso.slice(0, 19)}"]`;
+}
+
+/** No WCAG 2.1 A/AA violations on the page as it is now (axe). */
+export async function expectNoA11yViolations(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }

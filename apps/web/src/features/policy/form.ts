@@ -76,6 +76,35 @@ export function canSave(input: {
   );
 }
 
+/** "A, B and C". */
+export function listText(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/**
+ * CAP-07: what the note under the face presence switch says. In an EU organisation it
+ * can't be turned on; elsewhere it is always off where the person works under a
+ * biometric privacy law (the server's list), and it needs the webcam frame.
+ */
+export function facePresenceNote(
+  settings: Pick<
+    PolicySettings,
+    "face_presence_available" | "biometric_law_places" | "biometric_law_members"
+  >,
+  draft: Pick<Policy, "face_presence" | "webcam">,
+): string {
+  if (!settings.face_presence_available) {
+    return "Not available to EU organisations: no face detection or other AI-based monitoring in the EU.";
+  }
+  const people = settings.biometric_law_members;
+  const here =
+    people > 0 ? ` (${people} ${people === 1 ? "person works" : "people work"} there now)` : "";
+  const webcam =
+    draft.face_presence && !draft.webcam ? " It only runs while the webcam frame is on." : "";
+  return `Always off for people who work in ${listText(settings.biometric_law_places)}, where biometric privacy laws apply${here}.${webcam}`;
+}
+
 export const regionLabels: Record<Region, string> = { us: "US", eu: "EU", india: "India" };
 
 export const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);

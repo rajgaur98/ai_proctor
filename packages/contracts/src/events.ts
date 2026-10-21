@@ -96,6 +96,12 @@ const payloads = {
     // so a newer agent never loses check-ins to an older server. The known ones are in
     // `CheckinFlag` (and in the schema's description).
     flags: z.array(z.string().max(40)).max(10).meta({ description: checkinFlagsHelp() }),
+    // CAP-07: whether the webcam frame of a pass showed a face, found on the device by
+    // the OS face detector (detection only, never recognition). The boolean is all that
+    // is sent: no image of the face, position, embedding or template. Left out when the
+    // person's policy has it off, there was no frame or the detector couldn't run; the
+    // server keeps it only on a pass and only when face presence is on for the person.
+    face_present: z.boolean().nullable().optional(),
   }),
   idle_start: z.strictObject({ since: timestamp }),
   idle_end: z.strictObject({}),

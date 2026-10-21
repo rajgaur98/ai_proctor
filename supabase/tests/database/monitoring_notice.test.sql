@@ -213,7 +213,7 @@ select results_eq(
   'an unedited template is re-rendered for the new policy');
 update public.orgs set policy = policy || '{"webcam": true, "screenshots": "blurred", "excluded_apps": ["Slack", "slack", "Notes"]}' where id = :org;
 select is((select collection from public.notices where org_id = :org and version = 6),
-  '{"webcam": true, "screenshots": "blurred", "window_titles": false, "excluded_apps": ["notes", "slack"], "activity_sampling": true}'::jsonb,
+  '{"webcam": true, "screenshots": "blurred", "window_titles": false, "excluded_apps": ["notes", "slack"], "activity_sampling": true, "face_presence": false}'::jsonb,
   'the snapshot normalises excluded apps and fills defaults');
 
 -- Effective collection ----------------------------------------------------------------------------------
@@ -221,13 +221,13 @@ select is((select collection from public.notices where org_id = :org and version
 -- Erin acknowledged version 2 (full screenshots, webcam and titles on, no exclusions). Since then the policy
 -- has turned titles off, blurred screenshots and excluded apps (all stricter) and has the webcam on again.
 select is(internal.effective_collection(:erin),
-  '{"webcam": true, "screenshots": "blurred", "window_titles": false, "excluded_apps": ["notes", "slack"], "activity_sampling": true}'::jsonb,
+  '{"webcam": true, "screenshots": "blurred", "window_titles": false, "excluded_apps": ["notes", "slack"], "activity_sampling": true, "face_presence": false}'::jsonb,
   'collecting less applies at once, even before she acknowledges the new version');
 
 -- Lucas has never acknowledged anything (the seed's acknowledgement removed).
 delete from public.notice_acks where user_id = :lucas;
 select is(internal.effective_collection(:lucas),
-  '{"webcam": false, "screenshots": "off", "window_titles": false, "excluded_apps": [], "activity_sampling": false}'::jsonb,
+  '{"webcam": false, "screenshots": "off", "window_titles": false, "excluded_apps": [], "activity_sampling": false, "face_presence": false}'::jsonb,
   'before the first acknowledgement nothing is collected');
 
 select pg_temp.act_as(:lucas);

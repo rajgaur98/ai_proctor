@@ -1,6 +1,6 @@
 // Org policy (#52, ADM-01): every key of orgs.policy that the settings page edits, with
 // the same ranges update_policy enforces (policy_spec in
-// supabase/migrations/20261020196000_reminder_shift_day.sql, its latest definition, is the
+// supabase/migrations/20261022140000_face_presence.sql, its latest definition, is the
 // source of truth; the dashboard validates the same rules before sending). The presets
 // themselves come from the database with the settings, so they are not repeated here.
 import { z } from "zod";
@@ -83,6 +83,10 @@ export const PolicyKeys = z.strictObject({
     )
     .max(EXCLUDED_APPS_MAX, `At most ${EXCLUDED_APPS_MAX} apps`),
   activity_sampling: flag,
+  // CAP-07: face presence (detection only) on the webcam frame of a pass. Off by default;
+  // EU organisations can't turn it on, and it is always off for people whose work
+  // location has a biometric privacy law (the server's list).
+  face_presence: flag,
   auto_clock_in: flag,
   forgotten_clock_out_min: whole("forgotten_clock_out_min"),
   breaks_paid: flag,
@@ -115,6 +119,13 @@ export type PolicyKey = keyof Policy;
 /** The whole policy for an org in `region`: the keys plus the rules that span keys or depend on the region. */
 export function policySchema(region: Region) {
   return PolicyKeys.superRefine((p, ctx) => {
+    if (region === "eu" && p.face_presence) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Face presence detection isn't available to EU organisations",
+        path: ["face_presence"],
+      });
+    }
     if (p.checkin_min_interval_min > p.checkin_max_interval_min) {
       ctx.addIssue({
         code: "custom",
@@ -142,6 +153,11 @@ export const PolicySettings = z.object({
   members: z.number().int(),
   // Active people working where a works council is usually involved (PRD 5.2).
   works_council_members: z.number().int(),
+  // CAP-07: whether this organisation may turn face presence on (not in the EU), where
+  // it is always off (biometric privacy laws), and how many active people work there.
+  face_presence_available: z.boolean(),
+  biometric_law_places: z.array(z.string()),
+  biometric_law_members: z.number().int(),
   presets: z.object({ us: PolicyKeys, eu: PolicyKeys, india: PolicyKeys }),
 });
 export type PolicySettings = z.infer<typeof PolicySettings>;

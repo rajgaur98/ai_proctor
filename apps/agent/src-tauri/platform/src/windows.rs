@@ -1,6 +1,6 @@
 //! Windows (windows-rs). Presence signals (idle, lock/sleep, camera/mic, sharing),
-//! capture (Desktop Duplication, Media Foundation) and notifications (toast) are
-//! real (#167, #174); the pieces
+//! capture (Desktop Duplication, Media Foundation), face presence (FaceAnalysis,
+//! CAP-07) and notifications (toast) are real (#167, #174, #64); the pieces
 //! live in `windows/`, the decision rules in `agent_core` so they test on every OS.
 //! The input guard (ANT-02) is a low-level mouse hook below. Nothing here has run on
 //! a Windows device yet: see the device checklists on the PRs.
@@ -10,6 +10,7 @@
 mod com;
 mod consent;
 mod environment;
+mod face;
 mod foreground;
 mod screen;
 mod session;
@@ -231,6 +232,15 @@ impl Platform for WindowsPlatform {
             return Err(CaptureError::PermissionMissing);
         }
         with_timeout("webcam", move || webcam::capture(width, height))
+    }
+
+    /// CAP-07: the FaceAnalysis detector on the frame (detection only, `face`). On a
+    /// thread of its own with the capture timeout, like the capture itself.
+    fn detect_face(&self, frame: &Frame) -> Option<bool> {
+        let frame = frame.clone();
+        with_timeout("face", move || Ok(face::detect(&frame)))
+            .ok()
+            .flatten()
     }
 
     /// Capturing the screen needs no permission on Windows; the camera follows the

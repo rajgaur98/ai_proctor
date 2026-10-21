@@ -41,6 +41,10 @@ impl Platform for UnsupportedPlatform {
         Err(CaptureError::Unsupported)
     }
 
+    fn detect_face(&self, _frame: &Frame) -> Option<bool> {
+        None
+    }
+
     fn permissions(&self) -> Permissions {
         Permissions {
             screen: PermissionState::Unsupported,

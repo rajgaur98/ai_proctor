@@ -397,7 +397,7 @@ footer { color: var(--muted); font-size: 13px; }
             <tr><td><code>scheduler</code></td><td>Draws <code>next_at</code> uniformly in [min, max] and writes it to disk before arming, so a restart keeps the same time. Applies deferral and lock rules. A due check-in held for a call, share or presentation leaves one <code>deferred</code> check-in (due time and <code>deferral_reason</code> call | screen_share | presenting; no capture); the card still follows once the hold ends.</td></tr>
             <tr><td><code>checkin</code></td><td>Builds the challenge (target number, three shuffled buttons) and the card's look (size and style vary a little, CHK-15), validates clicks in Rust, rejects injected clicks, records <code>response_ms</code>, the outcome and the anti-cheat flags (synthetic clicks, VM, remote session).</td></tr>
             <tr><td><code>anticheat</code>, <code>frame_hash</code></td><td>Virtual-camera and VM name tables; a 256-bit perceptual hash of each pass's webcam frame, compared on the device with the last 20 passes' (kept only in the outbox's encrypted state). Only the flag (<code>duplicate_frame:&lt;bits&gt;</code>) is sent (ANT-05..07).</td></tr>
-            <tr><td><code>capture</code></td><td>Screens (one per display), one webcam frame, excluded-app placeholders, blur, downscale, WebP. Writes files to the uploads table, never sends them itself.</td></tr>
+            <tr><td><code>capture</code></td><td>Screens (one per display), one webcam frame, excluded-app placeholders, blur, downscale, WebP. Writes files to the uploads table, never sends them itself. When the person's effective policy has <code>face_presence</code> on, asks <code>detect_face</code> about the webcam frame and puts only <code>face_present</code> (true/false) on the check-in; off for EU orgs and biometric-law work locations, decided server-side (CAP-07).</td></tr>
             <tr><td><code>sync</code></td><td>Drains events in <code>seq</code> order, heartbeats every 60 s, applies the reply (acks, clock offset, policy, commands).</td></tr>
             <tr><td><code>uploader</code></td><td>Uploads a file only after its check-in event is acked, deletes the local copy on success.</td></tr>
             <tr><td><code>auth</code></td><td>PKCE sign-in through the system browser and deep link; refresh token in the OS keychain.</td></tr>
@@ -416,6 +416,10 @@ pub trait Platform: Send + Sync {
         -&gt; Result&lt;Vec&lt;Frame&gt;, CaptureError&gt;;
     fn capture_webcam(&amp;self, w: u32, h: u32)
         -&gt; Result&lt;Frame, CaptureError&gt;;
+    <span class="cm">// CAP-07: OS face detector on the webcam frame (macOS Vision face
+    // rectangles, Windows FaceAnalysis). Detection only; only the boolean
+    // leaves the call. None: detection couldn't run.</span>
+    fn detect_face(&amp;self, frame: &amp;Frame) -&gt; Option&lt;bool&gt;;
     fn permissions(&amp;self) -&gt; Permissions;    <span class="cm">// screen, camera</span>
     <span class="cm">// Windows: low-level mouse hook while the card is up; injected clicks
     // inside it are swallowed and counted (ANT-02). macOS: presses on the

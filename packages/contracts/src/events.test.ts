@@ -148,4 +148,25 @@ describe("AgentEvent", () => {
       }),
     ).toThrow();
   });
+
+  it("takes a face answer on a check-in as a boolean or null, and nothing else (CAP-07)", () => {
+    const checkin = (face_present: unknown) => ({
+      ...base,
+      type: "checkin",
+      payload: {
+        scheduled_at: base.at,
+        outcome: "pass",
+        wrong_clicks: 0,
+        object_keys: ["webcam.webp"],
+        flags: [],
+        face_present,
+      },
+    });
+    for (const ok of [true, false, null]) {
+      expect(AgentEvent.safeParse(checkin(ok)).success, String(ok)).toBe(true);
+    }
+    for (const bad of ["no", 0, { x: 1, y: 2 }, [0.1, 0.2]]) {
+      expect(AgentEvent.safeParse(checkin(bad)).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
 });

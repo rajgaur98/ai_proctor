@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { applyPreset, canSave, changedKeys, confirmationsNeeded, pick, validate } from "./form";
+import {
+  applyPreset,
+  canSave,
+  changedKeys,
+  confirmationsNeeded,
+  facePresenceNote,
+  listText,
+  pick,
+  validate,
+} from "./form";
 import { eu, us } from "./testPolicies";
 
 describe("validate", () => {
@@ -132,5 +141,76 @@ describe("canSave", () => {
       false,
     );
     expect(canSave({ ...base, needed, confirmed: { dpia: true, worksCouncil: true } })).toBe(true);
+  });
+});
+
+describe("face presence (CAP-07)", () => {
+  const us0 = {
+    face_presence_available: true,
+    biometric_law_places: [
+      "Colorado",
+      "Illinois",
+      "Texas",
+      "Washington",
+      "the European Economic Area",
+    ],
+    biometric_law_members: 2,
+  };
+
+  it("is a switch an organisation outside the EU can turn on", () => {
+    expect(validate({ ...us, face_presence: true }, "us").errors).toBeNull();
+    expect(validate({ ...us, face_presence: true }, "india").errors).toBeNull();
+    expect(changedKeys(us, { ...us, face_presence: true })).toEqual(["face_presence"]);
+    expect(pick({ ...us, face_presence: true }, ["face_presence"])).toEqual({
+      face_presence: true,
+    });
+  });
+
+  it("can't be on in an EU organisation, whatever the draft's preset", () => {
+    expect(validate({ ...us, face_presence: true }, "eu").errors).toEqual({
+      face_presence: "Face presence detection isn't available to EU organisations",
+    });
+    expect(validate({ ...eu, face_presence: false }, "eu").errors).toBeNull();
+  });
+
+  it("is off in every preset, so applying one switches it off", () => {
+    expect(applyPreset({ ...us, face_presence: true }, us).face_presence).toBe(false);
+    expect(applyPreset({ ...us, face_presence: true }, eu).face_presence).toBe(false);
+  });
+
+  it("says where it is always off and how many people work there", () => {
+    expect(facePresenceNote(us0, { face_presence: false, webcam: true })).toBe(
+      "Always off for people who work in Colorado, Illinois, Texas, Washington and the European Economic Area, where biometric privacy laws apply (2 people work there now).",
+    );
+    expect(
+      facePresenceNote({ ...us0, biometric_law_members: 1 }, { face_presence: true, webcam: true }),
+    ).toMatch(/\(1 person works there now\)\.$/);
+    expect(
+      facePresenceNote({ ...us0, biometric_law_members: 0 }, { face_presence: true, webcam: true }),
+    ).toMatch(/apply\.$/);
+  });
+
+  it("notes that it needs the webcam frame", () => {
+    expect(facePresenceNote(us0, { face_presence: true, webcam: false })).toMatch(
+      /It only runs while the webcam frame is on\.$/,
+    );
+  });
+
+  it("explains why an EU organisation can't use it", () => {
+    expect(
+      facePresenceNote(
+        { ...us0, face_presence_available: false },
+        { face_presence: false, webcam: true },
+      ),
+    ).toBe(
+      "Not available to EU organisations: no face detection or other AI-based monitoring in the EU.",
+    );
+  });
+
+  it("lists places in plain English", () => {
+    expect(listText([])).toBe("");
+    expect(listText(["Illinois"])).toBe("Illinois");
+    expect(listText(["Illinois", "Texas"])).toBe("Illinois and Texas");
+    expect(listText(["A", "B", "C"])).toBe("A, B and C");
   });
 });
