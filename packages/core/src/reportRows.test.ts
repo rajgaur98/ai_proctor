@@ -50,6 +50,8 @@ const row = (over: Partial<ReportRow> = {}): ReportRow => ({
   responseRate: null,
   medianResponseMs: null,
   lateClockIns: 0,
+  anomalyFlags: 0,
+  needsReview: 0,
   ...over,
 });
 
@@ -134,6 +136,8 @@ describe("teamTotals", () => {
           checkinsPassed: 9,
           checkinsMissed: 1,
           lateClockIns: 1,
+          anomalyFlags: 3,
+          needsReview: 2,
         }),
         row({
           userId: "u2",
@@ -161,6 +165,8 @@ describe("teamTotals", () => {
       checkinsMissed: 2,
       checkinsFailed: 1,
       lateClockIns: 1,
+      anomalyFlags: 3,
+      needsReview: 2,
       medianResponseMs: 3000,
     });
     // 9 of 12, not the mean of 90% and 0% and nothing.
@@ -229,6 +235,8 @@ describe("fromDbReportRow", () => {
       response_rate: 0.625,
       median_response_ms: 3000,
       late_clock_ins: 1,
+      anomaly_flags: 4,
+      needs_review: 1,
     };
     expect(fromDbReportRow(db)).toEqual({
       userId: "u1",
@@ -247,9 +255,39 @@ describe("fromDbReportRow", () => {
       responseRate: 0.625,
       medianResponseMs: 3000,
       lateClockIns: 1,
+      anomalyFlags: 4,
+      needsReview: 1,
     });
     expect(
       fromDbReportRow({ ...db, manager_id: null, response_rate: null, median_response_ms: null }),
     ).toMatchObject({ managerId: null, responseRate: null, medianResponseMs: null });
+  });
+
+  it("reads a row without the flag counts (a database before #63) as none", () => {
+    const {
+      anomaly_flags: _a,
+      needs_review: _n,
+      ...old
+    } = {
+      user_id: "u1",
+      full_name: "Erin Employee",
+      manager_id: null,
+      worked_s: 0,
+      flagged_s: 0,
+      excluded_s: 0,
+      break_s: 0,
+      pause_s: 0,
+      manual_s: 0,
+      checkins_shown: 0,
+      checkins_passed: 0,
+      checkins_missed: 0,
+      checkins_failed: 0,
+      response_rate: null,
+      median_response_ms: null,
+      late_clock_ins: 0,
+      anomaly_flags: 9,
+      needs_review: 9,
+    } satisfies DbReportRow;
+    expect(fromDbReportRow(old)).toMatchObject({ anomalyFlags: 0, needsReview: 0 });
   });
 });

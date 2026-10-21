@@ -4,7 +4,9 @@
 //! typing keeps going to the app the person is using. Shown on a random monitor
 //! at a random position.
 
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
+};
 
 use agent_core::contracts::CardChallenge;
 use agent_core::platform::ScreenRect;
@@ -14,6 +16,8 @@ use crate::AgentState;
 pub const LABEL: &str = "card";
 /// Must match `ipcEvents` in packages/contracts/src/ipc.ts.
 pub const EVENT_CHALLENGE: &str = "card_challenge";
+/// The design's size, used until the first card brings its own (CHK-15: each card
+/// varies it a little, `CardLook`).
 const WIDTH: f64 = 360.0;
 const HEIGHT: f64 = 220.0;
 
@@ -78,8 +82,8 @@ fn panel_error(e: impl std::fmt::Debug) -> tauri::Error {
     tauri::Error::Io(std::io::Error::other(format!("card panel: {e:?}")))
 }
 
-/// Shows `challenge` on a random monitor at a random spot, without taking focus.
-/// Window calls run on the main thread.
+/// Shows `challenge` on a random monitor at a random spot, without taking focus, at
+/// the size its look asks for (CHK-15). Window calls run on the main thread.
 pub fn show(app: &AppHandle, challenge: CardChallenge) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -87,13 +91,20 @@ pub fn show(app: &AppHandle, challenge: CardChallenge) {
             tracing::error!("card window missing");
             return;
         };
+        let (width, height) = (challenge.look.width as f64, challenge.look.height as f64);
+        let (width, height) = if width > 0.0 && height > 0.0 {
+            (width, height)
+        } else {
+            (WIDTH, HEIGHT)
+        };
+        let _ = window.set_size(LogicalSize::new(width, height));
         let monitors = window.available_monitors().unwrap_or_default();
         if !monitors.is_empty() {
             let monitor = &monitors[fastrand::usize(..monitors.len())];
             let area = monitor.work_area();
             let scale = monitor.scale_factor();
-            let max_x = (area.size.width as i32 - (WIDTH * scale) as i32).max(1);
-            let max_y = (area.size.height as i32 - (HEIGHT * scale) as i32).max(1);
+            let max_x = (area.size.width as i32 - (width * scale) as i32).max(1);
+            let max_y = (area.size.height as i32 - (height * scale) as i32).max(1);
             let x = area.position.x + fastrand::i32(0..max_x);
             let y = area.position.y + fastrand::i32(0..max_y);
             let _ = window.set_position(PhysicalPosition::new(x, y));

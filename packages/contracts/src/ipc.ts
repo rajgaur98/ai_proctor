@@ -177,6 +177,28 @@ export const CommandResult = z
  * Sent when the card appears and again after a wrong click reshuffles it.
  * Clicks are judged in the Rust core, never in the webview.
  */
+/**
+ * How one card looks (CHK-15): its size and style vary a little from card to card so
+ * an auto-clicker can't find the buttons by matching a saved picture. The core picks
+ * it within the design's limits; the card window takes the size, the page the rest.
+ */
+export const CardLook = z
+  .object({
+    /** Window size in logical pixels (the design's card is ~360 × 220). */
+    width: z.int().nonnegative(),
+    height: z.int().nonnegative(),
+    radius: z.int().nonnegative(),
+    padding: z.int().nonnegative(),
+    /** Space between the number buttons. */
+    gap: z.int().nonnegative(),
+    button_height: z.int().nonnegative(),
+    /** Font size of the numbers on the buttons, in pixels. */
+    digit_size: z.int().nonnegative(),
+    /** Which of the design's button fills: 0 page, 1 sunken, 2 soft accent. */
+    tint: z.int().min(0).max(2),
+  })
+  .meta({ id: "CardLook" });
+
 export const CardChallenge = z
   .object({
     card_id: z.string(),
@@ -189,6 +211,8 @@ export const CardChallenge = z
     sound: z.boolean(),
     /** Current project name, or null when none is set. */
     project: z.string().nullable(),
+    /** CHK-15: the same for the whole card, through reshuffles. */
+    look: CardLook,
   })
   .meta({ id: "CardChallenge" });
 
@@ -290,6 +314,7 @@ export type Permissions = z.infer<typeof Permissions>;
 export type ShiftState = z.infer<typeof ShiftState>;
 export type AgentStatus = z.infer<typeof AgentStatus>;
 export type CommandResult = z.infer<typeof CommandResult>;
+export type CardLook = z.infer<typeof CardLook>;
 export type CardChallenge = z.infer<typeof CardChallenge>;
 export type ProjectRef = z.infer<typeof ProjectRef>;
 export type NoticeStatus = z.infer<typeof NoticeStatus>;

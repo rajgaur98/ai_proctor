@@ -113,11 +113,34 @@ impl ScreenRect {
     }
 }
 
-/// What the input guard swallowed while the card was up (ANT-02, #26).
+/// What the input guard saw while the card was up (ANT-02, #26; ANT-03, #63).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InjectedInput {
-    /// Injected mouse clicks inside the card, none of which reached it.
+    /// Injected mouse clicks inside the card, none of which reached it (Windows).
     pub count: u32,
+    /// Clicks on the card that look synthetic but were let through: flag only, never
+    /// blocked (macOS, best effort: the OS can't always tell).
+    pub synthetic: u32,
+}
+
+/// The camera `capture_webcam` uses, as the OS names it (ANT-05). Never opens it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CameraDevice {
+    /// What the person sees in camera pickers ("FaceTime HD Camera", "OBS Virtual
+    /// Camera").
+    pub name: String,
+    /// The model or driver id where the OS has one (macOS `modelID`); `None` elsewhere.
+    pub model: Option<String>,
+}
+
+/// Where the agent runs (ANT-07). Best effort and raw: true only when the OS says so
+/// plainly; anything unknown reads false.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RunEnvironment {
+    /// Inside a virtual machine (a hypervisor guest).
+    pub virtual_machine: bool,
+    /// The session is shown on another computer (Remote Desktop) or remotely controlled.
+    pub remote_session: bool,
 }
 
 /// Called when the OS announces that the person's session is ending (#159).
@@ -149,8 +172,15 @@ pub trait Platform: Send + Sync {
     /// card is shown; a second call replaces the first.
     fn start_input_guard(&self, area: ScreenRect);
     /// Stops the guard and returns what it swallowed since `start_input_guard`
-    /// (zero when none was running or the OS can't tell).
+    /// (zero when none was running or the OS can't tell). On macOS nothing is
+    /// swallowed: clicks that look synthetic are only counted (ANT-03).
     fn stop_input_guard(&self) -> InjectedInput;
+    /// The camera `capture_webcam` would use, by name, without opening it (ANT-05).
+    /// `None` when there is none or the OS can't say.
+    fn camera_device(&self) -> Option<CameraDevice>;
+    /// Whether the agent runs in a virtual machine or a remote session (ANT-07).
+    /// Cheap enough to call for every check-in card.
+    fn run_environment(&self) -> RunEnvironment;
     /// OS notification (CHK-13 optional check-in notification).
     fn notify(&self, title: &str, body: &str);
     /// ANT-01: registers the helper the OS runs to start the agent again if it is
