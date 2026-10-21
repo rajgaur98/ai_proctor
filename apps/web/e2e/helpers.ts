@@ -134,3 +134,33 @@ export async function settleErinFlagged(
 export function timeAt(iso: string): string {
   return `time[datetime^="${iso.slice(0, 19)}"]`;
 }
+
+/**
+ * A team of `userIds` in the Acme org (#66), made as the admin, with a name no other run
+ * uses. The people named leave whatever team they were in. Remove it with `removeTeam`.
+ */
+export async function makeTeam(
+  prefix: string,
+  userIds: string[],
+): Promise<{ id: string; name: string }> {
+  const admin = await clientFor("admin@acme.test");
+  const name = `${prefix} ${Date.now()}`;
+  const saved = await admin.rpc("save_team", {
+    p_team_id: null as unknown as string,
+    p_name: name,
+  });
+  if (saved.error) throw saved.error;
+  const members = await admin.rpc("set_team_members", {
+    p_team_id: saved.data,
+    p_user_ids: userIds,
+  });
+  if (members.error) throw members.error;
+  return { id: saved.data, name };
+}
+
+/** Deletes a team `makeTeam` made; its members are left without a team. */
+export async function removeTeam(id: string) {
+  const admin = await clientFor("admin@acme.test");
+  const { error } = await admin.rpc("delete_team", { p_team_id: id });
+  if (error) throw error;
+}

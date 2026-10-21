@@ -20,6 +20,7 @@ const admin: NavLink[] = [
   { to: "/timesheets", label: "Timesheets" },
   { to: "/reports", label: "Reports" },
   { to: "/people", label: "People" },
+  { to: "/teams", label: "Teams" },
   { to: "/projects", label: "Projects" },
   { to: "/policy", label: "Policy" },
   { to: "/notice", label: "Monitoring notice" },

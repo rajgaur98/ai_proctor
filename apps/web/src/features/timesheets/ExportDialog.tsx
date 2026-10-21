@@ -1,6 +1,5 @@
 // The Export CSV dialog of the Timesheets tab (#45, TS-20..23): date range, employee,
-// client, project, approval status and view, then a CSV download. The team filter waits
-// for teams (ORG-08).
+// team (#202), client, project, approval status and view, then a CSV download.
 import { EXPORT_VIEWS, type ExportView } from "@ai-proctor/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -9,6 +8,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { clientsQuery, projectsQuery } from "../projects/projectData";
+import { teamsQuery } from "../teams/teamData";
 import { downloadExport, exportPeopleQuery, exportViewLabel } from "./exportData";
 import { type SheetStatus, statusLabel } from "./timesheetData";
 
@@ -27,6 +27,7 @@ export function ExportDialog({
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
   const [userId, setUserId] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [status, setStatus] = useState<SheetStatus | "">("");
@@ -34,6 +35,7 @@ export function ExportDialog({
   const [problem, setProblem] = useState<string | null>(null);
 
   const people = useQuery(exportPeopleQuery);
+  const teams = useQuery(teamsQuery);
   const clients = useQuery(clientsQuery);
   const projects = useQuery(projectsQuery);
   const projectChoices = (projects.data ?? []).filter((p) => !clientId || p.clientId === clientId);
@@ -64,7 +66,7 @@ export function ExportDialog({
             setProblem("The range can be up to a year.");
             return;
           }
-          send.mutate({ view, from, to, userId, clientId, projectId, status });
+          send.mutate({ view, from, to, userId, teamId, clientId, projectId, status });
         }}
       >
         <h2 id="export-title" className="text-lg font-semibold">
@@ -104,21 +106,39 @@ export function ExportDialog({
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="export-employee">Employee</Label>
-          <select
-            id="export-employee"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            className={fieldClass}
-          >
-            <option value="">Everyone I can see</option>
-            {(people.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.full_name}
-              </option>
-            ))}
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="export-employee">Employee</Label>
+            <select
+              id="export-employee"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="">Everyone I can see</option>
+              {(people.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="export-team">Team</Label>
+            <select
+              id="export-team"
+              value={teamId}
+              onChange={(e) => setTeamId(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="">All teams</option>
+              {(teams.data ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">

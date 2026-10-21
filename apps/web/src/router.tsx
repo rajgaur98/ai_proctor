@@ -17,6 +17,7 @@ import { PolicyPage } from "./features/policy/PolicyPage";
 import { Projects } from "./features/projects/Projects";
 import { Reports } from "./features/reports/Reports";
 import { LiveTeam } from "./features/team/LiveTeam";
+import { Teams } from "./features/teams/Teams";
 import { TimesheetPage } from "./features/timesheets/TimesheetPage";
 import { MyTimesheets, Timesheets } from "./features/timesheets/Timesheets";
 import { homeFor, navFor } from "./lib/nav";
@@ -207,6 +208,7 @@ const routeTree = rootRoute.addChildren([
     page("/reports", "Reports", 47, Reports),
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
+    page("/teams", "Teams", 66, Teams),
     page("/policy", "Policy", 52, PolicyPage),
     page("/audit", "Audit log", 53, AuditLog),
     myDataRoute,

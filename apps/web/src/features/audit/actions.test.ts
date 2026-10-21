@@ -13,6 +13,30 @@ describe("actionLabel", () => {
 });
 
 describe("summarize", () => {
+  it("reads team changes", () => {
+    expect(
+      summarize(
+        "member.team_changed",
+        { from: null, from_name: null, to: "t", to_name: "Support" },
+        nameOf,
+      ),
+    ).toBe("No team → Support");
+    expect(summarize("team.renamed", { from: "Eng", to: "Engineering" }, nameOf)).toBe(
+      "Eng → Engineering",
+    );
+    expect(summarize("team.deleted", { name: "Support", members: ["a", "b"] }, nameOf)).toBe(
+      "Support · 2 members",
+    );
+    expect(
+      summarize(
+        "team.policy_changed",
+        { name: "Support", changed: { idle_threshold_min: { from: null, to: 3 } } },
+        nameOf,
+      ),
+    ).toBe("Support · 1 setting");
+    expect(actionLabel("team.policy_changed")).toBe("Changed a team's policy");
+  });
+
   it("reads role, manager and location changes", () => {
     expect(summarize("member.role_changed", { from: "employee", to: "manager" }, nameOf)).toBe(
       "Employee → Manager",
