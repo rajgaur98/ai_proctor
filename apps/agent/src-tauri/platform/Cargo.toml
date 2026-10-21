@@ -13,10 +13,15 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 # Windows: the input guard (ANT-02, a low-level mouse hook on its own thread),
-# capture and presence signals (#167, under src/windows/).
+# capture and presence signals (#167, under src/windows/), face presence (CAP-07,
+# FaceAnalysis with a SoftwareBitmap built from a DataWriter buffer).
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
   "Data_Xml_Dom",
+  "Foundation_Collections",
+  "Graphics_Imaging",
+  "Media_FaceAnalysis",
+  "Storage_Streams",
   "UI_Notifications",
   "Win32_Foundation",
   "Win32_Graphics_Direct3D",

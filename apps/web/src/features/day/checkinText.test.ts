@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { markerLabel, minutesText, missReason, screenState, secondsText } from "./checkinText";
+import {
+  markerLabel,
+  minutesText,
+  missReason,
+  noFace,
+  screenState,
+  secondsText,
+} from "./checkinText";
 
 describe("markerLabel", () => {
   const c = {
@@ -21,6 +28,25 @@ describe("markerLabel", () => {
         "UTC",
       ),
     ).toBe("Deferred check-in at 14:00 (screen shared)");
+  });
+
+  it("adds a no-face hint to a pass whose frame showed none (CAP-07)", () => {
+    const pass = { ...c, outcome: "pass" as const };
+    expect(markerLabel({ ...pass, facePresent: false }, "UTC")).toBe(
+      "Passed check-in at 14:03, no face detected (needs review)",
+    );
+    expect(markerLabel({ ...pass, facePresent: true }, "UTC")).toBe("Passed check-in at 14:03");
+    expect(markerLabel({ ...pass, facePresent: null }, "UTC")).toBe("Passed check-in at 14:03");
+  });
+});
+
+describe("noFace (CAP-07)", () => {
+  it("is only a pass checked with no face found", () => {
+    expect(noFace({ outcome: "pass", facePresent: false })).toBe(true);
+    expect(noFace({ outcome: "pass", facePresent: true })).toBe(false);
+    expect(noFace({ outcome: "pass", facePresent: null })).toBe(false);
+    expect(noFace({ outcome: "pass" })).toBe(false);
+    expect(noFace({ outcome: "miss", facePresent: false })).toBe(false);
   });
 });
 

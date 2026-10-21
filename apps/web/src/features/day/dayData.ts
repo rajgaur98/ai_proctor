@@ -17,6 +17,7 @@ export interface CheckinRow extends Checkin {
   projectId: string | null;
   /** Stored file names (screen-1.webp, webcam.webp); the files open through the audit-logged viewer. */
   objectKeys: string[];
+  facePresent: boolean | null;
 }
 
 /**
@@ -84,7 +85,7 @@ export const dayCheckinsQuery = (userId: string, day: Span, date: string, zone: 
       const { data, error } = await supabase
         .from("checkin_events")
         .select(
-          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, project_id, object_keys",
+          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, project_id, object_keys, face_present",
         )
         .eq("user_id", userId)
         .gte("scheduled_at", new Date(day.start).toISOString())
@@ -106,6 +107,7 @@ export const dayCheckinsQuery = (userId: string, day: Span, date: string, zone: 
         missedReasonKind: c.missed_reason_kind,
         projectId: c.project_id,
         objectKeys: c.object_keys,
+        facePresent: c.face_present,
       }));
     },
   });

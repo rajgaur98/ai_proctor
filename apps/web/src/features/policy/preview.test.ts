@@ -28,6 +28,15 @@ describe("noticePreview", () => {
     );
   });
 
+  it("says when the webcam frame is checked for a face (CAP-07), and only with the webcam", () => {
+    expect(text({ ...us, face_presence: true }, "On a passed check-in")).toBe(
+      "A screenshot of each screen and one webcam frame. The webcam frame is checked on their computer for whether a face is in view (detection only, nobody is identified); only yes or no is kept.",
+    );
+    expect(text({ ...us, face_presence: true, webcam: false }, "On a passed check-in")).toBe(
+      "A screenshot of each screen.",
+    );
+  });
+
   it("follows window titles and activity sampling", () => {
     expect(text(us, "App activity")).toMatch(/and window titles\.$/);
     expect(text(eu, "App activity")).not.toMatch(/window titles/);

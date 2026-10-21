@@ -15,7 +15,7 @@ import { projectsQuery } from "../projects/projectData";
 import { canDecideQuery, weekStartQuery } from "../timesheets/timesheetData";
 import { weekStartOf } from "../timesheets/weeks";
 import { CheckinDetails } from "./CheckinDetails";
-import { deferralText, outcomeWord } from "./checkinText";
+import { deferralText, noFace, outcomeWord } from "./checkinText";
 import { DayTimeline, Marker, StatsRow } from "./DayTimeline";
 import {
   dayCheckinsQuery,
@@ -27,7 +27,7 @@ import {
 import { statCards } from "./dayStats";
 import { flagCheckinIds } from "./flagText";
 import { ManualEntries } from "./ManualEntries";
-import { dayFlagsQuery, NeedsReviewBadge, NeedsReviewPanel } from "./NeedsReview";
+import { dayFlagsQuery, NeedsReviewBadge, NeedsReviewPanel, NoFaceBadge } from "./NeedsReview";
 import { TopApps } from "./TopApps";
 import { barSegments, barSpan, localDay, shiftText, ticks, withTamperReasons } from "./timeline";
 
@@ -321,6 +321,7 @@ export function DayPage() {
                     </span>
                     <span className="font-medium">{outcomeWord[c.outcome]}</span>
                     {flaggedCheckins.has(c.id) && <NeedsReviewBadge />}
+                    {noFace(c) && <NoFaceBadge />}
                     <span className="ml-auto text-[12.5px] text-ink3">
                       {c.outcome === "deferred" && deferralText(c.deferralReason)}
                       {c.outcome === "pass" &&

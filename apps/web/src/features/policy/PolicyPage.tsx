@@ -16,7 +16,7 @@ import {
 } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker, useRouteContext } from "@tanstack/react-router";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import { noticesQuery } from "../notice/noticeData";
@@ -28,6 +28,7 @@ import {
   changedKeys,
   confirmationsNeeded,
   type FieldErrors,
+  facePresenceNote,
   pick,
   regionLabels,
   validate,
@@ -334,6 +335,12 @@ function PolicyForm({
                 </p>
               )}
             </Row>
+            <FacePresenceRow
+              settings={settings}
+              draft={draft}
+              error={err("face_presence")}
+              onChange={(v) => set("face_presence", v)}
+            />
             <Row
               title="Window titles"
               hint="The title of the window in front, never for excluded apps. App names and websites are recorded either way."
@@ -667,5 +674,42 @@ function PolicyForm({
         </aside>
       </div>
     </>
+  );
+}
+
+/**
+ * CAP-07: face presence (detection only). Disabled with the reason in an EU organisation;
+ * elsewhere a note says where it is always off (the server's biometric-law list).
+ */
+function FacePresenceRow({
+  settings,
+  draft,
+  error,
+  onChange,
+}: {
+  settings: PolicySettings;
+  draft: Policy;
+  error: string | undefined;
+  onChange: (value: boolean) => void;
+}) {
+  const id = useId();
+  const available = settings.face_presence_available;
+  return (
+    <Row
+      title="Face presence (detection only)"
+      hint="Checks the webcam frame of a passed check-in for a face, on the person's computer. Detection only: nobody is identified and no face data is kept or sent, just yes or no. No face is a needs-review hint, never a penalty."
+    >
+      <OnOff
+        label="Face presence (detection only)"
+        value={available && draft.face_presence}
+        disabled={!available}
+        describedBy={`${id}-note`}
+        onChange={onChange}
+      />
+      {error && <p className="max-w-xl text-xs text-warnink">{error}</p>}
+      <p id={`${id}-note`} className="max-w-xl text-[12.5px] text-ink2">
+        {facePresenceNote(settings, draft)}
+      </p>
+    </Row>
   );
 }

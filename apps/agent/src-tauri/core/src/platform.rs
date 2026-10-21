@@ -155,6 +155,14 @@ pub trait Platform: Send + Sync {
     fn foreground(&self) -> Option<Foreground>;
     fn capture_screens(&self, max_width: u32) -> Result<Vec<Frame>, CaptureError>;
     fn capture_webcam(&self, width: u32, height: u32) -> Result<Frame, CaptureError>;
+    /// CAP-07: whether the webcam frame shows a face, worked out on the device with the
+    /// OS's face *detector* (macOS Vision face rectangles, Windows FaceAnalysis): never
+    /// recognition, landmarks or anything that could tell one person from another.
+    /// Only the answer leaves this call; nothing about the face (position, size, crops,
+    /// embeddings) is kept or returned. `None` when detection couldn't run (unsupported,
+    /// the detector failed), which is not the same as "no face". Takes tens of
+    /// milliseconds: call it from the capture's worker thread.
+    fn detect_face(&self, frame: &Frame) -> Option<bool>;
     /// Current Screen Recording / Camera permission. Must never show a prompt.
     fn permissions(&self) -> Permissions;
     /// Accessibility (macOS; reading the browser's domain, #114), kept apart from

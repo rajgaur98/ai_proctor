@@ -119,7 +119,7 @@ select is((select policy from orgs_by_region where region = 'india'), internal.r
 select is(
   (select n.collection - 'excluded_apps' from public.notices n join orgs_by_region o on o.id = n.org_id
    where o.region = 'eu' and n.version = 1),
-  '{"screenshots": "blurred", "webcam": false, "window_titles": false, "activity_sampling": true}'::jsonb,
+  '{"screenshots": "blurred", "webcam": false, "window_titles": false, "activity_sampling": true, "face_presence": false}'::jsonb,
   'the EU org''s first notice describes the preset: blurred, no webcam, no titles');
 
 -- Who may use it ---------------------------------------------------------------------------
@@ -237,9 +237,9 @@ select is(
     ('webcam'), ('window_titles'), ('activity_sampling'), ('auto_clock_in'), ('breaks_paid'),
     ('alert_consecutive_misses_enabled'), ('alert_offline_enabled'), ('alert_tamper_enabled'),
     ('alert_late_clock_in_enabled'), ('alert_pause_over_cap_enabled'), ('reminders_enabled'),
-    ('require_admin_mfa')
+    ('require_admin_mfa'), ('face_presence')
   ) v(k) where pg_temp.save(v.k, '"yes"') = 'invalid_policy:' || v.k and pg_temp.save(v.k, '1') = 'invalid_policy:' || v.k),
-  12, 'every switch refuses anything but a boolean');
+  13, 'every switch refuses anything but a boolean');
 select is(pg_temp.save('reminders_enabled', 'false'), 'ok', 'timesheet reminders can be switched off (#177)');
 select is(public.policy_settings() -> 'policy' ->> 'reminders_enabled', 'false', 'and the settings show it');
 select is(pg_temp.save('reminders_enabled', 'true'), 'ok', 'and on again');

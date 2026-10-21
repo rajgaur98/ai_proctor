@@ -26,13 +26,18 @@ export function noticePreview(p: Policy): PreviewRow[] {
   const passed = images.length
     ? `${images.join(" and ").replace(/^./, (c) => c.toUpperCase())}.`
     : "Nothing but the time of the check-in.";
+  // CAP-07: only with the webcam frame it looks at.
+  const face =
+    p.webcam && p.face_presence
+      ? " The webcam frame is checked on their computer for whether a face is in view (detection only, nobody is identified); only yes or no is kept."
+      : "";
 
   const rows: PreviewRow[] = [
     {
       label: "Check-ins",
       text: `${interval} while clocked in, at random times. ${n(p.checkin_response_s)} s to respond.`,
     },
-    { label: "On a passed check-in", text: passed },
+    { label: "On a passed check-in", text: `${passed}${face}` },
     {
       label: "App activity",
       text: p.activity_sampling

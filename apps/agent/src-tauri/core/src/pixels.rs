@@ -282,9 +282,39 @@ pub fn webcam_frame_ready(n: u32, luma: f64, previous: Option<f64>) -> bool {
     settled || n >= MAX_WEBCAM_FRAMES
 }
 
+/// Rec. 601 luma (one byte per pixel) of tightly packed RGBA, for a face detector that
+/// takes grey images (Windows FaceAnalysis, CAP-07). `None` when the bytes don't match
+/// the size. The grey copy is only handed to the detector and dropped with it.
+pub fn rgba_to_gray8(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    let pixels = (width as usize).checked_mul(height as usize)?;
+    if pixels == 0 || rgba.len() != pixels.checked_mul(4)? {
+        return None;
+    }
+    Some(
+        rgba.as_chunks::<4>()
+            .0
+            .iter()
+            .map(|[r, g, b, _]| {
+                let luma = 0.299 * *r as f64 + 0.587 * *g as f64 + 0.114 * *b as f64;
+                luma.round().clamp(0.0, 255.0) as u8
+            })
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rgba_turns_into_one_grey_byte_per_pixel() {
+        let rgba = [
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 0, 255, 255, 255, 255,
+        ];
+        assert_eq!(rgba_to_gray8(&rgba, 2, 2), Some(vec![76, 150, 29, 255]));
+        assert_eq!(rgba_to_gray8(&rgba, 3, 2), None, "size mismatch");
+        assert_eq!(rgba_to_gray8(&[], 0, 0), None);
+    }
 
     #[test]
     fn fits_the_width_without_upscaling() {

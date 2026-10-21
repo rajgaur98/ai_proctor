@@ -14,13 +14,14 @@ import {
   deferralText,
   minutesText,
   missReason,
+  noFace,
   outcomeWord,
   screenState,
   secondsText,
 } from "./checkinText";
 import { Marker } from "./DayTimeline";
 import type { CheckinRow } from "./dayData";
-import { NeedsReviewBadge } from "./NeedsReview";
+import { NeedsReviewBadge, NoFaceBadge } from "./NeedsReview";
 
 function title(c: CheckinRow, at: string): string {
   if (c.outcome === "miss") return `Missed check-in · ${at}`;
@@ -125,6 +126,7 @@ export function CheckinDetails({
           {chip(c)}
         </span>
         {needsReview && <NeedsReviewBadge />}
+        {noFace(c) && <NoFaceBadge />}
         {c.outcome === "pass" && opened && screens.length > 1 && (
           <DisplaySwitch names={screens.map((s) => s.name)} value={display} onChange={setDisplay} />
         )}
@@ -161,6 +163,14 @@ export function CheckinDetails({
               <span className="font-medium">{projectName}</span>
             </Cell>
           </div>
+          {noFace(c) && (
+            <p className="rounded-[9px] border border-warnline bg-warnbg px-3 py-2.5 text-[13px] text-warnink">
+              <span className="font-semibold">No face detected in the webcam frame.</span> Needs
+              review: they may have stepped away, or the camera was covered or pointed elsewhere.
+              The check-in still passed. Detection runs on their computer and never identifies
+              anyone.
+            </p>
+          )}
           {c.wrongClicks > 0 && (
             <p className="text-[13px] text-ink2">
               {c.wrongClicks} wrong {c.wrongClicks === 1 ? "click" : "clicks"} before the right one.

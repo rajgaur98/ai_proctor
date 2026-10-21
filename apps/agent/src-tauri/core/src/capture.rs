@@ -4,6 +4,12 @@
 //! device: excluded apps are replaced with a placeholder, blur is applied when the
 //! org asks for it, and frames are downscaled and encoded as WebP. A failure never
 //! fails the check-in: it is recorded as the reason instead.
+//!
+//! CAP-07 face presence: when the person's effective policy has it on, the webcam
+//! frame is handed to the OS face detector and only the yes/no answer is kept
+//! (`face_present` on the check-in). Detection only, never recognition; no position,
+//! crop, landmark or embedding is kept or sent. A miss never captures, so it never
+//! carries an answer.
 
 use image::imageops::{self, FilterType};
 use image::RgbaImage;
@@ -48,6 +54,10 @@ pub struct CapturePolicy {
     pub webcam: bool,
     /// App names (case-insensitive) whose screen is never captured.
     pub excluded_apps: Vec<String>,
+    /// CAP-07: look for a face in the webcam frame (detection only). Off unless the
+    /// server says it's on for this person: it is forced off for EU organisations and
+    /// biometric-law work locations there, not here.
+    pub face_presence: bool,
 }
 
 impl Default for CapturePolicy {
@@ -56,6 +66,7 @@ impl Default for CapturePolicy {
             screenshots: ScreenshotMode::Full,
             webcam: true,
             excluded_apps: default_excluded_apps(),
+            face_presence: false,
         }
     }
 }
@@ -67,6 +78,7 @@ impl CapturePolicy {
         Self {
             screenshots: ScreenshotMode::Off,
             webcam: false,
+            face_presence: false,
             ..Self::default()
         }
     }
@@ -91,6 +103,9 @@ pub struct Captured {
     /// ANT-06: the webcam frame's perceptual hash, for the duplicate check; never
     /// uploaded (`frame_hash`). `None` without a frame or for a flat one.
     pub webcam_hash: Option<FrameHash>,
+    /// CAP-07: whether the webcam frame showed a face. `None` when detection is off for
+    /// this person, there was no frame, or the detector couldn't run.
+    pub face_present: Option<bool>,
 }
 
 impl Captured {
@@ -109,6 +124,10 @@ impl Captured {
         }
         if let Some(flags) = payload["flags"].as_array_mut() {
             flags.extend(self.flags.iter().map(|f| json!(f)));
+        }
+        // CAP-07: the boolean and nothing else; left out when detection didn't run.
+        if let Some(face) = self.face_present {
+            payload["face_present"] = json!(face);
         }
     }
 }
@@ -169,20 +188,41 @@ pub fn capture(platform: &dyn Platform, policy: &CapturePolicy) -> Captured {
     match webcam {
         None => {}
         Some(Err(e)) => captured.webcam_error = Some(e),
-        Some(Ok(frame)) => match to_image(frame, WEBCAM_WIDTH) {
-            Some(image) => {
-                captured.webcam_hash = FrameHash::of(&image);
-                captured.files.push(("webcam.webp".into(), encode(&image)));
-                // ANT-05: the frame came from a known virtual camera. Only asked once
-                // there is a frame, so a missing or busy camera says nothing.
-                if let Some(device) = platform.camera_device().filter(is_virtual_camera) {
-                    captured.flags.push(virtual_camera_flag(&device));
-                }
-            }
-            None => captured.webcam_error = Some(CaptureError::Failed("bad frame".into())),
-        },
+        Some(Ok(frame)) => {
+            // CAP-07: asked before the frame is encoded; the detector gets the pixels
+            // only for the call and returns nothing but the answer.
+            let face = if policy.face_presence {
+                platform.detect_face(&frame)
+            } else {
+                None
+            };
+            webcam_frame(platform, &mut captured, frame, face);
+        }
     }
     captured
+}
+
+/// The webcam half of a capture: the encoded frame, its hash, the virtual-camera flag
+/// and the face answer, or why the frame was unusable.
+fn webcam_frame(
+    platform: &dyn Platform,
+    captured: &mut Captured,
+    frame: Frame,
+    face: Option<bool>,
+) {
+    match to_image(frame, WEBCAM_WIDTH) {
+        Some(image) => {
+            captured.webcam_hash = FrameHash::of(&image);
+            captured.face_present = face;
+            captured.files.push(("webcam.webp".into(), encode(&image)));
+            // ANT-05: the frame came from a known virtual camera. Only asked once
+            // there is a frame, so a missing or busy camera says nothing.
+            if let Some(device) = platform.camera_device().filter(is_virtual_camera) {
+                captured.flags.push(virtual_camera_flag(&device));
+            }
+        }
+        None => captured.webcam_error = Some(CaptureError::Failed("bad frame".into())),
+    }
 }
 
 /// Which screens an excluded app is on (CAP-04).
@@ -494,6 +534,64 @@ mod tests {
             ..CapturePolicy::default()
         };
         assert_eq!(capture(&fake, &off).webcam_hash, None);
+    }
+
+    fn with_face() -> CapturePolicy {
+        CapturePolicy {
+            face_presence: true,
+            ..CapturePolicy::default()
+        }
+    }
+
+    #[test]
+    fn face_presence_keeps_only_the_answer() {
+        let fake = FakePlatform::default();
+        for face in [Some(true), Some(false), None] {
+            fake.update(|s| s.face = face);
+            let c = capture(&fake, &with_face());
+            assert_eq!(c.face_present, face);
+            let mut payload = json!({ "object_keys": [], "flags": [] });
+            c.attach(&mut payload);
+            match face {
+                Some(face) => assert_eq!(payload["face_present"], json!(face)),
+                // Detection couldn't run: nothing is said, not "no face".
+                None => assert!(payload.get("face_present").is_none()),
+            }
+            // The boolean is the only thing added: the same files and flags as without.
+            assert_eq!(names(&c), ["screen-1.webp", "webcam.webp"]);
+            assert!(c.flags.is_empty());
+        }
+    }
+
+    #[test]
+    fn face_presence_off_never_runs_the_detector() {
+        let fake = FakePlatform::default();
+        let c = capture(&fake, &CapturePolicy::default());
+        assert_eq!(c.face_present, None);
+        assert_eq!(fake.snapshot().face_checks, 0);
+        let mut payload = json!({ "object_keys": [], "flags": [] });
+        c.attach(&mut payload);
+        assert!(payload.get("face_present").is_none());
+        assert!(!CapturePolicy::off().face_presence);
+    }
+
+    #[test]
+    fn no_webcam_frame_means_no_face_answer() {
+        let fake = FakePlatform::default();
+        // The webcam off for this person: nothing to look at.
+        let no_webcam = CapturePolicy {
+            webcam: false,
+            ..with_face()
+        };
+        assert_eq!(capture(&fake, &no_webcam).face_present, None);
+        // The camera failed: no frame, no answer, the failure is recorded instead.
+        fake.update(|s| s.camera = Err(CaptureError::CameraBusy));
+        let c = capture(&fake, &with_face());
+        assert_eq!(
+            (c.face_present, c.webcam_error),
+            (None, Some(CaptureError::CameraBusy))
+        );
+        assert_eq!(fake.snapshot().face_checks, 0);
     }
 
     #[test]

@@ -45,6 +45,8 @@ export interface Checkin {
   outcome: Outcome;
   /** Only on a deferred check-in. */
   deferralReason: string | null;
+  /** CAP-07: whether the pass's webcam frame showed a face; null or missing when not checked. */
+  facePresent?: boolean | null;
 }
 
 export interface Span {
