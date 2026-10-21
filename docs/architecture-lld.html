@@ -674,7 +674,7 @@ pub trait Platform: Send + Sync {
       <table>
         <thead><tr><th>Function</th><th>Input</th><th>Server checks</th><th>Returns</th></tr></thead>
         <tbody>
-          <tr><td><code>register_device</code></td><td>platform, os_version, agent_version, hardware_hash</td><td>Caller signed in and active</td><td>device_id, policy, policy_version</td></tr>
+          <tr><td><code>register_device</code></td><td>platform, os_version, agent_version, hardware_hash, enrollment_token? (MDM installs, #86)</td><td>Caller signed in and active; a token must be the caller's org's (<code>enrollment_org_mismatch</code>) and, for a new device, not revoked (<code>enrollment_token_revoked</code>)</td><td>device_id, policy, policy_version</td></tr>
           <tr><td><code>agent_heartbeat</code></td><td>device_id, sent_at, idle_s, locked, in_call, agent_version, permissions</td><td>Device belongs to caller and is not revoked</td><td>server_time, policy_version, config_version (org + this user: agents refetch config when it moves), commands[]: <code>refresh_policy</code>, <code>reack_notice</code>, <code>revoke</code>, <code>update</code></td></tr>
           <tr><td><code>agent_events</code></td><td>device_id, events[] (≤ 100)</td><td>Per event: schema, allowed in current server-side state, <code>at</code> in range</td><td>accepted[], duplicates[], rejected[{id, reason}], server_time</td></tr>
           <tr><td><code>ack_notice</code></td><td>notice_id</td><td>Notice is the current version for the org and region</td><td>ok</td></tr>
@@ -716,6 +716,7 @@ pub trait Platform: Send + Sync {
           <tr><td><code>reopen_timesheet</code></td><td>Manager</td><td>Status approved; reason required; audit-logged</td></tr>
           <tr><td><code>set_delegation</code></td><td>Manager</td><td>Delegate in same org; date range within 90 days</td></tr>
           <tr><td><code>confirm_dpia</code></td><td>Admin</td><td>EU-region org enabling webcam; audit-logged</td></tr>
+          <tr><td><code>create_enrollment_token</code> / <code>revoke_enrollment_token</code> / <code>list_enrollment_tokens</code></td><td>Admin</td><td>MDM installs (#86): the token is returned once, only its SHA-256 is kept; revoking stops new enrollments, enrolled devices keep working; create, revoke and each enrollment audit-logged; MFA when the org requires it</td></tr>
         </tbody>
       </table>
     </div>
@@ -785,6 +786,13 @@ pub trait Platform: Send + Sync {
           <li><span class="badge">FK</span>user_id → users</li>
           <li>platform · os_version · agent_version</li>
           <li>hardware_hash · revoked_at</li>
+          <li><span class="badge">FK</span>enrollment_token_id → enrollment_tokens (MDM, #86)</li>
+        </ul></div>
+        <div class="t-card"><div class="name">enrollment_tokens</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>org_id → orgs</li>
+          <li>label · token_hash (SHA-256 only) · token_prefix</li>
+          <li>revoked_at · last_used_at; RPCs only, no API reads</li>
         </ul></div>
         <div class="t-card"><div class="name">shifts</div><ul>
           <li><span class="badge pk">PK</span><b>id</b></li>

@@ -13,6 +13,9 @@ export const actionLabels: Record<string, string> = {
   "member.reactivated": "Reactivated a member",
   "capture.viewed": "Viewed captures",
   "audit_log.exported": "Exported the audit log",
+  "enrollment_token.created": "Created an enrollment token",
+  "enrollment_token.revoked": "Revoked an enrollment token",
+  "enrollment_token.used": "Enrolled a device",
 };
 
 /** Actions offered in the filter, in the order above. */
@@ -35,6 +38,11 @@ const place = (v: unknown): string => {
 };
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const count = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+/** An enrollment token (#86): its name and prefix, never the token. */
+const tokenName = (m: Meta): string => {
+  const prefix = text(m.prefix);
+  return [text(m.label), prefix ? `${prefix}…` : null].filter(Boolean).join(" · ") || "—";
+};
 
 /** `nameOf` turns a user id into a name (or something short when it's unknown). */
 export function summarize(
@@ -75,6 +83,11 @@ export function summarize(
       if (text(f.to)) parts.push(`to ${text(f.to)}`);
       return parts.join(" · ");
     }
+    case "enrollment_token.created":
+    case "enrollment_token.revoked":
+      return tokenName(m);
+    case "enrollment_token.used":
+      return `With ${tokenName(m)}`;
     default:
       return Object.keys(m).length ? JSON.stringify(m) : "—";
   }

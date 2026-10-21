@@ -48,6 +48,16 @@ describe("summarize", () => {
     ).toBe("12 rows · actions: capture.viewed · from 2026-03-01");
   });
 
+  it("names enrollment tokens by label and prefix only", () => {
+    const meta = { token_id: "t1", label: "Jamf: Macs", prefix: "apet_AbCd" };
+    expect(actionLabel("enrollment_token.used")).toBe("Enrolled a device");
+    expect(summarize("enrollment_token.created", meta, nameOf)).toBe("Jamf: Macs · apet_AbCd…");
+    expect(summarize("enrollment_token.used", { ...meta, device_id: "d1" }, nameOf)).toBe(
+      "With Jamf: Macs · apet_AbCd…",
+    );
+    expect(summarize("enrollment_token.revoked", {}, nameOf)).toBe("—");
+  });
+
   it("shows unknown metadata as JSON and nothing as a dash", () => {
     expect(summarize("timesheet.approved", { week: "2026-W10" }, nameOf)).toBe(
       '{"week":"2026-W10"}',

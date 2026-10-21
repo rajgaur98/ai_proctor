@@ -808,6 +808,7 @@ export type Database = {
           acked_seq: number;
           agent_version: string;
           created_at: string;
+          enrollment_token_id: string | null;
           hardware_hash: string;
           id: string;
           org_id: string;
@@ -821,6 +822,7 @@ export type Database = {
           acked_seq?: number;
           agent_version: string;
           created_at?: string;
+          enrollment_token_id?: string | null;
           hardware_hash: string;
           id?: string;
           org_id: string;
@@ -833,6 +835,7 @@ export type Database = {
           acked_seq?: number;
           agent_version?: string;
           created_at?: string;
+          enrollment_token_id?: string | null;
           hardware_hash?: string;
           id?: string;
           org_id?: string;
@@ -842,6 +845,13 @@ export type Database = {
           user_id?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "devices_enrollment_token_id_fkey";
+            columns: ["enrollment_token_id"];
+            isOneToOne: false;
+            referencedRelation: "enrollment_tokens";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "devices_org_id_fkey";
             columns: ["org_id"];
@@ -955,6 +965,82 @@ export type Database = {
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      enrollment_tokens: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          label: string;
+          last_used_at: string | null;
+          org_id: string;
+          revoked_at: string | null;
+          revoked_by: string | null;
+          token_hash: string;
+          token_prefix: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          label: string;
+          last_used_at?: string | null;
+          org_id: string;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          token_hash: string;
+          token_prefix: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          label?: string;
+          last_used_at?: string | null;
+          org_id?: string;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          token_hash?: string;
+          token_prefix?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "enrollment_tokens_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "enrollment_tokens_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "enrollment_tokens_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "enrollment_tokens_revoked_by_fkey";
+            columns: ["revoked_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "enrollment_tokens_revoked_by_fkey";
+            columns: ["revoked_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
             referencedColumns: ["id"];
           },
         ];
@@ -2273,6 +2359,16 @@ export type Database = {
       can_view_user: { Args: { target: string }; Returns: boolean };
       cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
+      create_enrollment_token: {
+        Args: { p_label: string };
+        Returns: {
+          created_at: string;
+          id: string;
+          label: string;
+          token: string;
+          token_prefix: string;
+        }[];
+      };
       create_org: {
         Args: {
           full_name?: string;
@@ -2397,6 +2493,19 @@ export type Database = {
           viewer_role: string;
         }[];
       };
+      list_enrollment_tokens: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          created_at: string;
+          created_by_name: string;
+          devices: number;
+          id: string;
+          label: string;
+          last_used_at: string;
+          revoked_at: string;
+          token_prefix: string;
+        }[];
+      };
       list_user_capture_objects: {
         Args: { p_limit?: number; p_user_id: string };
         Returns: {
@@ -2492,6 +2601,7 @@ export type Database = {
       register_device: {
         Args: {
           agent_version: string;
+          enrollment_token?: string;
           hardware_hash: string;
           os_version: string;
           platform: Database["public"]["Enums"]["device_platform"];
@@ -2522,6 +2632,7 @@ export type Database = {
       retention_purge_rows: { Args: Record<PropertyKey, never>; Returns: Json };
       return_timesheet: { Args: { p_comment: string; p_id: string }; Returns: undefined };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
+      revoke_enrollment_token: { Args: { p_id: string }; Returns: undefined };
       save_client: {
         Args: { p_archived?: boolean; p_id: string; p_name: string };
         Returns: string;

@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { initials } from "../../lib/nav";
 import { ManagerDelegation } from "../delegation/ManagerDelegation";
+import { EnrollmentTokens } from "../enrollment/EnrollmentTokens";
 import { DataRequests } from "./DataRequests";
 import { InviteDialog } from "./InviteDialog";
 import { MemberFields } from "./MemberFields";
@@ -145,6 +146,8 @@ export function People() {
           Role, manager, location, approval and delegation changes are recorded in the audit log.
         </p>
       </div>
+
+      <EnrollmentTokens orgName={profile.orgName} />
 
       <InviteDialog dialogRef={inviteRef} members={members} />
       {delegating && <ManagerDelegation manager={delegating} onClose={() => setDelegating(null)} />}
