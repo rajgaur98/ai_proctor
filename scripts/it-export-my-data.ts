@@ -157,6 +157,33 @@ const lucasPass = await lucas.send("checkin", pass(ago(50), ["screen-1.webp"]), 
 await erin.send("clock_out", { reason: "manual" }, ago(5));
 await lucas.send("clock_out", { reason: "manual" }, ago(5));
 
+// A late clock-in each (SHF-06, #67; written with the service role: no shift here).
+const lateIds: Record<string, string> = {};
+for (const [user, lateS] of [
+  [ERIN, 1800],
+  [LUCAS, 900],
+] as const) {
+  const sessions = await call(
+    `/rest/v1/clock_sessions?user_id=eq.${user}&order=start_at.desc&limit=1&select=id`,
+    service,
+  );
+  assert.equal(sessions.status, 200, `clock session ${JSON.stringify(sessions.json)}`);
+  const late = await call("/rest/v1/late_clock_ins", service, {
+    body: {
+      org_id: ORG,
+      user_id: user,
+      clock_session_id: sessions.json[0].id,
+      day: dayOf(ago(120 + lateS / 60)),
+      shift_start: ago(120 + lateS / 60).toISOString(),
+      clocked_in_at: ago(120).toISOString(),
+      late_s: lateS,
+      grace_min: 10,
+    },
+  });
+  assert.equal(late.status, 201, `late_clock_ins ${JSON.stringify(late.json)}`);
+  lateIds[user] = sessions.json[0].id;
+}
+
 // Only the screenshot arrives (the webcam frame never does).
 const pathOf = (user: string, at: Date, checkin: string, file: string) =>
   `${ORG}/${user}/${dayOf(at)}/${checkin}/${file}`;
@@ -227,6 +254,7 @@ try {
     "notice-acknowledgements",
     "capture-views",
     "notifications",
+    "late-clock-ins",
   ];
 
   // Erin's export.
@@ -272,6 +300,21 @@ try {
   assert.ok(csv.split("\r\n")[0]?.split(",").includes("id"), "the CSV has a header with id");
   assert.ok(csv.includes(erinPass), "the CSV has the check-in");
   console.log("ok  check-ins in JSON and CSV: the pass, the miss and the old one");
+
+  const late = JSON.parse(zip.text("data/late-clock-ins.json")) as Record<string, unknown>[];
+  // The seed gives Erin a shift too, so the trigger may have recorded one of its own.
+  const mine = late.filter((l) => l.clock_session_id === lateIds[ERIN] && l.late_s === 1800);
+  assert.equal(mine.length, 1, "Erin's late clock-in is in her export, in raw seconds");
+  assert.equal(mine[0]?.grace_min, 10);
+  assert.ok(
+    late.every((l) => l.user_id === ERIN),
+    "only her late clock-ins",
+  );
+  assert.ok(
+    zip.text("data/late-clock-ins.csv").split("\r\n")[0]?.split(",").includes("late_s"),
+    "the CSV has the columns as stored",
+  );
+  console.log("ok  late clock-ins: Erin's, in raw seconds, none of Lucas's");
 
   const profile = JSON.parse(zip.text("data/profile.json")) as { id: string }[];
   assert.deepEqual(
