@@ -1,15 +1,22 @@
-// The Export CSV dialog of the Timesheets tab (#45, TS-20..23): date range, employee,
-// team (#202), client, project, approval status and view, then a CSV download.
-import { EXPORT_VIEWS, type ExportView } from "@ai-proctor/core";
+// The Export dialog of the Timesheets tab (#45, #65, TS-20..23): date range, employee,
+// team (#202), client, project, approval status, view and format, then a CSV or XLSX
+// download. The XLSX highlights overtime (TS-19); the CSV is plain.
+import { EXPORT_FORMATS, EXPORT_VIEWS, type ExportFormat, type ExportView } from "@ai-proctor/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Segmented } from "../policy/fields";
 import { clientsQuery, projectsQuery } from "../projects/projectData";
 import { teamsQuery } from "../teams/teamData";
-import { downloadExport, exportPeopleQuery, exportViewLabel } from "./exportData";
+import {
+  downloadExport,
+  exportFormatLabel,
+  exportPeopleQuery,
+  exportViewLabel,
+} from "./exportData";
 import { type SheetStatus, statusLabel } from "./timesheetData";
 
 const fieldClass = "h-11 w-full rounded-[9px] border border-line2 bg-panel px-3 text-sm text-ink";
@@ -32,6 +39,7 @@ export function ExportDialog({
   const [projectId, setProjectId] = useState("");
   const [status, setStatus] = useState<SheetStatus | "">("");
   const [view, setView] = useState<ExportView>("daily");
+  const [format, setFormat] = useState<ExportFormat>("csv");
   const [problem, setProblem] = useState<string | null>(null);
 
   const people = useQuery(exportPeopleQuery);
@@ -66,16 +74,33 @@ export function ExportDialog({
             setProblem("The range can be up to a year.");
             return;
           }
-          send.mutate({ view, from, to, userId, teamId, clientId, projectId, status });
+          send.mutate({ view, format, from, to, userId, teamId, clientId, projectId, status });
         }}
       >
         <h2 id="export-title" className="text-lg font-semibold">
-          Export CSV
+          Export timesheets
         </h2>
         <p className="text-[13px] text-ink2">
           Hours come from the same seconds as the timesheets, as decimals and as H:MM. Every export
           is recorded in the audit log.
         </p>
+        <div className="flex flex-col gap-1.5">
+          <span aria-hidden="true" className="text-[13px] font-medium text-ink2">
+            Format
+          </span>
+          <Segmented
+            label="Format"
+            value={format}
+            options={EXPORT_FORMATS.map((f) => [f, exportFormatLabel[f]] as const)}
+            onChange={setFormat}
+          />
+          {format === "xlsx" && (
+            <p className="text-[12.5px] text-ink3">
+              Days and weeks above the overtime thresholds in Policy are highlighted. Nothing is
+              paid or deducted.
+            </p>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="export-from">From</Label>
@@ -215,7 +240,7 @@ export function ExportDialog({
             Cancel
           </Button>
           <Button type="submit" disabled={send.isPending}>
-            {send.isPending ? "Exporting…" : "Download CSV"}
+            {send.isPending ? "Exporting…" : `Download ${exportFormatLabel[format]}`}
           </Button>
         </div>
       </form>

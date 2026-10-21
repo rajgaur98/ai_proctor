@@ -27,6 +27,8 @@ export const us: Policy = {
   alert_late_clock_in_enabled: true,
   alert_pause_over_cap_enabled: true,
   reminders_enabled: true,
+  overtime_daily_hours: null,
+  overtime_weekly_hours: null,
   image_retention_days: 30,
   event_retention_months: 12,
   timesheet_retention_years: 3,
