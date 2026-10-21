@@ -20,6 +20,9 @@ pub const CONTROL_VAR: &str = "AI_PROCTOR_DEV_CONTROL";
 /// Set (to anything) to report the session as unlocked: an unattended Mac is
 /// usually locked, which holds every check-in (CHK-04).
 pub const ACTIVE_SESSION_VAR: &str = "AI_PROCTOR_DEV_ACTIVE_SESSION";
+/// An org enrollment token, as if MDM had set it (#86), for trying a managed install
+/// without a configuration profile. Wins over a managed one.
+pub const ENROLLMENT_TOKEN_VAR: &str = "AI_PROCTOR_DEV_ENROLLMENT_TOKEN";
 
 fn dir_from_env(var: &str) -> Option<PathBuf> {
     std::env::var_os(var).map(PathBuf::from)
@@ -31,6 +34,20 @@ pub fn data_dir() -> Option<PathBuf> {
 
 pub fn keystore() -> Option<FileKeyStore> {
     dir_from_env(KEYSTORE_VAR).map(FileKeyStore::new)
+}
+
+/// `AI_PROCTOR_DEV_ENROLLMENT_TOKEN`, when it holds a well-formed token.
+pub fn enrollment_token() -> Option<String> {
+    let raw = std::env::var(ENROLLMENT_TOKEN_VAR).ok()?;
+    let token = agent_core::enrollment::normalize(&raw);
+    match &token {
+        Some(t) => tracing::warn!(
+            prefix = agent_core::enrollment::prefix(t),
+            "dev enrollment token in use"
+        ),
+        None => tracing::warn!("{ENROLLMENT_TOKEN_VAR} is not a token; ignored"),
+    }
+    token
 }
 
 #[cfg(unix)]
@@ -113,6 +130,9 @@ impl Platform for ActiveSession {
     }
     fn on_session_end(&self, handler: agent_core::platform::SessionEndHandler) {
         self.0.on_session_end(handler)
+    }
+    fn managed_enrollment_token(&self) -> Option<String> {
+        self.0.managed_enrollment_token()
     }
 }
 

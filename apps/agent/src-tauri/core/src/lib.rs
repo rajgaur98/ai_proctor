@@ -12,6 +12,7 @@ pub mod config;
 pub mod consent_store;
 pub mod contracts;
 pub mod displays;
+pub mod enrollment;
 #[cfg(any(test, feature = "fake"))]
 pub mod fake;
 pub mod foreground;
