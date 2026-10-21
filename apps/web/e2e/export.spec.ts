@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { clientFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 const MANAGER_EMAIL = "manager@acme.test";
 const ADMIN_EMAIL = "admin@acme.test";
@@ -12,13 +12,6 @@ async function signIn(page: Page, email: string, landing: RegExp) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(landing, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** Export rows in the audit log, as the admin who may read it. */

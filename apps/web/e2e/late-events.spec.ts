@@ -1,7 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, clientFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 const LUCAS = "00000000-0000-4000-8000-0000000000c2";
 const LUCAS_EMAIL = "lucas@acme.test";
@@ -24,13 +24,6 @@ async function signOut(page: Page, name: string) {
   await page.getByLabel(`Account menu for ${name}`).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** Lucas submits his previous week and the manager approves it, whatever earlier runs left. */

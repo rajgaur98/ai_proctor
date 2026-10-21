@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { clientFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 // The local stack's mail catcher (`pnpm supabase status`).
 const mailpit = process.env.MAILPIT_URL ?? "http://127.0.0.1:54324";
@@ -11,13 +11,6 @@ async function signInAsAdmin(page: Page) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/team$/, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** The join link from the newest invite email to `email`. */
