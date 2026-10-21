@@ -153,22 +153,26 @@ impl Api {
         Err(rpc_error(status, &text))
     }
 
+    /// `enrollment_token`: the org token from MDM (#86); the server refuses it with
+    /// an `enrollment_*` reason (`enrollment::Refusal`).
     pub fn register_device(
         &self,
         platform: &str,
         os_version: &str,
         agent_version: &str,
         hardware_hash: &str,
+        enrollment_token: Option<&str>,
     ) -> Result<Registration, SyncError> {
-        let reply = self.rpc(
-            "register_device",
-            &json!({
-                "platform": platform,
-                "os_version": os_version,
-                "agent_version": agent_version,
-                "hardware_hash": hardware_hash,
-            }),
-        )?;
+        let mut body = json!({
+            "platform": platform,
+            "os_version": os_version,
+            "agent_version": agent_version,
+            "hardware_hash": hardware_hash,
+        });
+        if let Some(token) = enrollment_token {
+            body["enrollment_token"] = json!(token);
+        }
+        let reply = self.rpc("register_device", &body)?;
         Ok(Registration {
             device_id: serde_json::from_value(reply["device_id"].clone())
                 .map_err(|e| SyncError::Refused(e.to_string()))?,
@@ -267,6 +271,11 @@ fn rpc_error(status: u16, body: &str) -> SyncError {
         (401, _) | (_, "user_inactive" | "not_signed_in" | "user_not_provisioned") => {
             SyncError::SignedOut(message)
         }
+        // #86: this managed computer may not enroll this person (enrollment::Refusal).
+        (
+            _,
+            "enrollment_org_mismatch" | "enrollment_token_revoked" | "enrollment_token_invalid",
+        ) => SyncError::SignedOut(message),
         (408 | 429, _) | (500.., _) => SyncError::Retry(format!("{status}: {message}")),
         _ => SyncError::Refused(format!("{status}: {message}")),
     }
@@ -551,6 +560,10 @@ mod tests {
             rpc_error(401, r#"{"message":"JWT expired"}"#),
             SyncError::SignedOut(_)
         ));
+        assert_eq!(
+            rpc_error(403, &body("enrollment_org_mismatch")),
+            SyncError::SignedOut("enrollment_org_mismatch".into())
+        );
         assert!(matches!(rpc_error(503, "upstream"), SyncError::Retry(_)));
         assert!(matches!(
             rpc_error(400, &body("batch_too_large")),

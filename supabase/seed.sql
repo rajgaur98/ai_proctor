@@ -85,3 +85,16 @@ insert into public.notice_acks (user_id, notice_id)
 select u.id, n.id
 from public.users u
 join public.notices n on n.org_id = u.org_id and n.version = 1;
+
+-- One org enrollment token (#86), for local MDM tests only. Only its SHA-256 is
+-- stored, as for real tokens. The token is the fixed, public test string
+--   apet_local-test-token-for-acme-remote-not-secret
+-- (to try a managed install by hand: AI_PROCTOR_DEV_ENROLLMENT_TOKEN=<it> on a debug
+-- build, or the managed preference in docs/deploy/mdm.md). Never use it anywhere else.
+insert into public.enrollment_tokens (id, org_id, label, token_hash, token_prefix, created_by)
+values (
+  '00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-000000000001',
+  'Local test token',
+  extensions.digest(convert_to('apet_local-test-token-for-acme-remote-not-secret', 'UTF8'), 'sha256'),
+  'apet_loca', '00000000-0000-4000-8000-0000000000a1'
+);
