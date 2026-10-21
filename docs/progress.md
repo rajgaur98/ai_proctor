@@ -128,7 +128,7 @@ Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Sig
 - Dashboard folder: `docs/tech-stack.md` says `apps/web`; issue #8 says `apps/dashboard`. Use `apps/web`.
 - Capture path: tech-stack uses `captures/{org}/{user}/{date}/{checkin_id}/…`; issue #24 omits `{date}`. Use the tech-stack path.
 - macOS release builds: tech-stack says build on the local Mac (macOS CI minutes cost 10×); issue #55 says a CI macOS runner. Build releases locally; CI only compiles and runs tests on macOS, on a label or nightly.
-- XLSX export is P0 in the PRD (TS-20) but deferred to #65 to keep the pilot small.
+- XLSX export is P0 in the PRD (TS-20); it was deferred from the pilot and lands with #65 (with TS-19 overtime highlighting).
 - ALR-01 (P0) includes a late clock-in alert, but recording late clock-ins (SHF-06) is P1 (#67). Needs a decision before #50.
 - First migration (#9) lists `checkins` and `captures` tables; the LLD has `checkin_events` (with `object_keys[]`), a separate `last_seen` table, and no `captures` table. Use the LLD. #23 and #24 use the issue names too. `users` also gets `full_name` and `email` (not in the LLD column list; the dashboard needs them and `auth.users` isn't readable through the API).
 - macOS minimum: PRD says macOS 13+, so the spike guide's 12.3 fallback is dropped, but the macOS 13 `SCStream` path is still needed (`SCScreenshotManager` is 14+). Only compile-checked on Raj's macOS 26 Mac.

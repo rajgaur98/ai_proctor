@@ -2954,6 +2954,7 @@ export type Database = {
       timesheet_export_rows: {
         Args: {
           p_client_ids?: string[];
+          p_format?: string;
           p_from: string;
           p_manager_id?: string;
           p_project_ids?: string[];

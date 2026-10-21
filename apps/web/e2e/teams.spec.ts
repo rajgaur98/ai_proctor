@@ -139,8 +139,8 @@ test("an admin creates a team with its own check-in interval; agents, the live g
 
     // So does the export (TS-20, #202), and its audit row says which team.
     await page.goto("/timesheets");
-    await page.getByRole("button", { name: "Export CSV" }).click();
-    const exportDialog = page.getByRole("dialog", { name: "Export CSV" });
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const exportDialog = page.getByRole("dialog", { name: "Export timesheets" });
     await exportDialog.getByLabel("Team").selectOption({ label: name });
     await exportDialog.getByLabel("View").selectOption("segments");
     const download = page.waitForEvent("download");

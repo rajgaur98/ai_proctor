@@ -128,7 +128,7 @@ apps/agent/
 | Storage | Private `captures` bucket. Insert allowed only to the caller's own path; reads only via `capture-url` |
 | Realtime | Postgres Changes on `presence` for the pilot. Move to broadcast-from-database when concurrent managers grow |
 | Scheduled jobs | pg_cron: offline sweep (1 min), alert evaluation (1 min), segment rebuild trigger (5 min), retention purge (nightly). Edge Functions invoked via `pg_net` |
-| Edge Functions (Deno, TS) | `rebuild-segments`, `send-emails` (Resend), `export-timesheet` (CSV + XLSX via SheetJS), `capture-url`, `retention-purge` (deletes storage objects through the Storage API, then rows) |
+| Edge Functions (Deno, TS) | `rebuild-segments`, `send-emails` (Resend), `export-timesheet` (CSV + XLSX; the XLSX writer is our own in `packages/core`, no library), `capture-url`, `retention-purge` (deletes storage objects through the Storage API, then rows) |
 | Backups | Supabase Pro daily backups, plus a weekly `pg_dump` to R2 from a scheduled GitHub Action as an off-platform copy |
 
 ### Email and alerts (ALR-01, ALR-02)
