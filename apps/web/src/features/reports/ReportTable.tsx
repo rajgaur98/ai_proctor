@@ -120,6 +120,15 @@ export const metrics: Metric[] = [
     show: (r) => count(r.lateClockIns),
     total: (t) => count(t.lateClockIns),
   },
+  {
+    // DSH-08: anti-cheat flags nobody has reviewed yet. A signal to look at the person's
+    // days, never a penalty (ANT-08).
+    id: "review",
+    header: "Needs review",
+    sort: (r) => r.needsReview,
+    show: (r) => count(r.needsReview),
+    total: (t) => count(t.needsReview),
+  },
 ];
 
 const columns = helper.columns([

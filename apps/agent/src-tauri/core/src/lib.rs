@@ -2,6 +2,7 @@
 //! `FakePlatform`; OS calls live behind the `Platform` trait in `agent-platform`.
 
 pub mod activity;
+pub mod anticheat;
 pub mod auth;
 pub mod camera_privacy;
 pub mod capture;
@@ -15,6 +16,7 @@ pub mod enrollment;
 #[cfg(any(test, feature = "fake"))]
 pub mod fake;
 pub mod foreground;
+pub mod frame_hash;
 pub mod keystore;
 pub mod liveness;
 pub mod logging;

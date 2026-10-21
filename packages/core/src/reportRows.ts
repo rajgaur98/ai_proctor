@@ -1,4 +1,4 @@
-// Reports (PRD 4.11 DSH-07): the per-employee aggregates `report_rows` returns, and the
+// Reports (PRD 4.11 DSH-07, DSH-08): the per-employee aggregates `report_rows` returns, and the
 // team's numbers added up from them. Pure, so the dashboard and the tests share it.
 //
 // Time is raw whole seconds, added up with the arithmetic the timesheet export and
@@ -31,6 +31,10 @@ export interface ReportRow {
   /** Median response time of the passed check-ins, in ms; null when there are none. */
   medianResponseMs: number | null;
   lateClockIns: number;
+  /** DSH-08: anti-cheat flags on these days (one per day and kind). */
+  anomalyFlags: number;
+  /** Those of them nobody has reviewed yet: what the report shows as "needs review". */
+  needsReview: number;
 }
 
 /** A row as `report_rows` returns it. */
@@ -51,6 +55,9 @@ export interface DbReportRow {
   response_rate: number | null;
   median_response_ms: number | null;
   late_clock_ins: number;
+  /** Absent from a database older than #63: read as none. */
+  anomaly_flags?: number;
+  needs_review?: number;
 }
 
 /** What `report_rows` returns: the rows and what applied to them. */
@@ -80,6 +87,8 @@ export function fromDbReportRow(r: DbReportRow): ReportRow {
     responseRate: r.response_rate === null ? null : Number(r.response_rate),
     medianResponseMs: r.median_response_ms === null ? null : Number(r.median_response_ms),
     lateClockIns: Number(r.late_clock_ins),
+    anomalyFlags: Number(r.anomaly_flags ?? 0),
+    needsReview: Number(r.needs_review ?? 0),
   };
 }
 
@@ -139,6 +148,8 @@ export interface ReportTotals extends ReportSeconds {
   responseRate: number | null;
   medianResponseMs: number | null;
   lateClockIns: number;
+  anomalyFlags: number;
+  needsReview: number;
 }
 
 export function teamTotals(
@@ -160,6 +171,8 @@ export function teamTotals(
     responseRate: null,
     medianResponseMs: teamMedianResponseMs,
     lateClockIns: 0,
+    anomalyFlags: 0,
+    needsReview: 0,
   };
   for (const r of rows) {
     total.workedS += r.workedS;
@@ -173,6 +186,8 @@ export function teamTotals(
     total.checkinsMissed += r.checkinsMissed;
     total.checkinsFailed += r.checkinsFailed;
     total.lateClockIns += r.lateClockIns;
+    total.anomalyFlags += r.anomalyFlags;
+    total.needsReview += r.needsReview;
   }
   total.responseRate = responseRate(total.checkinsPassed, total.checkinsShown);
   return total;

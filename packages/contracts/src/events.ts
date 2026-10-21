@@ -20,6 +20,32 @@ export const DeferralReason = z.enum(["call", "screen_share", "presenting"]);
  */
 export const CallSource = z.enum(["camera", "mic", "screen_share", "presenting"]);
 
+/**
+ * The anti-cheat flags an agent puts on a `checkin` (#26, #63), each turned into a
+ * "needs review" row by `internal.anticheat_from_checkin` and never into a penalty
+ * (ANT-08). `<n>` is a count, `<name>` a camera name of at most 24 plain characters.
+ */
+export const CheckinFlag = {
+  /** ANT-02 (Windows): n injected clicks on the card were blocked. */
+  injected_click: "injected_click:<n>",
+  /** ANT-03 (macOS): n clicks on the card looked synthetic; let through, flag only. */
+  synthetic_click: "synthetic_click:<n>",
+  /** ANT-05: the webcam frame came from a known virtual camera. */
+  virtual_camera: "virtual_camera:<name>",
+  /** ANT-06: the webcam frame is near-identical to an earlier pass's; n differing bits of 256. */
+  duplicate_frame: "duplicate_frame:<n>",
+  /** ANT-07: the agent ran in a virtual machine. */
+  virtual_machine: "virtual_machine",
+  /** ANT-07: the session was remote (Remote Desktop) or remotely controlled. */
+  remote_session: "remote_session",
+  /** CAP-04: an excluded app was in front, so its screen was replaced (not anti-cheat). */
+  excluded_app: "excluded_app",
+} as const;
+
+function checkinFlagsHelp(): string {
+  return `Raw anti-cheat flags; unknown ones are ignored. Known: ${Object.values(CheckinFlag).join(", ")}.`;
+}
+
 /** Why a capture failed; the check-in still passes (CAP-08). */
 export const CaptureFailure = z.enum(["permission_missing", "camera_busy", "no_camera", "failed"]);
 
@@ -65,9 +91,11 @@ const payloads = {
       .strictObject({ screen: CaptureFailure.optional(), webcam: CaptureFailure.optional() })
       .optional(),
     project_id: uuid.nullable().optional(),
-    // Raw anti-cheat state; the server decides what it means (ANT-08). The Windows
-    // agent adds `injected_click:<n>` when it blocked n injected clicks on the card.
-    flags: z.array(z.string().max(40)).max(10),
+    // Raw anti-cheat state; the server decides what it means (ANT-08). Free text on
+    // purpose: a flag the server doesn't know is ignored rather than failing the event,
+    // so a newer agent never loses check-ins to an older server. The known ones are in
+    // `CheckinFlag` (and in the schema's description).
+    flags: z.array(z.string().max(40)).max(10).meta({ description: checkinFlagsHelp() }),
   }),
   idle_start: z.strictObject({ since: timestamp }),
   idle_end: z.strictObject({}),

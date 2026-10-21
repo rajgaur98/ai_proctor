@@ -494,7 +494,8 @@
                   "items": {
                     "type": "string",
                     "maxLength": 40
-                  }
+                  },
+                  "description": "Raw anti-cheat flags; unknown ones are ignored. Known: injected_click:<n>, synthetic_click:<n>, virtual_camera:<name>, duplicate_frame:<n>, virtual_machine, remote_session, excluded_app."
                 }
               },
               "required": ["scheduled_at", "outcome", "wrong_clicks", "object_keys", "flags"],

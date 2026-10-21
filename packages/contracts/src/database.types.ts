@@ -3015,7 +3015,15 @@ export type Database = {
     };
     Enums: {
       alert_kind: "consecutive_misses" | "offline" | "tamper" | "late_clock_in" | "pause_over_cap";
-      anticheat_kind: "injected_click" | "fast_response" | "low_variance";
+      anticheat_kind:
+        | "injected_click"
+        | "fast_response"
+        | "low_variance"
+        | "synthetic_click"
+        | "virtual_camera"
+        | "duplicate_frame"
+        | "virtual_machine"
+        | "remote_session";
       checkin_outcome: "pass" | "miss" | "failed" | "deferred";
       data_region: "us" | "eu";
       device_platform: "macos" | "windows";
@@ -3149,7 +3157,16 @@ export const Constants = {
   public: {
     Enums: {
       alert_kind: ["consecutive_misses", "offline", "tamper", "late_clock_in", "pause_over_cap"],
-      anticheat_kind: ["injected_click", "fast_response", "low_variance"],
+      anticheat_kind: [
+        "injected_click",
+        "fast_response",
+        "low_variance",
+        "synthetic_click",
+        "virtual_camera",
+        "duplicate_frame",
+        "virtual_machine",
+        "remote_session",
+      ],
       checkin_outcome: ["pass", "miss", "failed", "deferred"],
       data_region: ["us", "eu"],
       device_platform: ["macos", "windows"],

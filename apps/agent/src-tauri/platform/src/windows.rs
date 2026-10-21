@@ -9,6 +9,7 @@
 
 mod com;
 mod consent;
+mod environment;
 mod foreground;
 mod policy;
 mod screen;
@@ -32,8 +33,8 @@ use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionEndHandler, SessionState,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{
     self, WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState, LABEL, SUPERVISED_ARG,
@@ -286,7 +287,22 @@ impl Platform for WindowsPlatform {
         thread.stop();
         InjectedInput {
             count: INJECTED_CLICKS.swap(0, Ordering::Relaxed),
+            // Injected clicks are blocked here, never let through (ANT-02).
+            synthetic: 0,
         }
+    }
+
+    /// The first camera Media Foundation lists: the one `capture_webcam` opens.
+    fn camera_device(&self) -> Option<CameraDevice> {
+        with_timeout("camera-name", || {
+            webcam::first_camera_name().ok_or(CaptureError::NoCamera)
+        })
+        .ok()
+        .map(|name| CameraDevice { name, model: None })
+    }
+
+    fn run_environment(&self) -> RunEnvironment {
+        environment::current()
     }
 
     /// A toast, or a tray balloon where the toast can't be raised (see `toast`).

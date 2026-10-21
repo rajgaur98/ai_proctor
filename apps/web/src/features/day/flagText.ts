@@ -1,7 +1,8 @@
 // What an anti-cheat flag says on the day page (ANT-08). Flags are "needs review"
 // signals for the manager, never verdicts: the wording stays neutral and nothing
 // here touches status, hours or timesheets. Details come from anticheat_eval and
-// the injected-click trigger.
+// the check-in trigger (injected clicks #26; synthetic clicks, virtual cameras,
+// duplicate frames, virtual machines and remote sessions #63).
 import type { Enums, Json } from "@ai-proctor/contracts";
 
 export type FlagKind = Enums<"anticheat_kind">;
@@ -17,6 +18,17 @@ export function flagCheckinIds(details: Json): string[] {
   if (typeof details !== "object" || details === null || Array.isArray(details)) return [];
   const ids = details.checkin_ids;
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+}
+
+function strings(details: Json, key: string): string[] {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return [];
+  const v = details[key];
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+}
+
+/** "at 2 check-ins", or nothing when the count is unknown. */
+function atCheckins(count: number | null): string {
+  return count === null ? "" : ` at ${plural(count, "check-in", "check-ins")}`;
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -54,5 +66,36 @@ export function flagText(kind: FlagKind, details: Json): { title: string; detail
         detail: `${passes === null ? "Check-ins" : `${passes} check-ins`} were answered in almost the same time${stats}.`,
       };
     }
+    case "synthetic_click": {
+      const clicks = num(details, "clicks");
+      return {
+        title: "Check-in clicks that looked automated",
+        detail: `${clicks === null ? "Some clicks" : plural(clicks, "click", "clicks")} on the card looked like ${clicks === 1 ? "it" : "they"} came from another program rather than a mouse or trackpad. The check-in counted as usual.`,
+      };
+    }
+    case "virtual_camera": {
+      const cameras = strings(details, "cameras");
+      return {
+        title: "Webcam was a virtual camera",
+        detail: `The webcam image came from ${cameras.length > 0 ? cameras.join(", ") : "a virtual camera"}${atCheckins(num(details, "count"))}. A virtual camera can show any video, not just the room.`,
+      };
+    }
+    case "duplicate_frame": {
+      const count = num(details, "count");
+      return {
+        title: "Webcam images look the same",
+        detail: `${count === null ? "Some webcam images were" : plural(count, "webcam image was", "webcam images were")} almost identical to an earlier check-in's. Compare the images.`,
+      };
+    }
+    case "virtual_machine":
+      return {
+        title: "Running in a virtual machine",
+        detail: `The app was running inside a virtual machine${atCheckins(num(details, "count"))}.`,
+      };
+    case "remote_session":
+      return {
+        title: "Remote session",
+        detail: `The computer was being used or controlled remotely (such as Remote Desktop or Screen Sharing)${atCheckins(num(details, "count"))}.`,
+      };
   }
 }

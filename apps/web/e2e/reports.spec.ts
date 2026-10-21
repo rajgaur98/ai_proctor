@@ -140,6 +140,7 @@ test("a manager reads the week's report and it matches the timesheet totals, sor
     "Breaks",
     "Pauses",
     "Late clock-ins",
+    "Needs review",
   ]) {
     const header = page.getByRole("columnheader", { name });
     await header.getByRole("button").click();

@@ -21,11 +21,12 @@ use agent_core::checkin::{deferred_payload, Card, CardPolicy, ClickResult, Finis
 use agent_core::clock::{Clock, SystemClock};
 use agent_core::config::ProjectConfig;
 use agent_core::contracts::{
-    AgentStatus, CardChallenge, CardClickResult, CheckinOutcome, CommandResult, LastCheckin,
-    MissedCheckin, NoticeContent, OnboardingPlatform, OnboardingState, PermissionKind, Permissions,
-    ProjectRef, ShiftState, TestCaptureResult,
+    AgentStatus, CardChallenge, CardClickResult, CardLook, CheckinOutcome, CommandResult,
+    LastCheckin, MissedCheckin, NoticeContent, OnboardingPlatform, OnboardingState, PermissionKind,
+    Permissions, ProjectRef, ShiftState, TestCaptureResult,
 };
 use agent_core::enrollment::Refusal;
+use agent_core::frame_hash::{self, FrameHistory};
 use agent_core::keystore::KeyStore;
 use agent_core::liveness::{classify_exit, ExitKind, Liveness, PreviousRun, RestartReport};
 use agent_core::notice::NoticeState;
@@ -463,6 +464,12 @@ impl AgentState {
         if injected.count > 0 {
             tracing::warn!(count = injected.count, "injected clicks on the card");
         }
+        if injected.synthetic > 0 {
+            tracing::warn!(
+                count = injected.synthetic,
+                "synthetic-looking clicks on the card"
+            );
+        }
         card.record_injected(injected);
     }
 
@@ -528,7 +535,7 @@ impl AgentState {
     /// accepted it. Takes ~2 s (camera warm-up): never on the UI thread.
     fn finish_pass(&self, mut finished: Finished) {
         let policy = self.capture_policy.lock().unwrap().clone();
-        let captured = capture::capture(self.platform.as_ref(), &policy);
+        let mut captured = capture::capture(self.platform.as_ref(), &policy);
         tracing::info!(
             files = captured.files.len(),
             screen_error = ?captured.screen_error,
@@ -537,6 +544,10 @@ impl AgentState {
         );
         self.note_capture(&policy, &captured);
         self.permission_tick();
+        if let Some(flag) = self.duplicate_frame(&captured, finished.at) {
+            tracing::warn!(flag, "webcam frame near-identical to an earlier one");
+            captured.flags.push(flag);
+        }
         captured.attach(&mut finished.payload);
         let Some(id) = self.queue(finished) else {
             return;
@@ -548,6 +559,29 @@ impl AgentState {
                 }
             }
         }
+    }
+
+    /// ANT-06: compares this pass's webcam hash with the last passes' (kept in the
+    /// outbox's encrypted state, never sent; `frame_hash` says why it lives here) and
+    /// remembers it. The flag when it is near-identical to one of them.
+    fn duplicate_frame(
+        &self,
+        captured: &capture::Captured,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Option<String> {
+        let hash = captured.webcam_hash?;
+        let outbox = self.outbox.as_ref()?;
+        let stored = outbox
+            .state(frame_hash::STATE_KEY)
+            .map_err(|error| tracing::warn!(%error, "webcam hashes unreadable"))
+            .ok()
+            .flatten();
+        let mut history = FrameHistory::parse(stored.as_deref());
+        let duplicate = history.check(hash, at);
+        if let Err(error) = outbox.set_state(frame_hash::STATE_KEY, &history.serialize()) {
+            tracing::warn!(%error, "webcam hashes not saved");
+        }
+        duplicate.map(frame_hash::duplicate_flag)
     }
 
     /// Tells the permission monitor how a capture went (a check-in's or the Fix
@@ -810,6 +844,16 @@ impl AgentState {
             remaining_s: card.remaining_s(self.clock.now()).into(),
             wrong_clicks: card.wrong_clicks.into(),
             sound: self.card_policy.lock().unwrap().sound,
+            look: CardLook {
+                width: card.look.width.into(),
+                height: card.look.height.into(),
+                radius: card.look.radius.into(),
+                padding: card.look.padding.into(),
+                gap: card.look.gap.into(),
+                button_height: card.look.button_height.into(),
+                digit_size: card.look.digit_size.into(),
+                tint: card.look.tint.into(),
+            },
             project: self.session.lock().unwrap().project_id().and_then(|id| {
                 self.projects
                     .lock()
@@ -3160,6 +3204,107 @@ mod tests {
         assert_eq!(w.state.card_tick(), CardAction::Hide);
         assert_eq!(w.platform.snapshot().input_guard, None);
         assert!(w.checkins().is_empty());
+    }
+
+    // #63: the anti-cheat extras ride on the same check-in flags (ANT-03/05/06/07).
+
+    #[test]
+    fn synthetic_clicks_on_macos_are_flagged_and_the_pass_still_counts() {
+        let w = working();
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.synthetic_clicks = 1);
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        assert_eq!(reply.result, CardClickResult::Pass);
+        w.state.finish_pass(reply.pass.unwrap());
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "pass");
+        assert_eq!(checkin["flags"], serde_json::json!(["synthetic_click:1"]));
+    }
+
+    #[test]
+    fn a_repeated_webcam_frame_is_flagged_from_the_second_pass_and_nothing_else_changes() {
+        let w = working();
+        w.pass();
+        w.pass();
+        // A real camera: two different frames, no flag.
+        assert_eq!(w.checkins()[1]["flags"], serde_json::json!([]));
+        // The same frame fed in again.
+        w.platform.update(|s| s.webcam_scene = Some(42));
+        w.pass();
+        w.pass();
+        let checkins = w.checkins();
+        assert_eq!(checkins[2]["flags"], serde_json::json!([]));
+        assert_eq!(
+            checkins[3]["flags"],
+            serde_json::json!(["duplicate_frame:0"])
+        );
+        assert_eq!(checkins[3]["outcome"], "pass");
+        assert_eq!(
+            checkins[3]["object_keys"],
+            serde_json::json!(["screen-1.webp", "webcam.webp"])
+        );
+        // Only the hashes are kept, in the outbox's sealed state; no image is added.
+        let stored = w.outbox.state(frame_hash::STATE_KEY).unwrap().unwrap();
+        assert_eq!(FrameHistory::parse(Some(&stored)).len(), 4);
+        assert!(!stored.contains("webp"));
+    }
+
+    #[test]
+    fn a_virtual_camera_and_a_vm_or_remote_session_are_flagged() {
+        use agent_core::platform::{CameraDevice, RunEnvironment};
+        let w = working();
+        w.platform.update(|s| {
+            s.camera_device = Some(CameraDevice {
+                name: "OBS Virtual Camera".into(),
+                model: None,
+            });
+            s.environment = RunEnvironment {
+                virtual_machine: true,
+                remote_session: true,
+            };
+        });
+        w.pass();
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!([
+                "virtual_machine",
+                "remote_session",
+                "virtual_camera:OBS Virtual Camera"
+            ])
+        );
+        assert_eq!(w.checkins()[0]["outcome"], "pass");
+    }
+
+    #[test]
+    fn a_miss_in_a_vm_is_flagged_but_captures_nothing() {
+        use agent_core::platform::RunEnvironment;
+        let w = working();
+        w.platform.update(|s| {
+            s.environment = RunEnvironment {
+                virtual_machine: true,
+                remote_session: false,
+            }
+        });
+        w.card_due();
+        w.clock.advance(chrono::Duration::seconds(95));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "miss");
+        assert_eq!(checkin["flags"], serde_json::json!(["virtual_machine"]));
+        assert_eq!(checkin["object_keys"], serde_json::json!([]));
+        assert_eq!(w.platform.snapshot().webcam_captures, 0);
+    }
+
+    #[test]
+    fn each_card_brings_its_own_look_and_keeps_it_through_a_reshuffle() {
+        let w = working();
+        let card = w.card_due();
+        let look = card.look.clone();
+        assert!((340..=384).contains(&look.width), "{look:?}");
+        assert!((210..=236).contains(&look.height), "{look:?}");
+        let reply = w.state.card_click(&card.card_id, wrong(&card), true);
+        assert_eq!(reply.next.unwrap().look, look);
     }
 
     #[test]

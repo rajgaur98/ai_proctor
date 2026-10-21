@@ -297,9 +297,10 @@ select is(
   (select count(*)::int
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname in ('public', 'internal') and p.prosrc ilike '%anticheat_flags%'
-     -- delete_user_data (#54) only deletes a person's flags along with the rest of their data.
+     -- delete_user_data (#54) only deletes a person's flags along with the rest of their data;
+     -- report_rows (#63, DSH-08) only counts them for the report's "needs review" column.
      and p.proname not in ('anticheat_from_checkin', 'anticheat_eval', 'anticheat_mark_reviewed',
-                           'delete_user_data')),
+                           'delete_user_data', 'report_rows')),
   0, 'no other function (status, segments, timesheets) reads the flags');
 
 create function pg_temp.fingerprint() returns text
