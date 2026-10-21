@@ -729,7 +729,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>rebuild-segments</code></td><td>Cron 5 min; dashboard on open</td><td>Rebuilds every dirty user-day (section 6)</td></tr>
             <tr><td><code>capture-url</code></td><td>Dashboard</td><td>Access check, audit row, signed URLs valid 5 min</td></tr>
             <tr><td><code>export-timesheet</code></td><td>Dashboard</td><td>CSV or XLSX into a private exports bucket, signed link</td></tr>
-            <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts and reminders through Resend</td></tr>
+            <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts, reminders and daily digests through Resend</td></tr>
             <tr><td><code>retention-purge</code></td><td>Cron nightly</td><td>Deletes expired objects through the Storage API, then their rows</td></tr>
           </tbody>
         </table>
@@ -745,6 +745,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Queues today (and any unfinished earlier day) for users with an open clock session, then calls <code>rebuild-segments</code> when a <code>dirty_days</code> row is due</td></tr>
             <tr><td><code>reminders</code></td><td>Every 15 min</td><td>Submit and approval reminders, admin escalations</td></tr>
+            <tr><td><code>digest</code></td><td>Every 15 min</td><td>Each manager's daily digest of yesterday per direct report (hours, flagged time, misses, late clock-ins), from 09:00 in their zone; one a day, opt-out per person (ALR-03)</td></tr>
             <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
             <tr><td><code>partitions</code></td><td>Weekly</td><td>Creates next weekly partitions, drops expired ones</td></tr>
           </tbody>

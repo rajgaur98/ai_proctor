@@ -865,6 +865,63 @@ export type Database = {
           },
         ];
       };
+      digests_sent: {
+        Row: {
+          day: string;
+          email_id: string | null;
+          id: string;
+          org_id: string;
+          recipient_id: string;
+          sent_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          day: string;
+          email_id?: string | null;
+          id?: string;
+          org_id: string;
+          recipient_id: string;
+          sent_at?: string;
+        };
+        Update: {
+          day?: string;
+          email_id?: string | null;
+          id?: string;
+          org_id?: string;
+          recipient_id?: string;
+          sent_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "digests_sent_email_id_fkey";
+            columns: ["email_id"];
+            isOneToOne: false;
+            referencedRelation: "email_outbox";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "digests_sent_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "digests_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "digests_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       dirty_days: {
         Row: {
           attempts: number;
@@ -1008,6 +1065,75 @@ export type Database = {
             foreignKeyName: "last_seen_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: true;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      late_clock_ins: {
+        Row: {
+          clock_session_id: string;
+          clocked_in_at: string;
+          created_at: string;
+          day: string;
+          grace_min: number;
+          id: string;
+          late_s: number;
+          org_id: string;
+          shift_start: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          clock_session_id: string;
+          clocked_in_at: string;
+          created_at?: string;
+          day: string;
+          grace_min: number;
+          id?: string;
+          late_s: number;
+          org_id: string;
+          shift_start: string;
+          user_id: string;
+        };
+        Update: {
+          clock_session_id?: string;
+          clocked_in_at?: string;
+          created_at?: string;
+          day?: string;
+          grace_min?: number;
+          id?: string;
+          late_s?: number;
+          org_id?: string;
+          shift_start?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "late_clock_ins_clock_session_id_fkey";
+            columns: ["clock_session_id"];
+            isOneToOne: false;
+            referencedRelation: "clock_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "late_clock_ins_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "late_clock_ins_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "late_clock_ins_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -1194,6 +1320,50 @@ export type Database = {
             foreignKeyName: "notices_published_by_fkey";
             columns: ["published_by"];
             isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notification_prefs: {
+        Row: {
+          daily_digest: boolean;
+          org_id: string;
+          updated_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          daily_digest?: boolean;
+          org_id: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          daily_digest?: boolean;
+          org_id?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notification_prefs_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notification_prefs_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "notification_prefs_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
@@ -2563,6 +2733,7 @@ export type Database = {
         Args: { p_required: boolean; p_user_id: string };
         Returns: undefined;
       };
+      set_daily_digest: { Args: { p_enabled: boolean }; Returns: boolean };
       set_delegation: {
         Args: {
           p_delegate_id: string;
@@ -2642,6 +2813,13 @@ export type Database = {
           flagged_s: number;
           user_id: string;
           worked_s: number;
+        }[];
+      };
+      top_apps: {
+        Args: { p_from: string; p_limit?: number; p_to: string; p_user_id: string };
+        Returns: {
+          app_name: string;
+          seconds: number;
         }[];
       };
       update_member: {

@@ -2,8 +2,9 @@
 // everything the app has collected about the signed-in person, for any role: the day
 // as a bar with its legend, missed check-ins with reasons, check-ins with their
 // captures and who viewed them, the apps and sites seen, who viewed their captures,
-// their week's timesheet and the manager's edits to it. "Export my data" downloads a
-// ZIP of all of it (export-my-data).
+// their week's timesheet and the manager's edits to it, and the day's top apps (ACT-04,
+// #67), as the manager sees them. "Export my data" downloads a ZIP of all of it
+// (export-my-data).
 import { windowsBetween } from "@ai-proctor/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
@@ -15,6 +16,7 @@ import { CaptureViewer } from "../day/CaptureViewer";
 import { outcomeLabel } from "../day/checkinText";
 import { Marker } from "../day/DayTimeline";
 import { rebuildDay } from "../day/dayData";
+import { TopApps } from "../day/TopApps";
 import { barSpan, deferralLabel, localDay, ticks } from "../day/timeline";
 import { shiftsQuery } from "../people/ShiftEditor";
 import { projectsQuery } from "../projects/projectData";
@@ -326,6 +328,8 @@ export function MyData() {
               </ul>
             )}
           </section>
+
+          <TopApps userId={profile.id} from={from} to={to} isToday={isToday} live={live} />
 
           <section aria-labelledby="activity-title" className={card}>
             <div className={cardHead}>
