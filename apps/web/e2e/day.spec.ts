@@ -1,7 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { agentFor, asEmployee } from "./agent";
-import { timeAt } from "./helpers";
+import { expectNoA11yViolations, timeAt } from "./helpers";
 
 test("a manager opens an employee's day and reads a missed and a deferred check-in", async ({
   page,
@@ -87,10 +86,7 @@ test("a manager opens an employee's day and reads a missed and a deferred check-
   await expect(passed).toContainText("Passed · 4.2 s");
   await expect(passed).toContainText("Answered in");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   // Max manages Erin, so he can set her schedule from here.
   await page.getByRole("button", { name: "Schedule" }).click();

@@ -18,6 +18,8 @@ export interface ExportRequest {
   from: string;
   to: string;
   userId: string;
+  /** TS-20: one team ("" is everyone the viewer can see). */
+  teamId: string;
   clientId: string;
   projectId: string;
   status: SheetStatus | "";
@@ -54,6 +56,7 @@ export async function downloadExport(r: ExportRequest): Promise<void> {
     from: r.from,
     to: r.to,
     ...(r.userId ? { user_ids: [r.userId] } : {}),
+    ...(r.teamId ? { team_id: r.teamId } : {}),
     ...(r.clientId ? { client_ids: [r.clientId] } : {}),
     ...(r.projectId ? { project_ids: [r.projectId] } : {}),
     ...(r.status ? { statuses: [r.status] } : {}),

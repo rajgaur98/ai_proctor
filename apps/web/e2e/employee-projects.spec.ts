@@ -1,8 +1,14 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
-import { ERIN, ERIN_EMAIL, MANAGER_EMAIL, resetErinWeeks, ERIN_ZONE as ZONE } from "./helpers";
+import {
+  ERIN,
+  ERIN_EMAIL,
+  MANAGER_EMAIL,
+  resetErinWeeks,
+  expectNoA11yViolations as sharedExpectNoA11yViolations,
+  ERIN_ZONE as ZONE,
+} from "./helpers";
 
 const INTERNAL = "00000000-0000-4000-8000-0000000000f2";
 
@@ -21,14 +27,7 @@ async function expectNoA11yViolations(page: Page) {
   // A hover style still easing in under a resting pointer reads as low contrast.
   await page.mouse.move(0, 0);
   await page.waitForTimeout(300);
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(
-    results.violations.map(
-      (v) => `${v.id}: ${v.help} ${v.nodes.map((n) => n.html.slice(0, 160)).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  await sharedExpectNoA11yViolations(page);
 }
 
 /**

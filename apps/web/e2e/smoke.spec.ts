@@ -1,5 +1,5 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { expectNoA11yViolations } from "./helpers";
 
 // Seed users (supabase/seed.sql); local stack only.
 const password = "password123";
@@ -9,13 +9,6 @@ async function signIn(page: Page, email: string) {
   await page.getByLabel("Work email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 test("signed-out visitors land on sign-in, which is accessible", async ({ page }) => {

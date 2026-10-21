@@ -18,9 +18,9 @@ const messages: Record<string, string> = {
   too_many_people: "That is more people than one report can hold. Choose a team to narrow it down.",
 };
 
-export const reportQuery = (from: string, to: string, managerId: string) =>
+export const reportQuery = (from: string, to: string, teamId: string) =>
   queryOptions({
-    queryKey: ["report", from, to, managerId],
+    queryKey: ["report", from, to, teamId],
     // Its errors (a bad range, a team you can't see, too many people) don't go away on a
     // retry, so show them at once.
     retry: false,
@@ -28,7 +28,7 @@ export const reportQuery = (from: string, to: string, managerId: string) =>
       const { data, error } = await supabase.rpc("report_rows", {
         p_from: from,
         p_to: to,
-        ...(managerId ? { p_manager_id: managerId } : {}),
+        ...(teamId ? { p_team_id: teamId } : {}),
       });
       if (error) throw new Error(messages[error.message] ?? error.message);
       const report = data as unknown as DbReport;
@@ -40,20 +40,3 @@ export const reportQuery = (from: string, to: string, managerId: string) =>
       };
     },
   });
-
-/**
- * The managers the team filter offers: people the viewer can see who have someone
- * reporting to them (row-level security limits the list; teams, ORG-08, replace this).
- */
-export const teamManagersQuery = queryOptions({
-  queryKey: ["report-managers"],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from("users")
-      .select("id, full_name, manager_id")
-      .order("full_name");
-    if (error) throw error;
-    const managerIds = new Set(data.map((u) => u.manager_id));
-    return data.filter((u) => managerIds.has(u.id)).map((u) => ({ id: u.id, name: u.full_name }));
-  },
-});

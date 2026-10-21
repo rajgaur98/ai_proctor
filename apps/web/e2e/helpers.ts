@@ -1,6 +1,8 @@
 // Shared e2e setup for the seeded Acme org. Specs share the seed users and the local
 // database keeps every earlier run, so each spec creates what it reads and puts shared
 // state (Erin's week) back where it needs it: it must pass alone and after any other (#195).
+import AxeBuilder from "@axe-core/playwright";
+import { expect, type Page } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, clientFor } from "./agent";
 
@@ -133,4 +135,53 @@ export async function settleErinFlagged(
  */
 export function timeAt(iso: string): string {
   return `time[datetime^="${iso.slice(0, 19)}"]`;
+}
+
+/**
+ * A team of `userIds` in the Acme org (#66), made as the admin, with a name no other run
+ * uses. The people named leave whatever team they were in. Remove it with `removeTeam`.
+ */
+export async function makeTeam(
+  prefix: string,
+  userIds: string[],
+): Promise<{ id: string; name: string }> {
+  const admin = await clientFor("admin@acme.test");
+  const name = `${prefix} ${Date.now()}`;
+  const saved = await admin.rpc("save_team", {
+    p_team_id: null as unknown as string,
+    p_name: name,
+  });
+  if (saved.error) throw saved.error;
+  const members = await admin.rpc("set_team_members", {
+    p_team_id: saved.data,
+    p_user_ids: userIds,
+  });
+  if (members.error) throw members.error;
+  return { id: saved.data, name };
+}
+
+/** Deletes a team `makeTeam` made; its members are left without a team. */
+export async function removeTeam(id: string) {
+  const admin = await clientFor("admin@acme.test");
+  const { error } = await admin.rpc("delete_team", { p_team_id: id });
+  if (error) throw error;
+}
+
+/** Runs axe (WCAG 2 A/AA, 2.1 AA) on the page and fails on any violation. */
+export async function expectNoA11yViolations(page: Page) {
+  // A button still fading between its enabled and disabled styles fails color-contrast
+  // for a frame, so let running transitions finish before axe measures (not endless
+  // ones like a spinner, which never finish).
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Number.POSITIVE_INFINITY)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
