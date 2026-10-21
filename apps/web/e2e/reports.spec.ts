@@ -1,9 +1,18 @@
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
-import { ERIN, ERIN_EMAIL, expectNoA11yViolations, flaggedTime, MANAGER_EMAIL } from "./helpers";
+import {
+  ERIN,
+  ERIN_EMAIL,
+  expectNoA11yViolations,
+  flaggedTime,
+  MANAGER_EMAIL,
+  makeTeam,
+  removeTeam,
+} from "./helpers";
 
 const LUCAS = "00000000-0000-4000-8000-0000000000c2";
+const MAX = "00000000-0000-4000-8000-0000000000b1";
 const ADMIN_EMAIL = "admin@acme.test";
 
 /** The Monday-based week the page opens on, from the manager's calendar (Chicago). */
@@ -131,6 +140,7 @@ test("a manager reads the week's report and it matches the timesheet totals, sor
     "Breaks",
     "Pauses",
     "Late clock-ins",
+    "Needs review",
   ]) {
     const header = page.getByRole("columnheader", { name });
     await header.getByRole("button").click();
@@ -175,12 +185,22 @@ test("a manager changes the range and the team", async ({ page }) => {
   await page.getByLabel("To", { exact: true }).fill("2026-03-22");
   await expect(page.getByRole("rowheader", { name: "Erin Employee" })).toBeVisible();
 
-  // The team filter: Max's team is his reports; someone with no reports isn't offered.
-  const team = page.getByLabel("Team", { exact: true });
-  await expect(team.getByRole("option")).toHaveText(["Everyone I can see", "Max Manager's team"]);
-  await team.selectOption({ label: "Max Manager's team" });
-  await expect(page.getByRole("rowheader", { name: "Erin Employee" })).toBeVisible();
-  await expect(page.getByRole("rowheader", { name: "Lucas Martin" })).toBeVisible();
+  // The team filter (#202): a team of Erin alone leaves Lucas out.
+  const support = await makeTeam("Reports support", [ERIN]);
+  try {
+    await page.reload();
+    await page.getByLabel("From", { exact: true }).fill("2026-03-16");
+    await page.getByLabel("To", { exact: true }).fill("2026-03-22");
+    const team = page.getByLabel("Team", { exact: true });
+    await expect(team.getByRole("option", { name: "Everyone I can see" })).toHaveCount(1);
+    await team.selectOption({ label: support.name });
+    await expect(page.getByRole("rowheader", { name: "Erin Employee" })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: "Lucas Martin" })).toHaveCount(0);
+    await team.selectOption({ label: "Everyone I can see" });
+    await expect(page.getByRole("rowheader", { name: "Lucas Martin" })).toBeVisible();
+  } finally {
+    await removeTeam(support.id);
+  }
 });
 
 test("an admin sees the whole org's teams, and an employee has no Reports page", async ({
@@ -191,12 +211,18 @@ test("an admin sees the whole org's teams, and an employee has no Reports page",
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
   await expect(page.getByRole("rowheader", { name: "Max Manager" })).toBeVisible();
   await expect(page.getByRole("rowheader", { name: "Ada Admin" })).toHaveCount(0);
-  const team = page.getByLabel("Team", { exact: true });
-  await expect(team.getByRole("option", { name: "Ada Admin's team" })).toHaveCount(1);
-  await team.selectOption({ label: "Max Manager's team" });
-  await expect(page.getByRole("rowheader", { name: "Max Manager" })).toHaveCount(0);
-  await expect(page.getByRole("rowheader", { name: "Erin Employee" })).toBeVisible();
-  await expectNoA11yViolations(page);
+  // An admin picks any team of the org: one of Max alone leaves his reports out.
+  const leads = await makeTeam("Reports leads", [MAX]);
+  try {
+    await page.reload();
+    const team = page.getByLabel("Team", { exact: true });
+    await team.selectOption({ label: leads.name });
+    await expect(page.getByRole("rowheader", { name: "Max Manager" })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: "Erin Employee" })).toHaveCount(0);
+    await expectNoA11yViolations(page);
+  } finally {
+    await removeTeam(leads.id);
+  }
 
   await page.getByLabel(/Account menu for/).click();
   await page.getByRole("button", { name: "Sign out" }).click();

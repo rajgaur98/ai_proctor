@@ -1,12 +1,16 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ANTICHEAT_MAX_CV_LIMITS,
+  OVERTIME_LIMITS,
   POLICY_LIMITS,
   type Policy,
   PolicyKeys,
   PolicySettings,
   policySchema,
+  TEAM_POLICY_KEYS,
+  TeamPolicyKeys,
+  teamPolicySchema,
   UpdatePolicyReply,
 } from "./policy";
 
@@ -37,6 +41,8 @@ const eu: Policy = {
   alert_late_clock_in_enabled: true,
   alert_pause_over_cap_enabled: true,
   reminders_enabled: true,
+  overtime_daily_hours: null,
+  overtime_weekly_hours: null,
   image_retention_days: 30,
   event_retention_months: 12,
   timesheet_retention_years: 3,
@@ -84,9 +90,25 @@ describe("policySchema", () => {
     ]);
   });
 
-  it("lets the daily break limit be empty, and no other key", () => {
+  it("lets the daily break limit and the overtime thresholds be empty, and no other key", () => {
     expect(issues({ ...eu, break_daily_max_min: null })).toEqual([]);
+    expect(issues({ ...eu, overtime_daily_hours: null, overtime_weekly_hours: null })).toEqual([]);
     expect(issues({ ...eu, pause_max_min: null })).toHaveLength(1);
+  });
+
+  it("takes overtime thresholds in hours, with decimals, inside their ranges (TS-19)", () => {
+    for (const [key, [min, max]] of Object.entries(OVERTIME_LIMITS)) {
+      for (const ok of [min, max, min + 0.5]) {
+        expect(issues({ ...eu, [key]: ok }), `${key}=${ok}`).toEqual([]);
+      }
+      for (const bad of [0, min - 0.5, max + 0.5]) {
+        expect(issues({ ...eu, [key]: bad }), `${key}=${bad}`).toEqual([
+          `${key}: Enter hours from ${min} to ${max}, or leave it empty for off`,
+        ]);
+      }
+    }
+    expect(issues({ ...eu, overtime_daily_hours: "8" })).toHaveLength(1);
+    expect(issues({ ...eu, overtime_weekly_hours: Number.NaN })).toHaveLength(1);
   });
 
   it("needs the shortest interval at or below the longest", () => {
@@ -151,10 +173,10 @@ describe("replies", () => {
 });
 
 // The ranges here and in update_policy must not drift apart: read them from the migration
-// that last defined policy_spec (#177 repeats the whole list when it adds a key).
+// that last defined policy_spec (#65 repeats the whole list when it adds keys).
 describe("the database's ranges", () => {
   const sql = readFileSync(
-    new URL("../../../supabase/migrations/20261020196000_reminder_shift_day.sql", import.meta.url),
+    new URL("../../../supabase/migrations/20261022120000_overtime_xlsx.sql", import.meta.url),
     "utf8",
   );
   const rows = [...sql.matchAll(/\('([a-z_]+)', '(int|num)', ([\d.]+), ([\d.]+)/g)].map((m) => ({
@@ -165,9 +187,30 @@ describe("the database's ranges", () => {
 
   it("match POLICY_LIMITS for every whole-number key", () => {
     const fromSql = Object.fromEntries(
-      rows.filter((r) => r.key !== "anticheat_max_cv").map((r) => [r.key, [r.lo, r.hi]]),
+      rows
+        .filter((r) => r.key !== "anticheat_max_cv" && !(r.key in OVERTIME_LIMITS))
+        .map((r) => [r.key, [r.lo, r.hi]]),
     );
     expect(fromSql).toEqual(POLICY_LIMITS);
+  });
+
+  it("match the overtime ranges", () => {
+    const fromSql = Object.fromEntries(
+      rows.filter((r) => r.key in OVERTIME_LIMITS).map((r) => [r.key, [r.lo, r.hi]]),
+    );
+    expect(fromSql).toEqual(OVERTIME_LIMITS);
+  });
+
+  it("is the latest migration that defines policy_spec", () => {
+    const dir = new URL("../../../supabase/migrations/", import.meta.url);
+    const latest = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .filter((f) =>
+        /function internal\.policy_spec\(\)/.test(readFileSync(new URL(f, dir), "utf8")),
+      )
+      .at(-1);
+    expect(latest).toBe("20261022120000_overtime_xlsx.sql");
   });
 
   it("match the anti-cheat variation range", () => {
@@ -180,5 +223,47 @@ describe("the database's ranges", () => {
       (m) => m[1],
     );
     expect(keys.sort()).toEqual(Object.keys(PolicyKeys.shape).sort());
+  });
+});
+
+describe("teamPolicySchema", () => {
+  it("takes any of the team keys, none at all, and the org's ranges", () => {
+    expect(teamPolicySchema.safeParse({}).success).toBe(true);
+    expect(
+      teamPolicySchema.safeParse({ checkin_response_s: 60, auto_clock_in: true }).success,
+    ).toBe(true);
+    expect(teamPolicySchema.safeParse({ checkin_response_s: 20 }).success).toBe(false);
+    expect(teamPolicySchema.safeParse({ idle_threshold_min: 2.5 }).success).toBe(false);
+  });
+
+  it("refuses keys that stay org-wide", () => {
+    expect(teamPolicySchema.safeParse({ screenshots: "off" }).success).toBe(false);
+    expect(teamPolicySchema.safeParse({ late_clock_in_min: 10 }).success).toBe(false);
+  });
+
+  it("needs both ends of the interval, shortest at most longest", () => {
+    const issue = (v: unknown) => teamPolicySchema.safeParse(v).error?.issues[0];
+    expect(issue({ checkin_min_interval_min: 15 })?.path).toEqual(["checkin_max_interval_min"]);
+    expect(issue({ checkin_max_interval_min: 15 })?.path).toEqual(["checkin_min_interval_min"]);
+    expect(issue({ checkin_min_interval_min: 40, checkin_max_interval_min: 30 })?.message).toBe(
+      "Must be at least the shortest interval",
+    );
+    expect(
+      teamPolicySchema.safeParse({ checkin_min_interval_min: 15, checkin_max_interval_min: 30 })
+        .success,
+    ).toBe(true);
+  });
+
+  it("lists the same keys as the database", () => {
+    const sql = readFileSync(
+      new URL("../../../supabase/migrations/20261022100000_teams.sql", import.meta.url),
+      "utf8",
+    );
+    const body = sql.match(
+      /team_policy_keys\(\)\s+returns text\[\][\s\S]*?array\[([\s\S]*?)\]/,
+    )?.[1];
+    const keys = [...(body ?? "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect(keys).toEqual([...TEAM_POLICY_KEYS]);
+    expect(Object.keys(TeamPolicyKeys.shape).sort()).toEqual([...TEAM_POLICY_KEYS].sort());
   });
 });

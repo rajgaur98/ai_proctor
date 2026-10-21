@@ -12,11 +12,12 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
+use agent_core::enrollment;
 use agent_core::foreground::{clean_title, domain_of, domain_of_address};
 use agent_core::pixels::webcam_frame_ready;
 use agent_core::platform::{
-    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionEndHandler, SessionState,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use block2::RcBlock;
@@ -41,7 +42,8 @@ use objc2_core_audio::{
     AudioObjectGetPropertyData, AudioObjectPropertyAddress,
 };
 use objc2_core_foundation::{
-    CFArray, CFBoolean, CFDictionary, CFRetained, CFString, CFType, CFURL,
+    CFArray, CFBoolean, CFDictionary, CFPreferencesAppValueIsForced, CFPreferencesCopyAppValue,
+    CFRetained, CFString, CFType, CFURL,
 };
 use objc2_core_graphics::{
     CGDataProvider, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayMode, CGEventSource,
@@ -163,6 +165,8 @@ pub struct MacPlatform {
     observers: Mutex<Vec<Observer>>,
     /// Chromium pids already asked to build their accessibility tree.
     ax_enabled: Mutex<HashSet<i32>>,
+    /// ANT-03: the card's synthetic-click monitor while the card is up.
+    card_guard: Mutex<Option<crate::macos_anticheat::CardGuard>>,
 }
 
 impl MacPlatform {
@@ -347,12 +351,28 @@ impl Platform for MacPlatform {
         }
     }
 
-    // TODO(ANT-03, P1): best-effort detection of synthetic events on macOS
-    // (event-source heuristics); flag only. Until then nothing is guarded.
-    fn start_input_guard(&self, _area: ScreenRect) {}
+    /// ANT-03: counts presses on the card that look synthetic, letting them through
+    /// (flag only; see `macos_anticheat`). No permission needed.
+    fn start_input_guard(&self, area: ScreenRect) {
+        let old = self.card_guard.lock().unwrap().take();
+        if let Some(old) = old {
+            old.stop();
+        }
+        let guard = crate::macos_anticheat::CardGuard::start(area);
+        *self.card_guard.lock().unwrap() = Some(guard);
+    }
 
     fn stop_input_guard(&self) -> InjectedInput {
-        InjectedInput::default()
+        let guard = self.card_guard.lock().unwrap().take();
+        guard.map(|g| g.stop()).unwrap_or_default()
+    }
+
+    fn camera_device(&self) -> Option<CameraDevice> {
+        crate::macos_anticheat::camera_device()
+    }
+
+    fn run_environment(&self) -> RunEnvironment {
+        crate::macos_anticheat::run_environment()
     }
 
     fn notify(&self, title: &str, body: &str) {
@@ -380,6 +400,22 @@ impl Platform for MacPlatform {
             *held = Some(handler);
         }
     }
+
+    fn managed_enrollment_token(&self) -> Option<String> {
+        managed_string(enrollment::MACOS_DOMAIN, enrollment::TOKEN_KEY)
+    }
+}
+
+/// A string preference that MDM forces: a configuration profile's payload, which
+/// macOS keeps under `/Library/Managed Preferences`. A value the person set
+/// themselves (`defaults write`) isn't forced and is ignored (#86).
+fn managed_string(domain: &str, key: &str) -> Option<String> {
+    let (domain, key) = (CFString::from_str(domain), CFString::from_str(key));
+    if !CFPreferencesAppValueIsForced(&key, &domain) {
+        return None;
+    }
+    let value = CFPreferencesCopyAppValue(&key, &domain)?;
+    value.downcast_ref::<CFString>().map(|s| s.to_string())
 }
 
 // --- Decision rules (pure, unit-tested) ---------------------------------------

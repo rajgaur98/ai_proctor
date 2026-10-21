@@ -3,8 +3,8 @@
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionEndHandler, SessionState,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
 use chrono::{DateTime, Utc};
@@ -60,6 +60,14 @@ impl Platform for UnsupportedPlatform {
         InjectedInput::default()
     }
 
+    fn camera_device(&self) -> Option<CameraDevice> {
+        None
+    }
+
+    fn run_environment(&self) -> RunEnvironment {
+        RunEnvironment::default()
+    }
+
     fn notify(&self, title: &str, _body: &str) {
         tracing::debug!(title, "notification (stub)");
     }
@@ -81,4 +89,8 @@ impl Platform for UnsupportedPlatform {
     }
 
     fn on_session_end(&self, _handler: SessionEndHandler) {}
+
+    fn managed_enrollment_token(&self) -> Option<String> {
+        None
+    }
 }

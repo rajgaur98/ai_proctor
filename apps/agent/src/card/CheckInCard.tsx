@@ -4,6 +4,7 @@
 import type { CardChallenge, CardClickResult } from "@ai-proctor/contracts";
 import { type MouseEvent, useEffect, useState } from "react";
 import { invoke, listen } from "../ipc";
+import { lookStyle } from "./cardLook";
 
 export function CheckInCard() {
   const [card, setCard] = useState<CardChallenge | null>(null);
@@ -48,16 +49,18 @@ export function CheckInCard() {
     if (reply === "pass" || reply === "failed") setResult(reply);
   }
 
+  const style = lookStyle(card.look);
+
   if (result) {
     return (
-      <main className="card done">
+      <main className="card done" style={style}>
         <p className="ask">{result === "pass" ? "Thanks, you're checked in" : "Check-in failed"}</p>
       </main>
     );
   }
 
   return (
-    <main className="card">
+    <main className="card" style={style}>
       <header>
         <span>Check-in</span>
         <span className="left" role="timer" aria-label={`${left} seconds left`}>

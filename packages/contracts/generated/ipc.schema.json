@@ -272,6 +272,62 @@
       "required": ["ok", "error"],
       "additionalProperties": false
     },
+    "CardLook": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "radius": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "padding": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "gap": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "button_height": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "digit_size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "tint": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "radius",
+        "padding",
+        "gap",
+        "button_height",
+        "digit_size",
+        "tint"
+      ],
+      "additionalProperties": false
+    },
     "CardChallenge": {
       "type": "object",
       "properties": {
@@ -308,6 +364,9 @@
         },
         "project": {
           "type": ["string", "null"]
+        },
+        "look": {
+          "$ref": "#/definitions/CardLook"
         }
       },
       "required": [
@@ -317,7 +376,8 @@
         "remaining_s",
         "wrong_clicks",
         "sound",
-        "project"
+        "project",
+        "look"
       ],
       "additionalProperties": false
     },

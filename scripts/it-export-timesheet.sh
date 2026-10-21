@@ -1,7 +1,7 @@
 #!/bin/bash
-# Integration check for export-timesheet (#45): scripts/it-export-timesheet.ts (seeded
-# segments -> the Edge Function's three CSV views, totals against timesheet_totals,
-# filters, access, audit rows).
+# Integration check for export-timesheet (#45, #65): scripts/it-export-timesheet.ts
+# (seeded segments -> the Edge Function's three views as CSV and XLSX, totals against
+# timesheet_totals, filters, access, overtime highlighting, audit rows).
 #
 # Run on a stack whose Edge runtime has the function (stop and start the stack after
 # adding it):

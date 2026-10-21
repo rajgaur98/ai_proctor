@@ -2,6 +2,7 @@
 // (or, for admins, everyone), by week and status; open one to review, edit, approve
 // or return it, and the Delegation section (#44). Employees get their own weeks with
 // Submit (MyTimesheets).
+import { EXPORT_FORMATS, type ExportFormat } from "@ai-proctor/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
@@ -10,11 +11,13 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Delegation } from "../delegation/Delegation";
 import { ExportDialog } from "./ExportDialog";
-import { downloadExport } from "./exportData";
+import { downloadExport, exportFormatLabel } from "./exportData";
+import { OvertimeNote, WorkedTime } from "./Overtime";
 import { LateDataBadge, SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration } from "./summary";
 import {
   ensureAndSubmit,
+  overtimeQuery,
   type SheetStatus,
   sheetColumns,
   statusLabel,
@@ -38,6 +41,7 @@ export function Timesheets() {
   const week = picked ?? currentWeek;
   const [status, setStatus] = useState<SheetStatus | "all">("all");
   const exportRef = useRef<HTMLDialogElement>(null);
+  const overtime = useQuery(overtimeQuery).data;
 
   const list = useQuery({ ...weekListQuery(week), enabled: startDay.isSuccess });
   const rows = (list.data ?? [])
@@ -69,7 +73,7 @@ export function Timesheets() {
             className="h-10"
             onClick={() => exportRef.current?.showModal()}
           >
-            Export CSV
+            Export
           </Button>
         </div>
       </div>
@@ -163,7 +167,13 @@ export function Timesheets() {
                       <LateDataBadge sheet={r} />
                     </span>
                   </td>
-                  <td className="font-mono text-[13px]">{formatDuration(r.workedS)}</td>
+                  <td className="font-mono text-[13px]">
+                    <WorkedTime
+                      seconds={r.workedS}
+                      thresholdHours={overtime?.weeklyHours ?? null}
+                      period="weekly"
+                    />
+                  </td>
                   <td className="font-mono text-[13px]">
                     {r.flaggedS > 0 ? formatDuration(r.flaggedS) : "—"}
                   </td>
@@ -184,6 +194,7 @@ export function Timesheets() {
           </table>
         )}
       </div>
+      <OvertimeNote overtime={overtime} weeklyOnly />
     </section>
   );
 }
@@ -216,12 +227,14 @@ export function MyTimesheets() {
   });
   // Employees can export their own time (TS-20, EMP-04); the function checks and logs it.
   const exportWeek = useMutation({
-    mutationFn: (week: string) =>
+    mutationFn: ({ week, format }: { week: string; format: ExportFormat }) =>
       downloadExport({
         view: "daily",
+        format,
         from: week,
         to: weekDays(week).at(-1) ?? week,
         userId: profile.id,
+        teamId: "",
         clientId: "",
         projectId: "",
         status: "",
@@ -277,15 +290,18 @@ export function MyTimesheets() {
                   <span className="text-ink2">“{sheet.comment}”</span>
                 )}
                 <span className="ml-auto flex gap-2">
-                  <Button
-                    variant="ghost"
-                    className="h-9"
-                    aria-label={`Download ${weekLabel(w)} as CSV`}
-                    disabled={exportWeek.isPending}
-                    onClick={() => exportWeek.mutate(w)}
-                  >
-                    CSV
-                  </Button>
+                  {EXPORT_FORMATS.map((format) => (
+                    <Button
+                      key={format}
+                      variant="ghost"
+                      className="h-9"
+                      aria-label={`Download ${weekLabel(w)} as ${exportFormatLabel[format]}`}
+                      disabled={exportWeek.isPending}
+                      onClick={() => exportWeek.mutate({ week: w, format })}
+                    >
+                      {exportFormatLabel[format]}
+                    </Button>
+                  ))}
                   {canSubmit && (
                     <Button
                       variant="secondary"

@@ -395,7 +395,8 @@ footer { color: var(--muted); font-size: 13px; }
             <tr><td><code>activity</code></td><td>Polls idle time every 5 s; emits <code>idle_start/end</code> at the threshold, lock/sleep and call events (camera, mic, screen share and presentation each start and end a call, so In meeting holds while any is on), and closes an <code>app_session</code> on every foreground change.</td></tr>
             <tr><td><code>session</code></td><td>Shift state machine (section 2). Auto clock-in on first input inside the shift; auto clock-out after 30 min without input past shift end.</td></tr>
             <tr><td><code>scheduler</code></td><td>Draws <code>next_at</code> uniformly in [min, max] and writes it to disk before arming, so a restart keeps the same time. Applies deferral and lock rules. A due check-in held for a call, share or presentation leaves one <code>deferred</code> check-in (due time and <code>deferral_reason</code> call | screen_share | presenting; no capture); the card still follows once the hold ends.</td></tr>
-            <tr><td><code>checkin</code></td><td>Builds the challenge (target number, three shuffled buttons), validates clicks in Rust, rejects injected clicks, records <code>response_ms</code> and the outcome.</td></tr>
+            <tr><td><code>checkin</code></td><td>Builds the challenge (target number, three shuffled buttons) and the card's look (size and style vary a little, CHK-15), validates clicks in Rust, rejects injected clicks, records <code>response_ms</code>, the outcome and the anti-cheat flags (synthetic clicks, VM, remote session).</td></tr>
+            <tr><td><code>anticheat</code>, <code>frame_hash</code></td><td>Virtual-camera and VM name tables; a 256-bit perceptual hash of each pass's webcam frame, compared on the device with the last 20 passes' (kept only in the outbox's encrypted state). Only the flag (<code>duplicate_frame:&lt;bits&gt;</code>) is sent (ANT-05..07).</td></tr>
             <tr><td><code>capture</code></td><td>Screens (one per display), one webcam frame, excluded-app placeholders, blur, downscale, WebP. Writes files to the uploads table, never sends them itself.</td></tr>
             <tr><td><code>sync</code></td><td>Drains events in <code>seq</code> order, heartbeats every 60 s, applies the reply (acks, clock offset, policy, commands).</td></tr>
             <tr><td><code>uploader</code></td><td>Uploads a file only after its check-in event is acked, deletes the local copy on success.</td></tr>
@@ -417,9 +418,12 @@ pub trait Platform: Send + Sync {
         -&gt; Result&lt;Frame, CaptureError&gt;;
     fn permissions(&amp;self) -&gt; Permissions;    <span class="cm">// screen, camera</span>
     <span class="cm">// Windows: low-level mouse hook while the card is up; injected clicks
-    // inside it are swallowed and counted (ANT-02). No-op elsewhere.</span>
+    // inside it are swallowed and counted (ANT-02). macOS: presses on the
+    // card that look synthetic are counted, never blocked (ANT-03).</span>
     fn start_input_guard(&amp;self, area: ScreenRect);
     fn stop_input_guard(&amp;self) -&gt; InjectedInput;
+    fn camera_device(&amp;self) -&gt; Option&lt;CameraDevice&gt;; <span class="cm">// ANT-05</span>
+    fn run_environment(&amp;self) -&gt; RunEnvironment;      <span class="cm">// VM, remote (ANT-07)</span>
 }
 
 <span class="cm">// Tests use FakePlatform + a fake clock, so the
@@ -674,7 +678,7 @@ pub trait Platform: Send + Sync {
       <table>
         <thead><tr><th>Function</th><th>Input</th><th>Server checks</th><th>Returns</th></tr></thead>
         <tbody>
-          <tr><td><code>register_device</code></td><td>platform, os_version, agent_version, hardware_hash</td><td>Caller signed in and active</td><td>device_id, policy, policy_version</td></tr>
+          <tr><td><code>register_device</code></td><td>platform, os_version, agent_version, hardware_hash, enrollment_token? (MDM installs, #86)</td><td>Caller signed in and active; a token must be the caller's org's (<code>enrollment_org_mismatch</code>) and, for a new device, not revoked (<code>enrollment_token_revoked</code>)</td><td>device_id, policy, policy_version</td></tr>
           <tr><td><code>agent_heartbeat</code></td><td>device_id, sent_at, idle_s, locked, in_call, agent_version, permissions</td><td>Device belongs to caller and is not revoked</td><td>server_time, policy_version, config_version (org + this user: agents refetch config when it moves), commands[]: <code>refresh_policy</code>, <code>reack_notice</code>, <code>revoke</code>, <code>update</code></td></tr>
           <tr><td><code>agent_events</code></td><td>device_id, events[] (≤ 100)</td><td>Per event: schema, allowed in current server-side state, <code>at</code> in range</td><td>accepted[], duplicates[], rejected[{id, reason}], server_time</td></tr>
           <tr><td><code>ack_notice</code></td><td>notice_id</td><td>Notice is the current version for the org and region</td><td>ok</td></tr>
@@ -716,6 +720,7 @@ pub trait Platform: Send + Sync {
           <tr><td><code>reopen_timesheet</code></td><td>Manager</td><td>Status approved; reason required; audit-logged</td></tr>
           <tr><td><code>set_delegation</code></td><td>Manager</td><td>Delegate in same org; date range within 90 days</td></tr>
           <tr><td><code>confirm_dpia</code></td><td>Admin</td><td>EU-region org enabling webcam; audit-logged</td></tr>
+          <tr><td><code>create_enrollment_token</code> / <code>revoke_enrollment_token</code> / <code>list_enrollment_tokens</code></td><td>Admin</td><td>MDM installs (#86): the token is returned once, only its SHA-256 is kept; revoking stops new enrollments, enrolled devices keep working; create, revoke and each enrollment audit-logged; MFA when the org requires it</td></tr>
         </tbody>
       </table>
     </div>
@@ -786,6 +791,13 @@ pub trait Platform: Send + Sync {
           <li><span class="badge">FK</span>user_id → users</li>
           <li>platform · os_version · agent_version</li>
           <li>hardware_hash · revoked_at</li>
+          <li><span class="badge">FK</span>enrollment_token_id → enrollment_tokens (MDM, #86)</li>
+        </ul></div>
+        <div class="t-card"><div class="name">enrollment_tokens</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>org_id → orgs</li>
+          <li>label · token_hash (SHA-256 only) · token_prefix</li>
+          <li>revoked_at · last_used_at; RPCs only, no API reads</li>
         </ul></div>
         <div class="t-card"><div class="name">shifts</div><ul>
           <li><span class="badge pk">PK</span><b>id</b></li>
@@ -794,7 +806,7 @@ pub trait Platform: Send + Sync {
           <li>timezone</li>
         </ul></div>
         <div class="t-card"><div class="name">teams · notices · notice_acks</div><ul>
-          <li>teams: id · name</li>
+          <li>teams: id · name · policy jsonb (overrides, #66)</li>
           <li>notices: id · region · version · body</li>
           <li>notice_acks: user_id · notice_id · at</li>
         </ul></div>
@@ -1080,6 +1092,7 @@ with check (
             <tr><td><code>time_segments</code></td><td><code>can_view_user</code></td><td><code>rebuild-segments</code> only</td></tr>
             <tr><td><code>timesheets</code></td><td><code>can_view_user</code></td><td>Timesheet functions; approval needs manager or delegate</td></tr>
             <tr><td>Org policy</td><td>Everyone in the org</td><td>Owner, admin</td></tr>
+            <tr><td><code>teams</code> (and their overrides)</td><td>Owner, admin; anyone who can see a member (<code>can_view_user</code>)</td><td>Owner, admin, through the team functions</td></tr>
             <tr><td><code>audit_log</code></td><td>Owner, admin; employees see rows about themselves</td><td>Insert only, from functions; no update or delete grant</td></tr>
             <tr><td>Service-role key</td><td colspan="2">Held only by Edge Functions; never shipped in the agent or dashboard</td></tr>
           </tbody>

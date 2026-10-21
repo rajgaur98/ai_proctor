@@ -270,6 +270,16 @@ describe("card", () => {
     wrong_clicks: 0,
     sound: false,
     project: null,
+    look: {
+      width: 360,
+      height: 220,
+      radius: 12,
+      padding: 16,
+      gap: 12,
+      button_height: 56,
+      digit_size: 24,
+      tint: 0,
+    },
   };
 
   it("accepts a challenge and rejects one without three options", async () => {

@@ -9,6 +9,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::anticheat::{environment_flags, SYNTHETIC_CLICK_FLAG};
 use crate::platform::{InjectedInput, Platform, SessionState};
 use crate::scheduler::{Deferral, Outcome, Random};
 
@@ -90,6 +91,62 @@ impl Challenge {
     }
 }
 
+/// CHK-15: how one card looks. Size and style vary a little from card to card, inside
+/// the design's limits, so an auto-clicker can't find the buttons by matching a saved
+/// picture of the card; the numbers, their order and their place already change. The
+/// smallest card still fits its content (header, "Click 7", the buttons, the footer)
+/// and the smallest numbers stay large; colours only switch between the design's own
+/// fills, all of which keep the accent text readable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CardLook {
+    /// Window size in logical pixels.
+    pub width: u32,
+    pub height: u32,
+    pub radius: u32,
+    pub padding: u32,
+    pub gap: u32,
+    pub button_height: u32,
+    pub digit_size: u32,
+    /// 0 page, 1 sunken, 2 soft accent.
+    pub tint: u32,
+}
+
+impl CardLook {
+    /// The design's card (~360 × 220), and what every card varies around.
+    pub const BASE: Self = Self {
+        width: 360,
+        height: 220,
+        radius: 12,
+        padding: 16,
+        gap: 12,
+        button_height: 56,
+        digit_size: 24,
+        tint: 0,
+    };
+    pub const WIDTH: (u32, u32) = (340, 384);
+    pub const HEIGHT: (u32, u32) = (210, 236);
+    pub const RADIUS: (u32, u32) = (8, 16);
+    pub const PADDING: (u32, u32) = (14, 20);
+    pub const GAP: (u32, u32) = (8, 18);
+    pub const BUTTON_HEIGHT: (u32, u32) = (50, 60);
+    pub const DIGIT_SIZE: (u32, u32) = (22, 28);
+    pub const TINTS: u32 = 3;
+
+    pub fn random(random: &dyn Random) -> Self {
+        let pick = |(lo, hi): (u32, u32)| random.between(lo.into(), hi.into()) as u32;
+        Self {
+            width: pick(Self::WIDTH),
+            height: pick(Self::HEIGHT),
+            radius: pick(Self::RADIUS),
+            padding: pick(Self::PADDING),
+            gap: pick(Self::GAP),
+            button_height: pick(Self::BUTTON_HEIGHT),
+            digit_size: pick(Self::DIGIT_SIZE),
+            tint: pick((0, Self::TINTS - 1)),
+        }
+    }
+}
+
 /// What a click did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClickResult {
@@ -114,6 +171,10 @@ pub struct Card {
     pub flags: Vec<String>,
     /// Injected clicks the input guard swallowed on this card (ANT-02).
     pub injected_clicks: u32,
+    /// Clicks on this card that looked synthetic and were let through (ANT-03).
+    pub synthetic_clicks: u32,
+    /// CHK-15: chosen when the card is shown, kept through reshuffles.
+    pub look: CardLook,
 }
 
 /// How the card ended, ready to queue as a `checkin` event.
@@ -148,16 +209,20 @@ impl Card {
                 SessionState::Asleep => "asleep",
             },
             project_id,
-            flags: Vec::new(),
+            // ANT-07: a virtual machine or a remote session, as the card was shown.
+            flags: environment_flags(platform.run_environment()),
             injected_clicks: 0,
+            synthetic_clicks: 0,
+            look: CardLook::random(random),
         }
     }
 
-    /// What the input guard swallowed while the card was up (ANT-02). The check-in
-    /// still ends by its own outcome; the clicks that never reached the card
-    /// count for nothing.
+    /// What the input guard saw while the card was up (ANT-02, ANT-03). The check-in
+    /// still ends by its own outcome: the injected clicks never reached the card and
+    /// count for nothing, the synthetic-looking ones are only noted.
     pub fn record_injected(&mut self, input: InjectedInput) {
         self.injected_clicks = self.injected_clicks.saturating_add(input.count);
+        self.synthetic_clicks = self.synthetic_clicks.saturating_add(input.synthetic);
     }
 
     /// Seconds left on the countdown, for the card's display.
@@ -202,6 +267,9 @@ impl Card {
         let mut flags = self.flags.clone();
         if self.injected_clicks > 0 {
             flags.push(format!("{INJECTED_CLICK_FLAG}:{}", self.injected_clicks));
+        }
+        if self.synthetic_clicks > 0 {
+            flags.push(format!("{SYNTHETIC_CLICK_FLAG}:{}", self.synthetic_clicks));
         }
         Finished {
             outcome,
@@ -366,8 +434,14 @@ mod tests {
     #[test]
     fn injected_clicks_add_a_flag_with_their_count() {
         let mut c = card(&Low);
-        c.record_injected(InjectedInput { count: 2 });
-        c.record_injected(InjectedInput { count: 1 });
+        c.record_injected(InjectedInput {
+            count: 2,
+            synthetic: 0,
+        });
+        c.record_injected(InjectedInput {
+            count: 1,
+            synthetic: 0,
+        });
         let done = c.finish(Outcome::Pass, t("2026-10-20T10:00:15Z"));
         assert_eq!(done.payload["flags"], json!(["injected_click:3"]));
         // The outcome is still the card's own: the flag is only a note.
@@ -379,7 +453,10 @@ mod tests {
     #[test]
     fn a_miss_with_injected_clicks_is_still_a_miss_with_the_flag() {
         let mut c = card(&Low);
-        c.record_injected(InjectedInput { count: 4 });
+        c.record_injected(InjectedInput {
+            count: 4,
+            synthetic: 0,
+        });
         let done = c.finish(Outcome::Miss, t("2026-10-20T10:01:34Z"));
         assert_eq!(done.outcome, Outcome::Miss);
         assert_eq!(done.payload["outcome"], "miss");
@@ -390,12 +467,102 @@ mod tests {
     fn the_injected_flag_comes_after_other_flags() {
         let mut c = card(&Low);
         c.flags.push("dev_marked".into());
-        c.record_injected(InjectedInput { count: 1 });
+        c.record_injected(InjectedInput {
+            count: 1,
+            synthetic: 0,
+        });
         let done = c.finish(Outcome::Failed, t("2026-10-20T10:00:10Z"));
         assert_eq!(
             done.payload["flags"],
             json!(["dev_marked", "injected_click:1"])
         );
+    }
+
+    #[test]
+    fn synthetic_clicks_are_flagged_with_their_count_and_change_nothing() {
+        let mut c = card(&Low);
+        c.record_injected(InjectedInput {
+            count: 0,
+            synthetic: 2,
+        });
+        let done = c.finish(Outcome::Pass, t("2026-10-20T10:00:15Z"));
+        assert_eq!(done.payload["flags"], json!(["synthetic_click:2"]));
+        assert_eq!(done.payload["outcome"], "pass");
+        assert_eq!(done.payload["response_ms"], 12_000);
+    }
+
+    #[test]
+    fn a_card_in_a_vm_or_remote_session_carries_those_flags() {
+        use crate::platform::RunEnvironment;
+        let platform = FakePlatform::default();
+        platform.update(|s| {
+            s.environment = RunEnvironment {
+                virtual_machine: true,
+                remote_session: true,
+            }
+        });
+        let mut c = Card::show(
+            t("2026-10-20T10:00:00Z"),
+            t("2026-10-20T10:00:03Z"),
+            &CardPolicy::default(),
+            &platform,
+            &Low,
+            None,
+        );
+        c.record_injected(InjectedInput {
+            count: 1,
+            synthetic: 0,
+        });
+        let done = c.finish(Outcome::Miss, t("2026-10-20T10:01:34Z"));
+        assert_eq!(
+            done.payload["flags"],
+            json!(["virtual_machine", "remote_session", "injected_click:1"])
+        );
+        assert_eq!(done.payload["outcome"], "miss");
+    }
+
+    #[test]
+    fn card_looks_stay_within_the_design_limits_and_vary() {
+        let within = |v: u32, (lo, hi): (u32, u32)| (lo..=hi).contains(&v);
+        let mut widths = std::collections::HashSet::new();
+        let mut tints = std::collections::HashSet::new();
+        for _ in 0..400 {
+            let l = CardLook::random(&ThreadRandom);
+            assert!(within(l.width, CardLook::WIDTH), "{l:?}");
+            assert!(within(l.height, CardLook::HEIGHT), "{l:?}");
+            assert!(within(l.radius, CardLook::RADIUS), "{l:?}");
+            assert!(within(l.padding, CardLook::PADDING), "{l:?}");
+            assert!(within(l.gap, CardLook::GAP), "{l:?}");
+            assert!(within(l.button_height, CardLook::BUTTON_HEIGHT), "{l:?}");
+            assert!(within(l.digit_size, CardLook::DIGIT_SIZE), "{l:?}");
+            assert!(l.tint < CardLook::TINTS, "{l:?}");
+            // The content fits the smallest card: padding, header and footer (18 px
+            // each), the ask (31 px), the buttons, three 12 px gaps and the border.
+            assert!(
+                2 * l.padding + 18 + 18 + 31 + l.button_height + 36 + 2 <= l.height,
+                "{l:?}"
+            );
+            widths.insert(l.width);
+            tints.insert(l.tint);
+        }
+        assert!(widths.len() > 10, "sizes vary");
+        assert_eq!(tints.len(), 3, "every fill is used");
+        let base = CardLook::BASE;
+        assert!(within(base.width, CardLook::WIDTH) && within(base.height, CardLook::HEIGHT));
+    }
+
+    #[test]
+    fn a_card_keeps_its_look_through_a_reshuffle() {
+        let mut c = card(&ThreadRandom);
+        let look = c.look;
+        let wrong = *c
+            .challenge
+            .options
+            .iter()
+            .find(|n| **n != c.challenge.target)
+            .unwrap();
+        c.click(wrong, &ThreadRandom);
+        assert_eq!(c.look, look);
     }
 
     #[test]

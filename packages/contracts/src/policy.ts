@@ -1,6 +1,6 @@
 // Org policy (#52, ADM-01): every key of orgs.policy that the settings page edits, with
 // the same ranges update_policy enforces (policy_spec in
-// supabase/migrations/20261020196000_reminder_shift_day.sql, its latest definition, is the
+// supabase/migrations/20261022120000_overtime_xlsx.sql, its latest definition, is the
 // source of truth; the dashboard validates the same rules before sending). The presets
 // themselves come from the database with the settings, so they are not repeated here.
 import { z } from "zod";
@@ -33,6 +33,12 @@ export const POLICY_LIMITS = {
 /** Anti-cheat: the most a day's response times may vary (as a coefficient of variation) before it is flagged. */
 export const ANTICHEAT_MAX_CV_LIMITS = [0.01, 0.5] as const;
 
+/** TS-19 (#65): [min, max] hours of the overtime thresholds; decimals allowed, null is off. */
+export const OVERTIME_LIMITS = {
+  overtime_daily_hours: [1, 24],
+  overtime_weekly_hours: [1, 168],
+} as const;
+
 export const SCREENSHOT_MODES = ["full", "blurred", "off"] as const;
 export const WEEK_STARTS = [
   "monday",
@@ -57,6 +63,13 @@ function whole(key: keyof typeof POLICY_LIMITS) {
   const [min, max] = POLICY_LIMITS[key];
   const message = `Enter a whole number from ${min} to ${max}`;
   return z.number({ error: message }).int(message).min(min, message).max(max, message);
+}
+
+/** Hours above which time is highlighted, or null (off). */
+function overtimeHours(key: keyof typeof OVERTIME_LIMITS) {
+  const [min, max] = OVERTIME_LIMITS[key];
+  const message = `Enter hours from ${min} to ${max}, or leave it empty for off`;
+  return z.number({ error: message }).min(min, message).max(max, message).nullable();
 }
 
 const [cvMin, cvMax] = ANTICHEAT_MAX_CV_LIMITS;
@@ -101,6 +114,9 @@ export const PolicyKeys = z.strictObject({
   alert_pause_over_cap_enabled: flag,
   // Timesheet reminders (submit, approval, escalation) for the whole org (#177).
   reminders_enabled: flag,
+  // TS-19 (#65): overtime highlighting only, no pay calculation. Null: off.
+  overtime_daily_hours: overtimeHours("overtime_daily_hours"),
+  overtime_weekly_hours: overtimeHours("overtime_weekly_hours"),
   image_retention_days: whole("image_retention_days"),
   event_retention_months: whole("event_retention_months"),
   timesheet_retention_years: whole("timesheet_retention_years"),
@@ -153,3 +169,59 @@ export const UpdatePolicyReply = z.object({
   notice_version: z.number().int().nullable(),
 });
 export type UpdatePolicyReply = z.infer<typeof UpdatePolicyReply>;
+
+// Teams (#66, ADM-02) ----------------------------------------------------------------------
+
+/**
+ * The keys a team may override (internal.team_policy_keys in
+ * supabase/migrations/20261022100000_teams.sql): when and how check-ins run and the agent's
+ * clock-in behaviour. Everything else stays org-wide.
+ */
+export const TEAM_POLICY_KEYS = [
+  "checkin_min_interval_min",
+  "checkin_max_interval_min",
+  "checkin_response_s",
+  "idle_threshold_min",
+  "auto_clock_in",
+  "forgotten_clock_out_min",
+] as const satisfies readonly PolicyKey[];
+export type TeamPolicyKey = (typeof TEAM_POLICY_KEYS)[number];
+
+/** A team's overrides: any of the team keys, with the org policy's ranges. */
+export const TeamPolicyKeys = PolicyKeys.pick({
+  checkin_min_interval_min: true,
+  checkin_max_interval_min: true,
+  checkin_response_s: true,
+  idle_threshold_min: true,
+  auto_clock_in: true,
+  forgotten_clock_out_min: true,
+})
+  .partial()
+  .strict();
+export type TeamPolicy = z.infer<typeof TeamPolicyKeys>;
+
+/**
+ * What set_team_policy accepts: the interval is overridden as a pair (both ends or
+ * neither), shortest at most longest, so an org change can't leave a team's range upside down.
+ */
+export const teamPolicySchema = TeamPolicyKeys.superRefine((p, ctx) => {
+  const min = p.checkin_min_interval_min;
+  const max = p.checkin_max_interval_min;
+  if ((min === undefined) !== (max === undefined)) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Set both ends of the interval",
+      path: [min === undefined ? "checkin_min_interval_min" : "checkin_max_interval_min"],
+    });
+  } else if (min !== undefined && max !== undefined && min > max) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Must be at least the shortest interval",
+      path: ["checkin_max_interval_min"],
+    });
+  }
+});
+
+/** What set_team_policy returns. */
+export const SetTeamPolicyReply = z.object({ changed: z.array(z.string()) });
+export type SetTeamPolicyReply = z.infer<typeof SetTeamPolicyReply>;

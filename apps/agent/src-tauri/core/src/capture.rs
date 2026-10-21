@@ -9,6 +9,8 @@ use image::imageops::{self, FilterType};
 use image::RgbaImage;
 use serde_json::{json, Value};
 
+use crate::anticheat::{is_virtual_camera, virtual_camera_flag};
+use crate::frame_hash::FrameHash;
 use crate::platform::{CaptureError, Frame, Platform};
 
 /// CAP-06: screenshots at most 1280 px wide, the webcam at 320 × 240, WebP ~q60.
@@ -86,6 +88,9 @@ pub struct Captured {
     pub screen_error: Option<CaptureError>,
     pub webcam_error: Option<CaptureError>,
     pub flags: Vec<String>,
+    /// ANT-06: the webcam frame's perceptual hash, for the duplicate check; never
+    /// uploaded (`frame_hash`). `None` without a frame or for a flat one.
+    pub webcam_hash: Option<FrameHash>,
 }
 
 impl Captured {
@@ -165,7 +170,15 @@ pub fn capture(platform: &dyn Platform, policy: &CapturePolicy) -> Captured {
         None => {}
         Some(Err(e)) => captured.webcam_error = Some(e),
         Some(Ok(frame)) => match to_image(frame, WEBCAM_WIDTH) {
-            Some(image) => captured.files.push(("webcam.webp".into(), encode(&image))),
+            Some(image) => {
+                captured.webcam_hash = FrameHash::of(&image);
+                captured.files.push(("webcam.webp".into(), encode(&image)));
+                // ANT-05: the frame came from a known virtual camera. Only asked once
+                // there is a frame, so a missing or busy camera says nothing.
+                if let Some(device) = platform.camera_device().filter(is_virtual_camera) {
+                    captured.flags.push(virtual_camera_flag(&device));
+                }
+            }
             None => captured.webcam_error = Some(CaptureError::Failed("bad frame".into())),
         },
     }
@@ -415,6 +428,72 @@ mod tests {
         c.attach(&mut payload);
         assert_eq!(payload["object_keys"], json!(["screen-1.webp"]));
         assert_eq!(payload["capture_errors"], json!({ "webcam": "no_camera" }));
+    }
+
+    #[test]
+    fn a_virtual_camera_is_flagged_by_name_and_the_frame_kept() {
+        use crate::platform::CameraDevice;
+        let fake = FakePlatform::default();
+        fake.update(|s| {
+            s.camera_device = Some(CameraDevice {
+                name: "OBS Virtual Camera".into(),
+                model: None,
+            })
+        });
+        let c = capture(&fake, &CapturePolicy::default());
+        assert_eq!(c.flags, ["virtual_camera:OBS Virtual Camera"]);
+        assert!(names(&c).contains(&"webcam.webp"));
+
+        // A real camera, no camera, or the webcam off: no flag.
+        fake.update(|s| {
+            s.camera_device = Some(CameraDevice {
+                name: "FaceTime HD Camera".into(),
+                model: None,
+            })
+        });
+        assert!(capture(&fake, &CapturePolicy::default()).flags.is_empty());
+        fake.update(|s| {
+            s.camera_device = Some(CameraDevice {
+                name: "OBS Virtual Camera".into(),
+                model: None,
+            });
+            s.camera = Err(CaptureError::NoCamera);
+        });
+        assert!(capture(&fake, &CapturePolicy::default()).flags.is_empty());
+        fake.update(|s| s.camera = Ok(()));
+        let off = CapturePolicy {
+            webcam: false,
+            ..CapturePolicy::default()
+        };
+        assert!(capture(&fake, &off).flags.is_empty());
+    }
+
+    #[test]
+    fn the_webcam_frame_is_hashed_and_a_repeated_scene_hashes_the_same() {
+        let fake = FakePlatform::default();
+        let first = capture(&fake, &CapturePolicy::default())
+            .webcam_hash
+            .unwrap();
+        let second = capture(&fake, &CapturePolicy::default())
+            .webcam_hash
+            .unwrap();
+        assert!(
+            first.distance(&second) > 20,
+            "a real camera's frames differ"
+        );
+        fake.update(|s| s.webcam_scene = Some(7));
+        let a = capture(&fake, &CapturePolicy::default())
+            .webcam_hash
+            .unwrap();
+        let b = capture(&fake, &CapturePolicy::default())
+            .webcam_hash
+            .unwrap();
+        assert_eq!(a.distance(&b), 0);
+        let off = CapturePolicy {
+            webcam: false,
+            ..CapturePolicy::default()
+        };
+        assert_eq!(capture(&fake, &off).webcam_hash, None);
     }
 
     #[test]
