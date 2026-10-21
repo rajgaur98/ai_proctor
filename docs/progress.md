@@ -9,8 +9,8 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (22 Oct):** the P1 backlog is merged: teams and per-team policy (#66, #202), anti-cheat extras (#63), MDM enrollment tokens (#86), XLSX export and overtime (#65), daily digest / top apps / recorded late clock-ins (#67, #237, #238), stable debug signing (#108) and the signed-bundle agent e2e (#227). #64 face presence is the last open PR.
-- **Open PRs:** #233 (#64 face presence).
+- **Now (22 Oct):** the P1 backlog is merged: teams and per-team policy (#66, #202), anti-cheat extras (#63), MDM enrollment tokens (#86), XLSX export and overtime (#65), daily digest / top apps / recorded late clock-ins (#67, #237, #238), stable debug signing (#108) the signed-bundle agent e2e (#227) and on-device face presence (#64). No unblocked issue is left.
+- **Open PRs:** none.
 - **Next:** device checks below; Raj's product questions in the merged PRs (#228 teams, #229 anti-cheat, #230 MDM, #232 overtime, #233 face presence, #236 digest); the M6 accounts (#55–#57, #60, #61); #168 / #175.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
