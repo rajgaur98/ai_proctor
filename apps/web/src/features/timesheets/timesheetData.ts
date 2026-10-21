@@ -2,6 +2,7 @@
 // approve, return, reopen and edit it. The rules live in the database; messages
 // here only explain its error codes.
 import type { ManualEntryRequest } from "@ai-proctor/contracts";
+import { type OvertimeThresholds, overtimeFromPolicy } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { supabase } from "../../lib/supabase";
@@ -71,6 +72,18 @@ export const weekStartQuery = queryOptions({
     if (error) throw error;
     const policy = (data?.policy ?? {}) as { week_start?: unknown };
     return weekStartDay(policy.week_start);
+  },
+});
+
+/** TS-19 (#65): the org's overtime thresholds (policy overtime_daily_hours / _weekly_hours), off when unset. */
+export const overtimeQuery = queryOptions({
+  queryKey: ["overtime"],
+  staleTime: 5 * 60_000,
+  queryFn: async (): Promise<OvertimeThresholds> => {
+    // Members read only their own org, so this is the viewer's.
+    const { data, error } = await supabase.from("orgs").select("policy").limit(1).maybeSingle();
+    if (error) throw error;
+    return overtimeFromPolicy(data?.policy);
   },
 });
 

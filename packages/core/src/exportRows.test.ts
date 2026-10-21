@@ -8,10 +8,15 @@ import {
   type ExportView,
   exportCsv,
   exportFilename,
+  exportHeader,
+  exportXlsx,
   formatTable,
   fromDbRow,
   sumSegments,
+  WEEKLY_SHEET_NAME,
+  XLSX_SHEET_NAMES,
 } from "./exportRows.ts";
+import { type ReadSheet, readXlsx } from "./xlsx.ts";
 
 const seg = (over: Partial<ExportSegment> = {}): ExportSegment => ({
   userId: "u1",
@@ -207,9 +212,12 @@ describe("views", () => {
     expect(csv.endsWith("\r\n")).toBe(true);
   });
 
-  it("names the file after the view and range", () => {
+  it("names the file after the view, range and format", () => {
     expect(exportFilename("segments", "2026-03-16", "2026-03-22")).toBe(
       "timesheet-segments-2026-03-16_2026-03-22.csv",
+    );
+    expect(exportFilename("daily", "2026-03-16", "2026-03-22", "xlsx")).toBe(
+      "timesheet-daily-2026-03-16_2026-03-22.xlsx",
     );
   });
 
@@ -353,6 +361,23 @@ describe("export properties", () => {
     );
   });
 
+  it("XLSX has the CSV's cells: same text, decimal hours as the same rounded numbers", () => {
+    fc.assert(
+      fc.property(segments, fc.constantFrom(...views), (segs, view) => {
+        const csv = formatTable(buildExport(view, segs));
+        const sheet = readXlsx(exportXlsx(view, segs))[0];
+        expect(sheet?.name).toBe(XLSX_SHEET_NAMES[view]);
+        expect(sheet?.rows).toHaveLength(csv.length);
+        sheet?.rows.forEach((row, r) => {
+          const line = csv[r] ?? [];
+          // Blank cells are left out of the file; the rest match one to one.
+          expect(line.map((v, i) => cellText(row[i]?.value, v))).toEqual(line);
+        });
+      }),
+      { numRuns: 60 },
+    );
+  });
+
   it("daily has a row per person and day, segments one per segment", () => {
     fc.assert(
       fc.property(segments, (segs) => {
@@ -362,5 +387,100 @@ describe("export properties", () => {
         expect(buildExport("segments", segs).rows).toHaveLength(segs.length);
       }),
     );
+  });
+});
+
+/** An XLSX value as the CSV writes it ("" for none; numbers with the CSV's 2 decimals). */
+function cellText(value: string | number | null | undefined, csv: string): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return /^\d+\.\d{2}$/.test(csv) ? value.toFixed(2) : String(value);
+  return value;
+}
+
+describe("XLSX export (#65, TS-19)", () => {
+  // Erin: 9 h on Monday, 7 h on Tuesday, 30 min the next Monday. Lucas: 8 h on Monday.
+  const segs = [
+    seg({ day: "2026-03-16", seconds: 9 * 3600 }),
+    seg({ day: "2026-03-17", seconds: 7 * 3600 }),
+    seg({ day: "2026-03-23", seconds: 1800 }),
+    seg({ userId: "u2", employee: "Lucas Martin", email: "lucas@acme.test", seconds: 8 * 3600 }),
+    // A break never counts toward overtime.
+    seg({ day: "2026-03-17", type: "break", counted: false, seconds: 3 * 3600 }),
+  ];
+  const overtime = { dailyHours: 8, weeklyHours: 15 };
+  const highlighted = (sheet: ReadSheet | undefined) =>
+    (sheet?.rows ?? []).flatMap((row, r) =>
+      row.flatMap((c, i) => (c.style.highlight ? [`${r}:${sheet?.rows[0]?.[i]?.value}`] : [])),
+    );
+
+  it("has the view's header, rows and a bold Total row; hours are numbers shown with 2 decimals", () => {
+    const [sheet] = readXlsx(exportXlsx("daily", segs));
+    expect(sheet?.rows[0]?.map((c) => c.value)).toEqual(exportHeader("daily"));
+    expect(sheet?.rows[0]?.every((c) => c.style.bold)).toBe(true);
+    const worked = exportHeader("daily").indexOf("Worked (h)");
+    expect(sheet?.rows[1]?.[worked]).toEqual({
+      value: 9,
+      style: { bold: false, hours: true, highlight: false },
+    });
+    expect(sheet?.rows[1]?.[worked + 1]?.value).toBe("9:00");
+    const total = sheet?.rows.at(-1);
+    expect(total?.[0]).toEqual({
+      value: "Total",
+      style: { bold: true, hours: false, highlight: false },
+    });
+    expect(total?.[worked]?.value).toBe(24.5);
+    expect(total?.[worked]?.style.bold).toBe(true);
+  });
+
+  it("without thresholds: one sheet, nothing highlighted", () => {
+    const sheets = readXlsx(exportXlsx("daily", segs));
+    expect(sheets.map((s) => s.name)).toEqual(["Per day"]);
+    expect(highlighted(sheets[0])).toEqual([]);
+  });
+
+  it("per day: highlights the Worked cells of days above the daily threshold, not at it", () => {
+    const [sheet] = readXlsx(exportXlsx("daily", segs, { overtime }));
+    // Row 1 is Erin's Monday (9 h); Lucas's 8 h day is at the threshold, not above.
+    expect(highlighted(sheet)).toEqual(["1:Worked (h)", "1:Worked (H:MM)"]);
+  });
+
+  it("other views have no per-row highlight", () => {
+    for (const view of ["project", "segments"] as const) {
+      const [sheet] = readXlsx(exportXlsx(view, segs, { overtime }));
+      expect(highlighted(sheet), view).toEqual([]);
+    }
+  });
+
+  it("a weekly threshold adds Weekly totals per person and week, highlighted above it", () => {
+    const sheets = readXlsx(exportXlsx("project", segs, { overtime, weekStart: "monday" }));
+    expect(sheets.map((s) => s.name)).toEqual(["Per project", WEEKLY_SHEET_NAME]);
+    const weekly = sheets[1];
+    expect(weekly?.rows.map((r) => r.map((c) => c.value))).toEqual([
+      ["Employee", "Email", "Week starting", "Worked (h)", "Worked (H:MM)"],
+      ["Erin Employee", "erin@acme.test", "2026-03-16", 16, "16:00"],
+      ["Erin Employee", "erin@acme.test", "2026-03-23", 0.5, "0:30"],
+      ["Lucas Martin", "lucas@acme.test", "2026-03-16", 8, "8:00"],
+    ]);
+    expect(highlighted(weekly)).toEqual(["1:Worked (h)", "1:Worked (H:MM)"]);
+  });
+
+  it("weeks follow the org's week start", () => {
+    const sheets = readXlsx(
+      exportXlsx("daily", segs, {
+        overtime: { dailyHours: null, weeklyHours: 1 },
+        weekStart: "tuesday",
+      }),
+    );
+    expect(sheets.map((s) => s.name)).toEqual(["Per day", WEEKLY_SHEET_NAME]);
+    expect(sheets[1]?.rows.slice(1).map((r) => [r[0]?.value, r[2]?.value, r[3]?.value])).toEqual([
+      ["Erin Employee", "2026-03-10", 9],
+      ["Erin Employee", "2026-03-17", 7.5],
+      ["Lucas Martin", "2026-03-10", 8],
+    ]);
+  });
+
+  it("keeps formula-looking names as plain text", () => {
+    const [sheet] = readXlsx(exportXlsx("daily", [seg({ employee: "=Evil, Inc" })]));
+    expect(sheet?.rows[1]?.[0]?.value).toBe("=Evil, Inc");
   });
 });

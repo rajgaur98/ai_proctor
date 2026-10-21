@@ -23,6 +23,7 @@ import {
   type ReassignTarget,
 } from "./dialogs";
 import { FlaggedSegments } from "./FlaggedSegments";
+import { OvertimeNote, WorkedTime } from "./Overtime";
 import { ProjectTime } from "./ProjectTime";
 import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
 import { EditsList, WeekEntries } from "./SheetPanels";
@@ -38,6 +39,7 @@ import {
   editsQuery,
   type FlaggedSegment,
   flaggedQuery,
+  overtimeQuery,
   reassignMyTime,
   rebuildWeek,
   reopenWeek,
@@ -102,6 +104,7 @@ export function TimesheetPage() {
     },
   });
   const startDay = useQuery(weekStartQuery);
+  const overtime = useQuery(overtimeQuery).data;
   const zone = person.data?.timezone ?? viewerZone();
   const today = DateTime.now().setZone(zone).toISODate() ?? "";
   const currentWeek = startDay.data ? weekStartOf(today, startDay.data) : null;
@@ -264,7 +267,13 @@ export function TimesheetPage() {
               {sheet.data && <SheetStatusChip sheet={sheet.data} withTime />}
             </div>
             <p className="flex flex-wrap items-baseline gap-2 text-[15px]">
-              <span className="font-mono font-medium">{formatDuration(summary.total.worked)}</span>
+              <span className="font-mono font-medium">
+                <WorkedTime
+                  seconds={summary.total.worked}
+                  thresholdHours={overtime?.weeklyHours ?? null}
+                  period="weekly"
+                />
+              </span>
               <span className="text-ink2">worked</span>
               <span className="text-ink3">·</span>
               <span className="font-mono font-medium">{formatDuration(summary.total.flagged)}</span>
@@ -404,7 +413,14 @@ export function TimesheetPage() {
                   <th scope="row" className="px-5 py-3 text-left font-medium whitespace-nowrap">
                     {d.label}
                   </th>
-                  <td className={mono}>{d.worked > 0 ? formatDuration(d.worked) : "—"}</td>
+                  <td className={mono}>
+                    <WorkedTime
+                      seconds={d.worked}
+                      thresholdHours={overtime?.dailyHours ?? null}
+                      period="daily"
+                      empty="—"
+                    />
+                  </td>
                   <td className={`${mono} ${d.flagged > 0 ? "font-semibold" : "text-ink3"}`}>
                     {d.flagged > 0 ? formatDuration(d.flagged) : "—"}
                   </td>
@@ -459,7 +475,13 @@ export function TimesheetPage() {
               <th scope="row" className="px-5 py-3 text-left">
                 Total
               </th>
-              <td className={mono}>{formatDuration(summary.total.worked)}</td>
+              <td className={mono}>
+                <WorkedTime
+                  seconds={summary.total.worked}
+                  thresholdHours={overtime?.weeklyHours ?? null}
+                  period="weekly"
+                />
+              </td>
               <td className={mono}>{formatDuration(summary.total.flagged)}</td>
               <td className={mono}>{formatDuration(summary.total.breakTime)}</td>
               <td className={mono}>{formatDuration(summary.total.manual)}</td>
@@ -481,6 +503,7 @@ export function TimesheetPage() {
           </tfoot>
         </table>
       </div>
+      <OvertimeNote overtime={overtime} />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         {canDecide ? (
