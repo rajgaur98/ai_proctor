@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Used when Tauri signs the bundle with an identity (APPLE_SIGNING_IDENTITY,
+     #108; release signing in M6). That signing turns on the hardened runtime,
+     which blocks the camera unless this entitlement is present (CAP-01: one
+     webcam frame on a passed check-in). Screen Recording needs no entitlement. -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.camera</key>
+  <true/>
+</dict>
+</plist>

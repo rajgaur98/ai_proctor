@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { agentFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 test("a manager sees why someone is in Tamper: capture blocked now, agent stopped earlier", async ({
   page,
@@ -31,10 +31,7 @@ test("a manager sees why someone is in Tamper: capture blocked now, agent stoppe
   await expect(page.getByText(/^Agent stopped · \d+ min$/)).toBeVisible();
   await expect(page.getByTitle(/^Agent stopped, \d\d:\d\d–\d\d:\d\d$/).first()).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   await lucas("permission_change", { screen: "granted", camera: "granted" });
   await lucas("clock_out", { reason: "manual" });

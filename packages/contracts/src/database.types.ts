@@ -1746,6 +1746,39 @@ export type Database = {
           },
         ];
       };
+      teams: {
+        Row: {
+          created_at: string;
+          id: string;
+          name: string;
+          org_id: string;
+          policy: NonNullable<Json>;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          name: string;
+          org_id: string;
+          policy?: NonNullable<Json>;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          name?: string;
+          org_id?: string;
+          policy?: NonNullable<Json>;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "teams_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       time_segments: {
         Row: {
           counted: boolean;
@@ -2033,6 +2066,7 @@ export type Database = {
           manager_id: string | null;
           org_id: string;
           role: Database["public"]["Enums"]["user_role"];
+          team_id: string | null;
           timezone: string;
           work_country: string;
           work_state: string | null;
@@ -2049,6 +2083,7 @@ export type Database = {
           manager_id?: string | null;
           org_id: string;
           role?: Database["public"]["Enums"]["user_role"];
+          team_id?: string | null;
           timezone?: string;
           work_country?: string;
           work_state?: string | null;
@@ -2064,6 +2099,7 @@ export type Database = {
           manager_id?: string | null;
           org_id?: string;
           role?: Database["public"]["Enums"]["user_role"];
+          team_id?: string | null;
           timezone?: string;
           work_country?: string;
           work_state?: string | null;
@@ -2089,6 +2125,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "orgs";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "users_team_fk";
+            columns: ["org_id", "team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["org_id", "id"];
           },
         ];
       };
@@ -2175,6 +2218,7 @@ export type Database = {
           since: string | null;
           status: Database["public"]["Enums"]["presence_status"] | null;
           tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
+          team_id: string | null;
           timezone: string | null;
           user_id: string | null;
         };
@@ -2207,6 +2251,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "orgs";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "users_team_fk";
+            columns: ["org_id", "team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["org_id", "id"];
           },
         ];
       };
@@ -2309,6 +2360,7 @@ export type Database = {
           status: string;
         }[];
       };
+      delete_team: { Args: { p_team_id: string }; Returns: undefined };
       delete_user_data: { Args: { p_email: string; p_user_id: string }; Returns: Json };
       due_segment_days: {
         Args: { p_limit?: number };
@@ -2504,7 +2556,13 @@ export type Database = {
         Returns: number;
       };
       report_rows: {
-        Args: { p_from: string; p_manager_id?: string; p_to: string; p_user_ids?: string[] };
+        Args: {
+          p_from: string;
+          p_manager_id?: string;
+          p_team_id?: string;
+          p_to: string;
+          p_user_ids?: string[];
+        };
         Returns: Json;
       };
       request_manual_entry: {
@@ -2536,6 +2594,7 @@ export type Database = {
         };
         Returns: string;
       };
+      save_team: { Args: { p_name: string; p_team_id: string }; Returns: string };
       search_audit_log: {
         Args: {
           p_actions?: string[];
@@ -2581,6 +2640,8 @@ export type Database = {
         Returns: undefined;
       };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
+      set_team_members: { Args: { p_team_id: string; p_user_ids: string[] }; Returns: undefined };
+      set_team_policy: { Args: { p_policy: Json; p_team_id: string }; Returns: Json };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
       stuck_segment_days: {
         Args: Record<PropertyKey, never>;
@@ -2615,6 +2676,7 @@ export type Database = {
           p_manager_id?: string;
           p_project_ids?: string[];
           p_statuses?: string[];
+          p_team_id?: string;
           p_to: string;
           p_user_ids?: string[];
           p_view: string;

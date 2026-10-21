@@ -1,7 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, clientFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 const ERIN = "00000000-0000-4000-8000-0000000000c1";
 
@@ -62,10 +62,7 @@ test("a manager sees an injected-click flag as needs review and marks it reviewe
   // The day carries one too, next to the name.
   await expect(page.getByText("Needs review", { exact: true })).toHaveCount(3);
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   await panel.getByRole("button", { name: /^Mark reviewed/ }).click();
   await panel.getByLabel("Note (optional)").fill("Talked to Erin, remote desktop tool");
@@ -78,10 +75,7 @@ test("a manager sees an injected-click flag as needs review and marks it reviewe
   await expect(list.getByText("Needs review")).toHaveCount(0);
   await expect(page.getByText("Needs review", { exact: true })).toHaveCount(1);
 
-  const after = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(after.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   await erin("clock_out", { reason: "manual" });
 });
@@ -141,10 +135,7 @@ test("the #63 flags show as needs review on the day and in reports", async ({ pa
     list.getByRole("button", { name: /Passed/ }).filter({ hasText: "Needs review" }),
   ).toHaveCount(1);
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   // Reports: the day's flags nobody has reviewed yet (DSH-08).
   const manager = await clientFor("manager@acme.test");
@@ -177,10 +168,7 @@ test("the #63 flags show as needs review on the day and in reports", async ({ pa
   await header.getByRole("button").click();
   await expect(header).toHaveAttribute("aria-sort", "descending");
 
-  const after = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(after.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   await erin("clock_out", { reason: "manual" });
 });

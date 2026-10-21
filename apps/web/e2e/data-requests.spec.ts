@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { clientFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 const ada = "00000000-0000-4000-8000-0000000000a1";
 
@@ -10,24 +10,6 @@ async function signInAsAdmin(page: Page) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/team$/, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  // A button still fading between its enabled and disabled styles fails color-contrast
-  // for a frame, so let running transitions finish before axe measures (not endless
-  // ones like a spinner, which never finish).
-  await page.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getComputedTiming().endTime !== Number.POSITIVE_INFINITY)
-        .map((a) => a.finished.catch(() => undefined)),
-    ),
-  );
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** A new member the admin can delete without touching the seed users other tests share. */

@@ -153,3 +153,59 @@ export const UpdatePolicyReply = z.object({
   notice_version: z.number().int().nullable(),
 });
 export type UpdatePolicyReply = z.infer<typeof UpdatePolicyReply>;
+
+// Teams (#66, ADM-02) ----------------------------------------------------------------------
+
+/**
+ * The keys a team may override (internal.team_policy_keys in
+ * supabase/migrations/20261022100000_teams.sql): when and how check-ins run and the agent's
+ * clock-in behaviour. Everything else stays org-wide.
+ */
+export const TEAM_POLICY_KEYS = [
+  "checkin_min_interval_min",
+  "checkin_max_interval_min",
+  "checkin_response_s",
+  "idle_threshold_min",
+  "auto_clock_in",
+  "forgotten_clock_out_min",
+] as const satisfies readonly PolicyKey[];
+export type TeamPolicyKey = (typeof TEAM_POLICY_KEYS)[number];
+
+/** A team's overrides: any of the team keys, with the org policy's ranges. */
+export const TeamPolicyKeys = PolicyKeys.pick({
+  checkin_min_interval_min: true,
+  checkin_max_interval_min: true,
+  checkin_response_s: true,
+  idle_threshold_min: true,
+  auto_clock_in: true,
+  forgotten_clock_out_min: true,
+})
+  .partial()
+  .strict();
+export type TeamPolicy = z.infer<typeof TeamPolicyKeys>;
+
+/**
+ * What set_team_policy accepts: the interval is overridden as a pair (both ends or
+ * neither), shortest at most longest, so an org change can't leave a team's range upside down.
+ */
+export const teamPolicySchema = TeamPolicyKeys.superRefine((p, ctx) => {
+  const min = p.checkin_min_interval_min;
+  const max = p.checkin_max_interval_min;
+  if ((min === undefined) !== (max === undefined)) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Set both ends of the interval",
+      path: [min === undefined ? "checkin_min_interval_min" : "checkin_max_interval_min"],
+    });
+  } else if (min !== undefined && max !== undefined && min > max) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Must be at least the shortest interval",
+      path: ["checkin_max_interval_min"],
+    });
+  }
+});
+
+/** What set_team_policy returns. */
+export const SetTeamPolicyReply = z.object({ changed: z.array(z.string()) });
+export type SetTeamPolicyReply = z.infer<typeof SetTeamPolicyReply>;

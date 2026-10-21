@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { applyPresence, filterRows, since, sortRows, summarize, type TeamRow } from "./grid";
+import {
+  applyPresence,
+  filterRows,
+  inTeam,
+  since,
+  sortRows,
+  summarize,
+  type TeamRow,
+} from "./grid";
 
 function row(name: string, status: TeamRow["status"], extra: Partial<TeamRow> = {}): TeamRow {
   return {
@@ -18,6 +26,7 @@ function row(name: string, status: TeamRow["status"], extra: Partial<TeamRow> = 
     checkins_passed_today: 0,
     scheduled_today: true,
     tamper_reason: null,
+    team_id: null,
     ...extra,
   };
 }
@@ -103,5 +112,17 @@ describe("applyPresence", () => {
       tamper_reason: null,
     });
     expect(back.find((r) => r.user_id === "Emily")?.tamper_reason).toBeNull();
+  });
+});
+
+describe("inTeam", () => {
+  it("keeps one team's rows, or everyone's", () => {
+    const mixed = [
+      row("Priya", "active", { team_id: "t1" }),
+      row("Lucas", "away"),
+      row("Emily", "offline", { team_id: "t2" }),
+    ];
+    expect(inTeam(mixed, "t1").map((r) => r.full_name)).toEqual(["Priya"]);
+    expect(inTeam(mixed, "")).toHaveLength(3);
   });
 });

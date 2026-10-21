@@ -797,7 +797,7 @@ pub trait Platform: Send + Sync {
           <li>timezone</li>
         </ul></div>
         <div class="t-card"><div class="name">teams · notices · notice_acks</div><ul>
-          <li>teams: id · name</li>
+          <li>teams: id · name · policy jsonb (overrides, #66)</li>
           <li>notices: id · region · version · body</li>
           <li>notice_acks: user_id · notice_id · at</li>
         </ul></div>
@@ -1083,6 +1083,7 @@ with check (
             <tr><td><code>time_segments</code></td><td><code>can_view_user</code></td><td><code>rebuild-segments</code> only</td></tr>
             <tr><td><code>timesheets</code></td><td><code>can_view_user</code></td><td>Timesheet functions; approval needs manager or delegate</td></tr>
             <tr><td>Org policy</td><td>Everyone in the org</td><td>Owner, admin</td></tr>
+            <tr><td><code>teams</code> (and their overrides)</td><td>Owner, admin; anyone who can see a member (<code>can_view_user</code>)</td><td>Owner, admin, through the team functions</td></tr>
             <tr><td><code>audit_log</code></td><td>Owner, admin; employees see rows about themselves</td><td>Insert only, from functions; no update or delete grant</td></tr>
             <tr><td>Service-role key</td><td colspan="2">Held only by Edge Functions; never shipped in the agent or dashboard</td></tr>
           </tbody>
