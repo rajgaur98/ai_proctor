@@ -515,6 +515,33 @@ function PolicyForm({
               />
             </Row>
             <Row
+              title="Overtime thresholds"
+              hint="Worked time above these is highlighted on timesheets and in XLSX exports. Nothing is paid or deducted. Leave a box empty to switch it off."
+            >
+              <div className="flex flex-wrap gap-3">
+                <NumberField
+                  label="Daily threshold"
+                  unit="h"
+                  step={0.25}
+                  optional
+                  placeholder="Off"
+                  value={draft.overtime_daily_hours}
+                  error={err("overtime_daily_hours")}
+                  onChange={(v) => set("overtime_daily_hours", v)}
+                />
+                <NumberField
+                  label="Weekly threshold"
+                  unit="h"
+                  step={0.25}
+                  optional
+                  placeholder="Off"
+                  value={draft.overtime_weekly_hours}
+                  error={err("overtime_weekly_hours")}
+                  onChange={(v) => set("overtime_weekly_hours", v)}
+                />
+              </div>
+            </Row>
+            <Row
               title="Timesheet reminders"
               hint="Remind people to submit on their last shift day of the week (the last day of the week if they have no shifts), and remind managers, then admins, when a week waits for approval."
             >

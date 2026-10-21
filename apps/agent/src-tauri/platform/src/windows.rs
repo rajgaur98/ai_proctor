@@ -12,6 +12,7 @@ mod consent;
 mod environment;
 mod face;
 mod foreground;
+mod policy;
 mod screen;
 mod session;
 mod toast;
@@ -338,6 +339,10 @@ impl Platform for WindowsPlatform {
 
     fn boot_time(&self) -> Option<DateTime<Utc>> {
         task::boot_time()
+    }
+
+    fn managed_enrollment_token(&self) -> Option<String> {
+        policy::enrollment_token()
     }
 }
 

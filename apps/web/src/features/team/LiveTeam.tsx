@@ -7,8 +7,10 @@ import { initials } from "../../lib/nav";
 import { supabase } from "../../lib/supabase";
 import { formatTime, viewerZone } from "../../lib/time";
 import { projectsQuery } from "../projects/projectData";
+import { teamsQuery } from "../teams/teamData";
 import {
   filterRows,
+  inTeam,
   onShift,
   type SortKey,
   since,
@@ -36,6 +38,8 @@ export function LiveTeam() {
   const [status, setStatus] = useState<PresenceStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("status");
+  const [team, setTeam] = useState("");
+  const teams = useQuery(teamsQuery).data ?? [];
 
   const { data, error, isPending, dataUpdatedAt } = useQuery({
     queryKey,
@@ -53,7 +57,8 @@ export function LiveTeam() {
     [projects],
   );
 
-  const rows = data ?? [];
+  // DSH-02: a team narrows the summary and the rows alike.
+  const rows = useMemo(() => inTeam(data ?? [], team), [data, team]);
   const summary = useMemo(() => summarize(rows), [rows]);
   const visible = useMemo(
     () => sortRows(filterRows(onShift(rows), status, search), sort),
@@ -107,6 +112,23 @@ export function LiveTeam() {
               ))}
           </select>
         </label>
+        {teams.length > 0 && (
+          <label className="flex h-10 items-center gap-2 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]">
+            <span className="text-ink3">Team</span>
+            <select
+              value={team}
+              onChange={(e) => setTeam(e.target.value)}
+              className="bg-transparent font-medium"
+            >
+              <option value="">All</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex h-10 items-center gap-2 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]">
           <span className="text-ink3">Sort</span>
           <select
@@ -137,7 +159,7 @@ export function LiveTeam() {
         ) : isPending ? (
           <p className="p-6 text-sm text-ink2">Loading…</p>
         ) : visible.length === 0 ? (
-          <Empty filtered={onShift(rows).length > 0} />
+          <Empty filtered={onShift(data ?? []).length > 0} />
         ) : (
           <table className="w-full border-collapse text-[13.5px]">
             <thead className="hidden bg-sunk text-left text-xs font-medium text-ink3 md:table-header-group">

@@ -11,8 +11,16 @@ export const actionLabels: Record<string, string> = {
   "member.shifts_changed": "Changed shifts",
   "member.deactivated": "Deactivated a member",
   "member.reactivated": "Reactivated a member",
+  "member.team_changed": "Changed a member's team",
+  "team.created": "Created a team",
+  "team.renamed": "Renamed a team",
+  "team.deleted": "Deleted a team",
+  "team.policy_changed": "Changed a team's policy",
   "capture.viewed": "Viewed captures",
   "audit_log.exported": "Exported the audit log",
+  "enrollment_token.created": "Created an enrollment token",
+  "enrollment_token.revoked": "Revoked an enrollment token",
+  "enrollment_token.used": "Enrolled a device",
 };
 
 /** Actions offered in the filter, in the order above. */
@@ -35,6 +43,11 @@ const place = (v: unknown): string => {
 };
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const count = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+/** An enrollment token (#86): its name and prefix, never the token. */
+const tokenName = (m: Meta): string => {
+  const prefix = text(m.prefix);
+  return [text(m.label), prefix ? `${prefix}…` : null].filter(Boolean).join(" · ") || "—";
+};
 
 /** `nameOf` turns a user id into a name (or something short when it's unknown). */
 export function summarize(
@@ -58,6 +71,18 @@ export function summarize(
     case "member.deactivated":
     case "member.reactivated":
       return "—";
+    case "member.team_changed":
+      return `${text(m.from_name) ?? "No team"} → ${text(m.to_name) ?? "No team"}`;
+    case "team.created":
+      return text(m.name) ?? "—";
+    case "team.renamed":
+      return `${text(m.from) ?? "—"} → ${text(m.to) ?? "—"}`;
+    case "team.deleted":
+      return `${text(m.name) ?? "—"} · ${plural(count(m.members), "member")}`;
+    case "team.policy_changed": {
+      const changed = m.changed && typeof m.changed === "object" ? Object.keys(m.changed) : [];
+      return `${text(m.name) ?? "—"} · ${plural(changed.length, "setting")}`;
+    }
     case "capture.viewed": {
       const id = text(m.checkin_id);
       const files = count(m.objects);
@@ -75,6 +100,11 @@ export function summarize(
       if (text(f.to)) parts.push(`to ${text(f.to)}`);
       return parts.join(" · ");
     }
+    case "enrollment_token.created":
+    case "enrollment_token.revoked":
+      return tokenName(m);
+    case "enrollment_token.used":
+      return `With ${tokenName(m)}`;
     default:
       return Object.keys(m).length ? JSON.stringify(m) : "—";
   }

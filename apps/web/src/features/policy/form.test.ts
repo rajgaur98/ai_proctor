@@ -46,6 +46,26 @@ describe("validate", () => {
   });
 });
 
+describe("overtime thresholds (#65, TS-19)", () => {
+  it("are off when empty and take decimal hours in range", () => {
+    expect(
+      validate({ ...us, overtime_daily_hours: null, overtime_weekly_hours: null }, "us").errors,
+    ).toBeNull();
+    expect(
+      validate({ ...us, overtime_daily_hours: 7.5, overtime_weekly_hours: 37.5 }, "us").errors,
+    ).toBeNull();
+    expect(validate({ ...us, overtime_daily_hours: 25 }, "us").errors).toEqual({
+      overtime_daily_hours: "Enter hours from 1 to 24, or leave it empty for off",
+    });
+  });
+
+  it("a preset switches them off", () => {
+    const draft = { ...us, overtime_daily_hours: 8, overtime_weekly_hours: 40 };
+    expect(changedKeys(us, draft)).toEqual(["overtime_daily_hours", "overtime_weekly_hours"]);
+    expect(applyPreset(draft, eu).overtime_daily_hours).toBeNull();
+  });
+});
+
 describe("reminders_enabled (#177)", () => {
   it("is a switch: either value is valid, anything else is not", () => {
     expect(validate({ ...us, reminders_enabled: false }, "us").errors).toBeNull();

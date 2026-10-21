@@ -1,12 +1,16 @@
-// Integration check for the export-timesheet Edge Function (#45) against a local stack:
-// seeded segments for Erin and Lucas (past weeks, so nothing else touches them), the
-// three CSV views as manager, employee and peer, totals against timesheet_totals and
-// timesheet_breakdown, the filters, the formula guard and the audit rows. Run it through
-// `pnpm it:export-timesheet`; it can be run again on the same database.
+// Integration check for the export-timesheet Edge Function (#45, #65) against a local
+// stack: seeded segments for Erin and Lucas (past weeks, so nothing else touches them),
+// the three CSV views as manager, employee and peer, totals against timesheet_totals and
+// timesheet_breakdown, the filters, the formula guard and the audit rows; then XLSX
+// (same cells as the CSV, overtime highlighting with the org's thresholds, the format in
+// the audit row). Run it through `pnpm it:export-timesheet`; it can be run again on the
+// same database.
 //
 // Needs AI_PROCTOR_SUPABASE_URL, AI_PROCTOR_SUPABASE_ANON_KEY and
 // AI_PROCTOR_SUPABASE_SERVICE_ROLE_KEY (the wrapper script sets them).
 import assert from "node:assert/strict";
+import { readXlsx, XLSX_MIME } from "../packages/core/src/xlsx.ts";
+import { readZip } from "../packages/core/src/zip.ts";
 
 const url = process.env.AI_PROCTOR_SUPABASE_URL ?? "";
 const anon = process.env.AI_PROCTOR_SUPABASE_ANON_KEY ?? "";
@@ -536,6 +540,138 @@ assert.equal(
 const last = await lastExport();
 assert.equal(last.metadata.row_count, segments.length, "the row count in the log");
 console.log("ok  audit: every export logged with its filters and row count, direct RPC calls too");
+
+// XLSX (#65: TS-20, TS-19) ---------------------------------------------------------------------
+
+async function exportXlsx(token: string, view: string, filters: Filters) {
+  const res = await fetch(`${url}/functions/v1/export-timesheet`, {
+    method: "POST",
+    headers: { apikey: anon, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ view, format: "xlsx", filters }),
+  });
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  return { status: res.status, res, bytes };
+}
+const setOvertime = async (daily: number | null, weekly: number | null) => {
+  const r = await call("/rest/v1/rpc/update_policy", admin, {
+    body: { p_policy: { overtime_daily_hours: daily, overtime_weekly_hours: weekly } },
+  });
+  assert.equal(r.status, 200, `update_policy: ${JSON.stringify(r.json)}`);
+};
+/** A cell as the CSV writes it: numbers with the CSV's 2 decimals, blanks as "". */
+const asCsv = (value: string | number | null | undefined, csv: string) =>
+  value === null || value === undefined
+    ? ""
+    : typeof value === "number"
+      ? /^\d+\.\d{2}$/.test(csv)
+        ? value.toFixed(2)
+        : String(value)
+      : value;
+
+// Off by default: one sheet, the CSV's cells, nothing highlighted.
+await setOvertime(null, null);
+for (const [view, csv] of [
+  ["daily", daily],
+  ["project", project],
+  ["segments", segmentsView],
+] as const) {
+  const x = await exportXlsx(manager, view, range(RANGE));
+  assert.equal(x.status, 200, new TextDecoder().decode(x.bytes));
+  assert.equal(x.res.headers.get("content-type"), XLSX_MIME);
+  assert.equal(
+    x.res.headers.get("content-disposition"),
+    `attachment; filename="timesheet-${view}-2026-01-05_2026-01-18.xlsx"`,
+  );
+  assert.deepEqual(
+    readZip(x.bytes).map((e) => e.name),
+    [
+      "[Content_Types].xml",
+      "_rels/.rels",
+      "xl/workbook.xml",
+      "xl/_rels/workbook.xml.rels",
+      "xl/styles.xml",
+      "xl/worksheets/sheet1.xml",
+    ],
+    `${view}: the parts of a workbook, every CRC checked`,
+  );
+  const [sheet] = readXlsx(x.bytes);
+  const table = [
+    csv.header,
+    ...csv.rows.map((r) => csv.header.map((h) => r[h] ?? "")),
+    csv.header.map((h) => csv.total[h] ?? ""),
+  ];
+  // The CSV's guard apostrophe is the only difference: XLSX text is never a formula.
+  const unguard = (v: string) => v.replace(/^'(?=[=+\-@\t\r])/, "");
+  assert.deepEqual(
+    sheet?.rows.map((row, r) => (table[r] ?? []).map((v, i) => asCsv(row[i]?.value, v))),
+    table.map((line) => line.map(unguard)),
+    `${view}: the same cells as the CSV`,
+  );
+  assert.ok(
+    !sheet?.rows.some((row) => row.some((c) => c.style.highlight)),
+    `${view}: nothing highlighted with the thresholds off`,
+  );
+}
+console.log("ok  xlsx: three views, the CSV's cells, the formula-looking name as plain text");
+
+// Thresholds on: Erin's 2026-01-06 (8 h 0 min 20 s) is over 8 h a day; her week A (11.84 h)
+// is over 10 h a week. Lucas works 4 h 10 min and 30 min that week.
+await setOvertime(8, 10);
+const over = await exportXlsx(manager, "daily", range(RANGE));
+assert.equal(over.status, 200);
+const [perDay, weekly] = readXlsx(over.bytes);
+const heads = (perDay?.rows[0] ?? []).map((c) => c.value);
+const dateCol = heads.indexOf("Date");
+const lit = (sheet: typeof perDay) =>
+  (sheet?.rows ?? []).flatMap((row, r) =>
+    row.some((c) => c.style.highlight)
+      ? [
+          `${row[0]?.value} ${row[2]?.value}: ${row
+            .flatMap((c, i) => (c.style.highlight ? [String(sheet?.rows[0]?.[i]?.value)] : []))
+            .join(", ")} (row ${r})`,
+        ]
+      : [],
+  );
+assert.deepEqual(lit(perDay), [`Erin Employee 2026-01-06: Worked (h), Worked (H:MM) (row 2)`]);
+assert.equal(perDay?.rows[2]?.[dateCol]?.value, "2026-01-06");
+assert.equal(weekly?.name, "Weekly totals");
+assert.deepEqual(
+  weekly?.rows.map((r) => r.map((c) => c.value)),
+  [
+    ["Employee", "Email", "Week starting", "Worked (h)", "Worked (H:MM)"],
+    ["Erin Employee", "erin@acme.test", "2026-01-05", 11.84, "11:50"],
+    ["Erin Employee", "erin@acme.test", "2026-01-12", 1, "1:00"],
+    ["Lucas Martin", "lucas@acme.test", "2026-01-05", 4.67, "4:40"],
+  ],
+);
+assert.deepEqual(lit(weekly), [`Erin Employee 2026-01-05: Worked (h), Worked (H:MM) (row 1)`]);
+console.log("ok  xlsx: days over 8 h and weeks over 10 h highlighted, no others");
+
+// An employee's own XLSX uses the same thresholds; the format is audit-logged.
+const ownX = await exportXlsx(erin, "daily", { ...range(WEEK_A), user_ids: [ERIN] });
+assert.equal(ownX.status, 200);
+assert.equal(readXlsx(ownX.bytes)[1]?.rows.length, 2, "Erin's week A only");
+assert.equal((await lastExport()).metadata.format, "xlsx");
+assert.equal((await lastExport(MAX)).metadata.format, "xlsx");
+assert.equal(
+  (
+    await call("/rest/v1/rpc/search_audit_log", admin, {
+      body: { p_actions: ["timesheet.exported"], p_limit: 50 },
+    })
+  ).json.filter((r: { metadata: { format?: string } }) => r.metadata.format === "csv").length > 0,
+  true,
+  "CSV exports say csv",
+);
+const badFormat = await fetch(`${url}/functions/v1/export-timesheet`, {
+  method: "POST",
+  headers: { apikey: anon, Authorization: `Bearer ${manager}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ view: "daily", format: "pdf", filters: range(RANGE) }),
+});
+assert.equal(badFormat.status, 400, "an unknown format");
+await setOvertime(null, null);
+console.log(
+  "ok  xlsx: an employee's own file, the format in the audit row, an unknown format refused",
+);
 
 // Leave the database as the seed has it for other runs.
 await call(

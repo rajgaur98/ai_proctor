@@ -1,5 +1,5 @@
-//! The signed-in account: magic-link sign-in (#16), device registration (#17) and
-//! the background sync of the outbox (#23, #24).
+//! The signed-in account: magic-link sign-in (#16), device registration (#17, with
+//! the MDM enrollment token #86) and the background sync of the outbox (#23, #24).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use agent_core::auth::{self, Auth, AuthError};
 use agent_core::clock::Clock;
 use agent_core::config::AgentConfig;
+use agent_core::enrollment::Refusal;
 use agent_core::keystore::KeyStore;
 use agent_core::outbox::Outbox;
 use agent_core::sync::{Api, ApiConfig, DeviceIdentity, Heartbeat, SyncError, SyncStats, Syncer};
@@ -49,6 +50,8 @@ pub struct Account {
     /// Config fetched but not yet applied by the app, and the version it has.
     pending_config: Mutex<Option<AgentConfig>>,
     config_version: Mutex<Option<i64>>,
+    /// The org enrollment token from MDM (#86); `None` on a manual install.
+    enrollment_token: Option<String>,
 }
 
 impl Account {
@@ -69,7 +72,15 @@ impl Account {
             syncer: Mutex::new(None),
             pending_config: Mutex::new(None),
             config_version: Mutex::new(None),
+            enrollment_token: None,
         })
+    }
+
+    /// A managed install (#86): every registration sends this token, so the server
+    /// only enrolls people of the org that manages this computer.
+    pub fn with_enrollment_token(mut self, token: Option<String>) -> Self {
+        self.enrollment_token = token;
+        self
     }
 
     pub fn email(&self) -> Option<String> {
@@ -93,14 +104,27 @@ impl Account {
     /// The magic link came back as `aiproctor://auth?code=…`.
     pub fn complete_sign_in(&self, redirect: &str) -> Result<(), SyncError> {
         self.auth.complete(redirect)?;
-        self.attach_device()
+        self.attach_or_sign_out()
     }
 
     /// Resumes the stored session (refresh token in the keychain): at launch, or
     /// later if the network was down then.
     pub fn restore(&self) -> Result<(), SyncError> {
         self.auth.refresh()?;
-        self.attach_device()
+        self.attach_or_sign_out()
+    }
+
+    /// A person this managed computer may not enroll (#86) doesn't stay signed in:
+    /// the session ends here and on the server, so nothing is retried.
+    fn attach_or_sign_out(&self) -> Result<(), SyncError> {
+        let result = self.attach_device();
+        if let Err(error) = &result {
+            if let Some(refusal) = Refusal::from_error(error) {
+                tracing::warn!(?refusal, "enrollment refused; signing out");
+                self.sign_out();
+            }
+        }
+        result
     }
 
     /// Ends the session here and on the server (best effort when offline).
@@ -118,6 +142,7 @@ impl Account {
             &os_version(),
             env!("CARGO_PKG_VERSION"),
             &self.hardware_hash(),
+            self.enrollment_token.as_deref(),
         )?;
         let session = self.auth.refresh()?;
         let org_id = auth::claims(&session.access_token)

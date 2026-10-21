@@ -31,7 +31,7 @@
 -- so their devices refetch.
 --
 -- Replaces (copied from their latest definitions, changes marked):
---   internal.region_preset, internal.policy_spec     20261020196000_reminder_shift_day
+--   internal.region_preset, internal.policy_spec     20261022120000_overtime_xlsx (#65)
 --   public.update_policy, public.policy_settings     20261020180000_policy_settings
 --   internal.collection_snapshot, collection_off,
 --   effective_collection, default_notice_body,
@@ -151,7 +151,7 @@ alter table public.checkin_events
 comment on column public.checkin_events.face_present is
   'CAP-07: whether the webcam frame of this pass showed a face (on-device detection only, never recognition). Null: not checked. A false is a needs-review hint, never a penalty.';
 
--- Policy: the new key (copies of #177's with face_presence) ---------------------------------
+-- Policy: the new key (copies of #65's with face_presence) ---------------------------------
 
 create or replace function internal.region_preset(p_region public.region_preset)
 returns jsonb
@@ -189,6 +189,8 @@ as $$
     'alert_late_clock_in_enabled', true,
     'alert_pause_over_cap_enabled', true,
     'reminders_enabled', true,
+    'overtime_daily_hours', null,
+    'overtime_weekly_hours', null,
     'image_retention_days', 30,
     'event_retention_months', 12,
     'timesheet_retention_years', 3,
@@ -232,6 +234,8 @@ as $$
     ('alert_late_clock_in_enabled', 'bool', null, null, null),
     ('alert_pause_over_cap_enabled', 'bool', null, null, null),
     ('reminders_enabled', 'bool', null, null, null),
+    ('overtime_daily_hours', 'num', 1, 24, null),
+    ('overtime_weekly_hours', 'num', 1, 168, null),
     ('image_retention_days', 'int', 7, 90, null),
     ('event_retention_months', 'int', 3, 36, null),
     ('timesheet_retention_years', 'int', 3, 10, null),

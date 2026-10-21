@@ -25,6 +25,7 @@ use agent_core::contracts::{
     LastCheckin, MissedCheckin, NoticeContent, OnboardingPlatform, OnboardingState, PermissionKind,
     Permissions, ProjectRef, ShiftState, TestCaptureResult,
 };
+use agent_core::enrollment::Refusal;
 use agent_core::frame_hash::{self, FrameHistory};
 use agent_core::keystore::KeyStore;
 use agent_core::liveness::{classify_exit, ExitKind, Liveness, PreviousRun, RestartReport};
@@ -950,8 +951,10 @@ impl AgentState {
             }
             Err(error) => {
                 tracing::warn!(%error, "sign-in link refused");
-                let body = match error {
-                    SyncError::Retry(_) => "Couldn't reach the server. Open the link again in a minute.",
+                let body = match (&error, Refusal::from_error(&error)) {
+                    // #86: the account signed itself out already.
+                    (_, Some(refusal)) => refusal.message(),
+                    (SyncError::Retry(_), _) => "Couldn't reach the server. Open the link again in a minute.",
                     _ => "The link has expired or was already used. Send a new one from the menu bar.",
                 };
                 self.platform.notify("Couldn't sign in", body);
@@ -982,8 +985,11 @@ impl AgentState {
         if let Some(account) = &self.account {
             account.sign_out();
         }
-        let body = match error {
-            SyncError::Revoked => "Your admin removed this device. Sign in again to keep tracking.",
+        let body = match (error, Refusal::from_error(error)) {
+            (_, Some(refusal)) => refusal.message(),
+            (SyncError::Revoked, _) => {
+                "Your admin removed this device. Sign in again to keep tracking."
+            }
             _ => "Your session ended. Sign in again from the menu bar.",
         };
         self.platform.notify("Signed out of AI Proctor", body);
@@ -1708,13 +1714,14 @@ fn open_account(
     data_dir: &std::path::Path,
     clock: Arc<dyn Clock>,
     outbox: Option<Arc<Outbox>>,
+    enrollment_token: Option<String>,
 ) -> Option<Arc<Account>> {
     let Some(config) = account::api_config() else {
         tracing::warn!("no server configured (AI_PROCTOR_SUPABASE_URL); sign-in is off");
         return None;
     };
     match Account::new(config, key_store(), clock, outbox, data_dir) {
-        Ok(account) => Some(Arc::new(account)),
+        Ok(account) => Some(Arc::new(account.with_enrollment_token(enrollment_token))),
         Err(error) => {
             tracing::error!(%error, "sign-in unavailable");
             None
@@ -1811,7 +1818,11 @@ pub fn run() {
                 Arc::new(FileSessionStore::new(&data_dir)),
             );
             tracing::info!(shift = ?session.shift(), signed_in = session.signed_in(), "session restored");
-            let account = open_account(&data_dir, clock.clone(), outbox.clone());
+            // AGT-01 (#86): a managed install's org token, sent with every registration.
+            let enrollment_token = agent_core::enrollment::managed_token(platform.as_ref());
+            #[cfg(debug_assertions)]
+            let enrollment_token = dev::enrollment_token().or(enrollment_token);
+            let account = open_account(&data_dir, clock.clone(), outbox.clone(), enrollment_token);
             let scheduler = Scheduler::new(
                 schedule_policy(),
                 clock.clone(),

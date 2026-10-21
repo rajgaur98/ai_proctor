@@ -7,6 +7,8 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { initials } from "../../lib/nav";
 import { ManagerDelegation } from "../delegation/ManagerDelegation";
+import { EnrollmentTokens } from "../enrollment/EnrollmentTokens";
+import { teamsQuery } from "../teams/teamData";
 import { DataRequests } from "./DataRequests";
 import { InviteDialog } from "./InviteDialog";
 import { MemberFields } from "./MemberFields";
@@ -30,12 +32,14 @@ export const roleLabel: Record<Enums<"user_role">, string> = {
 export function People() {
   const { profile } = useRouteContext({ from: "/_app" });
   const { data, error, isPending } = useQuery(membersQuery);
+  const teams = useQuery(teamsQuery).data;
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Member | null>(null);
   const [delegating, setDelegating] = useState<Member | null>(null);
   const inviteRef = useRef<HTMLDialogElement>(null);
   const members = data ?? [];
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  const teamName = useMemo(() => new Map((teams ?? []).map((t) => [t.id, t.name])), [teams]);
   const visible = members.filter((m) =>
     `${m.fullName} ${m.email}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
@@ -77,6 +81,7 @@ export function People() {
                 <th className="px-5 font-medium">Person</th>
                 <th className="font-medium">Role</th>
                 <th className="font-medium">Manager</th>
+                <th className="font-medium">Team</th>
                 <th className="font-medium">Work location</th>
                 <th className="pr-5">
                   <span className="sr-only">Actions</span>
@@ -110,6 +115,7 @@ export function People() {
                   <td className="text-ink2">
                     {m.managerId ? (byId.get(m.managerId)?.fullName ?? "—") : "—"}
                   </td>
+                  <td className="text-ink2">{(m.teamId && teamName.get(m.teamId)) || "—"}</td>
                   <td className="text-ink2">
                     {m.country}
                     {m.state ? ` · ${m.state}` : ""}
@@ -145,6 +151,8 @@ export function People() {
           Role, manager, location, approval and delegation changes are recorded in the audit log.
         </p>
       </div>
+
+      <EnrollmentTokens orgName={profile.orgName} />
 
       <InviteDialog dialogRef={inviteRef} members={members} />
       {delegating && <ManagerDelegation manager={delegating} onClose={() => setDelegating(null)} />}

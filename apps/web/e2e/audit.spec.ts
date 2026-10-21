@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { DateTime } from "luxon";
+import { expectNoA11yViolations } from "./helpers";
 
 const lucasId = "00000000-0000-4000-8000-0000000000c2";
 
@@ -17,13 +17,6 @@ async function signIn(page: Page, email: string, landing: RegExp) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(landing, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** `times` audited location changes (Lucas moves state back and forth), made as the admin would. */

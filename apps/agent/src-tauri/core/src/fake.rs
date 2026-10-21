@@ -75,6 +75,8 @@ pub struct FakeState {
     /// `install_watchdog` fails with this.
     pub watchdog_error: Option<WatchdogError>,
     pub boot_time: Option<DateTime<Utc>>,
+    /// The token MDM configured (#86), as the OS returns it.
+    pub enrollment_token: Option<String>,
 }
 
 impl Default for FakeState {
@@ -112,6 +114,7 @@ impl Default for FakeState {
             hands_over: false,
             watchdog_error: None,
             boot_time: None,
+            enrollment_token: None,
         }
     }
 }
@@ -331,6 +334,10 @@ impl Platform for FakePlatform {
 
     fn boot_time(&self) -> Option<DateTime<Utc>> {
         self.state.lock().unwrap().boot_time
+    }
+
+    fn managed_enrollment_token(&self) -> Option<String> {
+        self.state.lock().unwrap().enrollment_token.clone()
     }
 }
 
