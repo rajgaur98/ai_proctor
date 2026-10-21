@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { clientFor } from "./agent";
 import {
   ERIN,
   ERIN_EMAIL,
+  expectNoA11yViolations,
   MANAGER_EMAIL,
   resetErinWeeks,
   submitErinWeek,
@@ -16,13 +16,6 @@ async function signIn(page: Page, email: string, landing: RegExp) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(landing, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** Erin submits her week and the manager returns it with a comment. */

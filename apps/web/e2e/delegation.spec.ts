@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
@@ -6,6 +5,7 @@ import {
   ERIN,
   ERIN_EMAIL,
   erinWeek,
+  expectNoA11yViolations,
   MANAGER_EMAIL,
   resetErinWeeks,
   settleErinFlagged,
@@ -30,13 +30,6 @@ async function signOut(page: Page, name: string) {
   await page.getByLabel(`Account menu for ${name}`).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** Leaves Max with no live delegation and Erin's week open to submit, whatever earlier runs did. */

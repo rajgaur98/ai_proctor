@@ -1,13 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { clientFor } from "./agent";
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
-}
+import { expectNoA11yViolations } from "./helpers";
 
 /** A number field by its label (the row's group can share the label). */
 const num = (page: Page, name: string) => page.getByRole("spinbutton", { name });
