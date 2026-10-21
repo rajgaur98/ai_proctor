@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { agentFor } from "./agent";
-import { timeAt } from "./helpers";
+import { expectNoA11yViolations, timeAt } from "./helpers";
 
 const org = "00000000-0000-4000-8000-000000000001";
 const erinId = "00000000-0000-4000-8000-0000000000c1";
@@ -93,10 +92,7 @@ test("a manager views a passed check-in's captures; missing files get a placehol
   // Switching displays is not a new view.
   expect(opens).toBe(1);
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   await erin("clock_out", { reason: "manual" });
 });

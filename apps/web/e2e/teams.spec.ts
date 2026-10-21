@@ -3,10 +3,9 @@
 // and the export filter by it. Every team this spec makes is deleted again, so other
 // specs see the org as they left it.
 import { readFile } from "node:fs/promises";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { agentFor, clientFor } from "./agent";
-import { ERIN, ERIN_EMAIL, makeTeam, removeTeam } from "./helpers";
+import { ERIN, ERIN_EMAIL, expectNoA11yViolations, makeTeam, removeTeam } from "./helpers";
 
 const ADMIN_EMAIL = "admin@acme.test";
 const LUCAS = "00000000-0000-4000-8000-0000000000c2";
@@ -17,13 +16,6 @@ async function signIn(page: Page, email: string, landing: RegExp) {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(landing, { timeout: 15_000 });
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 /** The policy Erin's agent runs with, read the way the agent reads it. */

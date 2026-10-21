@@ -5,6 +5,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Sign with the stable self-signed identity when this Mac has it (#108), so a
+# rebuilt bundle keeps its macOS privacy grants and keychain access. Without it
+# (CI, other machines) Tauri signs ad hoc as before.
+if [[ -z "${APPLE_SIGNING_IDENTITY:-}" ]] &&
+  security find-identity -v -p codesigning 2>/dev/null | grep -q '"AI Proctor Dev"'; then
+  export APPLE_SIGNING_IDENTITY="AI Proctor Dev"
+fi
+
 pnpm --filter @ai-proctor/agent tauri build --debug
 
 stack=$(pnpm --silent supabase status -o env)

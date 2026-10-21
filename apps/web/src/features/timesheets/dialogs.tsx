@@ -136,23 +136,37 @@ export function NoteDialog({
   );
 }
 
-/** Moves a flagged segment's time to another project, with a reason (TS-13). */
+/**
+ * Moves a flagged segment's time to another project, with a reason (TS-13). The page
+ * sets `target` and opens the dialog, and clears `target` from `onClose`. The dialog
+ * isn't keyed on the target: a key change would swap the element that was just opened
+ * for a closed one, so the form is reset here when the target changes instead.
+ */
 export function ProjectDialog({
   dialogRef,
   projects,
-  current,
+  target,
   schema,
   onSubmit,
+  onClose,
 }: {
   dialogRef: Ref;
   projects: Project[];
-  current: string | null;
+  target: { projectId: string | null } | null;
   schema: TextSchema;
   onSubmit: (projectId: string | null, reason: string) => Promise<void>;
+  onClose: () => void;
 }) {
-  const [projectId, setProjectId] = useState(current ?? "");
+  const [projectId, setProjectId] = useState(target?.projectId ?? "");
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
+  const [shown, setShown] = useState(target);
+  if (shown !== target) {
+    setShown(target);
+    setProjectId(target?.projectId ?? "");
+    setReason("");
+    setProblem(null);
+  }
   const send = useMutation({
     mutationFn: (v: { projectId: string | null; reason: string }) =>
       onSubmit(v.projectId, v.reason),
@@ -163,7 +177,15 @@ export function ProjectDialog({
   });
 
   return (
-    <dialog ref={dialogRef} aria-labelledby="project-edit-title" className={dialogClass}>
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="project-edit-title"
+      className={dialogClass}
+      onClose={() => {
+        send.reset();
+        onClose();
+      }}
+    >
       <form
         method="dialog"
         className="flex flex-col gap-4"
@@ -240,7 +262,11 @@ export interface AdjustTarget {
   projectId: string | null;
 }
 
-/** Adds time on the employee's behalf, or changes a manual entry's times (TS-13). */
+/**
+ * Adds time on the employee's behalf, or changes a manual entry's times (TS-13). The
+ * page sets `target` and opens the dialog, and clears `target` from `onClose`. Like
+ * ProjectDialog it isn't keyed on the target: the form is reset when the target changes.
+ */
 export function AdjustDialog({
   dialogRef,
   zone,
@@ -249,6 +275,7 @@ export function AdjustDialog({
   projects,
   schema,
   onSubmit,
+  onClose,
 }: {
   dialogRef: Ref;
   zone: string;
@@ -258,17 +285,27 @@ export function AdjustDialog({
   projects: Project[];
   schema: TextSchema;
   onSubmit: (r: ManualEntryRequest, entryId: string | null) => Promise<void>;
+  onClose: () => void;
 }) {
-  const first = target ? DateTime.fromISO(target.start, { zone }) : null;
-  const last = target ? DateTime.fromISO(target.end, { zone }) : null;
-  const [form, setForm] = useState({
-    day: first?.toISODate() ?? days[0] ?? "",
-    start: first?.toFormat("HH:mm") ?? "",
-    end: last?.toFormat("HH:mm") ?? "",
-    projectId: target?.projectId ?? "",
-    reason: "",
-  });
+  const formFor = (t: AdjustTarget | null) => {
+    const first = t ? DateTime.fromISO(t.start, { zone }) : null;
+    const last = t ? DateTime.fromISO(t.end, { zone }) : null;
+    return {
+      day: first?.toISODate() ?? days[0] ?? "",
+      start: first?.toFormat("HH:mm") ?? "",
+      end: last?.toFormat("HH:mm") ?? "",
+      projectId: t?.projectId ?? "",
+      reason: "",
+    };
+  };
+  const [form, setForm] = useState(() => formFor(target));
   const [problem, setProblem] = useState<string | null>(null);
+  const [shown, setShown] = useState(target);
+  if (shown !== target) {
+    setShown(target);
+    setForm(formFor(target));
+    setProblem(null);
+  }
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
   const send = useMutation({
     mutationFn: (r: ManualEntryRequest) => onSubmit(r, target?.entryId ?? null),
@@ -311,7 +348,15 @@ export function AdjustDialog({
   }
 
   return (
-    <dialog ref={dialogRef} aria-labelledby="adjust-title" className={dialogClass}>
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="adjust-title"
+      className={dialogClass}
+      onClose={() => {
+        send.reset();
+        onClose();
+      }}
+    >
       <form
         method="dialog"
         className="flex flex-col gap-4"
@@ -434,6 +479,7 @@ export function ReassignDialog({
   projects,
   target,
   onSubmit,
+  onClose,
 }: {
   dialogRef: Ref;
   zone: string;
@@ -446,6 +492,7 @@ export function ReassignDialog({
     projectId: string | null;
     note: string;
   }) => Promise<void>;
+  onClose: () => void;
 }) {
   const isDay = target?.kind === "day";
   const [form, setForm] = useState(blankReassign);
@@ -458,8 +505,9 @@ export function ReassignDialog({
       dialogRef.current?.close();
     },
   });
-  // A new target starts a fresh form. (Not a `key`: the page opens the dialog in the same
-  // click that sets the target, and a remount would swap the open dialog for a closed one.)
+  // A new target starts a fresh form. (Not a `key`: a remount would swap the opened dialog
+  // for a closed one. The page sets the target, opens the dialog in an effect, and clears
+  // the target from `onClose`.)
   const { reset } = send;
   useEffect(() => {
     if (!target) return;
@@ -502,7 +550,12 @@ export function ReassignDialog({
   }
 
   return (
-    <dialog ref={dialogRef} aria-labelledby="reassign-title" className={dialogClass}>
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="reassign-title"
+      className={dialogClass}
+      onClose={onClose}
+    >
       <form
         method="dialog"
         className="flex flex-col gap-4"

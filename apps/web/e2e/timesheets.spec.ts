@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { clientFor } from "./agent";
 import {
   ERIN,
   ERIN_EMAIL,
+  expectNoA11yViolations,
   flaggedTime,
   MANAGER_EMAIL,
   resetErinWeeks,
@@ -24,13 +24,6 @@ async function signOut(page: Page, name: string) {
   await page.getByLabel(`Account menu for ${name}`).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 test("an employee submits her week, the manager excludes flagged time with a reason and approves, and she sees the edit", async ({
