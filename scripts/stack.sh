@@ -15,6 +15,7 @@
 #   types   regenerate packages/contracts/src/database.types.ts from this stack
 #   run CMD run CMD with this stack's env exported (AI_PROCTOR_SUPABASE_URL,
 #           AI_PROCTOR_SUPABASE_ANON_KEY, AI_PROCTOR_MAILPIT_URL, MAILPIT_URL,
+#           DB_URL, SERVICE_ROLE_KEY, AI_PROCTOR_SUPABASE_SERVICE_ROLE_KEY,
 #           WEB_PORT), e.g. `scripts/stack.sh run pnpm --filter @ai-proctor/web e2e`
 set -euo pipefail
 
@@ -108,10 +109,13 @@ case "${1:-}" in
     ;;
   run)
     shift
-    eval "$(sb status -o env 2>/dev/null | grep -E '^(API_URL|ANON_KEY|MAILPIT_URL)=')"
+    eval "$(sb status -o env 2>/dev/null | grep -E '^(API_URL|ANON_KEY|MAILPIT_URL|DB_URL|SERVICE_ROLE_KEY)=')"
     [ -n "${API_URL:-}" ] || { echo "stack not running: scripts/stack.sh up" >&2; exit 1; }
     export AI_PROCTOR_SUPABASE_URL="$API_URL" AI_PROCTOR_SUPABASE_ANON_KEY="$ANON_KEY"
     export AI_PROCTOR_MAILPIT_URL="$MAILPIT_URL" MAILPIT_URL WEB_PORT
+    # This stack's database and service role, for checks like contracts:check-db and
+    # the agent e2e's Storage read (#234), so they don't fall back to the main stack.
+    export DB_URL SERVICE_ROLE_KEY AI_PROCTOR_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
     exec "$@"
     ;;
   ports)
