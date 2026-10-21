@@ -87,11 +87,22 @@ export const AgentStatus = z
     missed_checkin: MissedCheckin.nullable(),
     /** The monitoring notice; null before the first config from the server. */
     notice: NoticeStatus.nullable(),
+    /**
+     * Browser domains are collected here (activity sampling is on) but macOS Accessibility is
+     * off, so the tray offers Fix. Optional permission: never Capture blocked, never Tamper.
+     * Always false on Windows, which has no such permission.
+     */
+    accessibility_missing: z.boolean(),
   })
   .meta({ id: "AgentStatus" });
 
-/** The two permissions the onboarding flow asks for (AGT-03). */
-export const PermissionKind = z.enum(["screen", "camera"]).meta({ id: "PermissionKind" });
+/**
+ * The permissions the onboarding flow asks for (AGT-03). Accessibility (macOS, browser domains)
+ * is optional: the flow finishes without it.
+ */
+export const PermissionKind = z
+  .enum(["screen", "camera", "accessibility"])
+  .meta({ id: "PermissionKind" });
 
 export const OnboardingPlatform = z
   .enum(["macos", "windows", "other"])
@@ -99,14 +110,32 @@ export const OnboardingPlatform = z
 
 /**
  * What the onboarding flow's permission and finish steps need (AGT-03). `ready` is the core's
- * gate: Screen Recording is on, and the camera too when the org's webcam setting is on.
+ * gate: every permission this person's collection needs is on (the same rule as the tray's
+ * warning and the server's Tamper check); one nothing uses is neither shown nor waited for.
  */
 export const OnboardingState = z
   .object({
     platform: OnboardingPlatform,
     permissions: Permissions,
-    /** The org's webcam setting; when off, the Camera card is skipped. */
-    webcam: z.boolean(),
+    /**
+     * Screen Recording is needed: screenshots are on, or window titles are collected. When
+     * false, the Screen Recording card is skipped.
+     */
+    screen_required: z.boolean(),
+    /** Camera is needed: the org's webcam setting is on. When false, the Camera card is skipped. */
+    camera_required: z.boolean(),
+    /**
+     * The org takes screenshots. With `camera_required`, this is what a test capture would
+     * show; when neither is on the Test capture step has nothing to show and is skipped.
+     */
+    screenshots: z.boolean(),
+    /** Accessibility as the OS reports it. Optional: it never gates `ready`. */
+    accessibility: PermissionState,
+    /**
+     * Browser domains are collected (activity sampling is on) and the OS has an Accessibility
+     * permission: the optional Accessibility card shows. False on Windows.
+     */
+    domains: z.boolean(),
     ready: z.boolean(),
     /** The OS says Screen Recording is on but a capture still failed: reopen the app. */
     restart_needed: z.boolean(),
@@ -203,7 +232,15 @@ export const ipcCommands = {
   },
   /** Opens My data, the monitoring notice, or the macOS privacy settings to fix a permission. */
   open_link: {
-    args: z.object({ target: z.enum(["my_data", "notice", "screen_settings", "camera_settings"]) }),
+    args: z.object({
+      target: z.enum([
+        "my_data",
+        "notice",
+        "screen_settings",
+        "camera_settings",
+        "accessibility_settings",
+      ]),
+    }),
     result: CommandResult,
   },
   /** The notice window's content: the current notice, or null before the server has sent one. */

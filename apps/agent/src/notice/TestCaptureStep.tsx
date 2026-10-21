@@ -22,18 +22,22 @@ export function TestCaptureStep({
         <h1>Test capture</h1>
         <p className="n-intro">This is what your manager sees on a check-in.</p>
       </header>
-      <div className={state.webcam ? "n-shots" : "n-shots n-shots-one"}>
-        <figure className="n-shot">
-          <Preview
-            src={screen}
-            alt="Your screen, as captured"
-            label="screenshot · display 1"
-            tall
-            capturing={phase.kind === "capturing"}
-          />
-          <figcaption>{screenCaption(result?.screens.length ?? 1)}</figcaption>
-        </figure>
-        {state.webcam && (
+      <div
+        className={state.screenshots && state.camera_required ? "n-shots" : "n-shots n-shots-one"}
+      >
+        {state.screenshots && (
+          <figure className="n-shot">
+            <Preview
+              src={screen}
+              alt="Your screen, as captured"
+              label="screenshot · display 1"
+              tall
+              capturing={phase.kind === "capturing"}
+            />
+            <figcaption>{screenCaption(result?.screens.length ?? 1)}</figcaption>
+          </figure>
+        )}
+        {state.camera_required && (
           <figure className="n-shot">
             <Preview
               src={result?.webcam ?? null}

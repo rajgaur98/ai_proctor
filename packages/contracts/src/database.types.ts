@@ -334,65 +334,43 @@ export type Database = {
         Row: {
           action: string;
           actor_id: string | null;
+          actor_name: string | null;
           at: string;
           id: number;
           metadata: NonNullable<Json>;
           org_id: string;
+          target_name: string | null;
           target_user_id: string | null;
         };
         ComputedFields: never;
         Insert: {
           action: string;
           actor_id?: string | null;
+          actor_name?: string | null;
           at?: string;
           id?: never;
           metadata?: NonNullable<Json>;
           org_id: string;
+          target_name?: string | null;
           target_user_id?: string | null;
         };
         Update: {
           action?: string;
           actor_id?: string | null;
+          actor_name?: string | null;
           at?: string;
           id?: never;
           metadata?: NonNullable<Json>;
           org_id?: string;
+          target_name?: string | null;
           target_user_id?: string | null;
         };
         Relationships: [
-          {
-            foreignKeyName: "audit_log_actor_id_fkey";
-            columns: ["actor_id"];
-            isOneToOne: false;
-            referencedRelation: "team_live";
-            referencedColumns: ["user_id"];
-          },
-          {
-            foreignKeyName: "audit_log_actor_id_fkey";
-            columns: ["actor_id"];
-            isOneToOne: false;
-            referencedRelation: "users";
-            referencedColumns: ["id"];
-          },
           {
             foreignKeyName: "audit_log_org_id_fkey";
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "orgs";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "audit_log_target_user_id_fkey";
-            columns: ["target_user_id"];
-            isOneToOne: false;
-            referencedRelation: "team_live";
-            referencedColumns: ["user_id"];
-          },
-          {
-            foreignKeyName: "audit_log_target_user_id_fkey";
-            columns: ["target_user_id"];
-            isOneToOne: false;
-            referencedRelation: "users";
             referencedColumns: ["id"];
           },
         ];
@@ -1374,45 +1352,51 @@ export type Database = {
       presence: {
         Row: {
           call_sources: string[];
+          camera_permission: string | null;
           idle: boolean;
           last_checkin_at: string | null;
           last_checkin_outcome: Database["public"]["Enums"]["checkin_outcome"] | null;
           last_contact_at: string | null;
           locked: boolean;
           org_id: string;
-          permission_missing: boolean;
           project_id: string | null;
+          screen_permission: string | null;
           since: string;
           status: Database["public"]["Enums"]["presence_status"];
+          tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id: string;
         };
         ComputedFields: never;
         Insert: {
           call_sources?: string[];
+          camera_permission?: string | null;
           idle?: boolean;
           last_checkin_at?: string | null;
           last_checkin_outcome?: Database["public"]["Enums"]["checkin_outcome"] | null;
           last_contact_at?: string | null;
           locked?: boolean;
           org_id: string;
-          permission_missing?: boolean;
           project_id?: string | null;
+          screen_permission?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
+          tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id: string;
         };
         Update: {
           call_sources?: string[];
+          camera_permission?: string | null;
           idle?: boolean;
           last_checkin_at?: string | null;
           last_checkin_outcome?: Database["public"]["Enums"]["checkin_outcome"] | null;
           last_contact_at?: string | null;
           locked?: boolean;
           org_id?: string;
-          permission_missing?: boolean;
           project_id?: string | null;
+          screen_permission?: string | null;
           since?: string;
           status?: Database["public"]["Enums"]["presence_status"];
+          tamper_reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           user_id?: string;
         };
         Relationships: [
@@ -1714,6 +1698,7 @@ export type Database = {
           end_at: string | null;
           id: string;
           org_id: string;
+          reason: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at: string;
           status: Database["public"]["Enums"]["presence_status"];
           user_id: string;
@@ -1723,6 +1708,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id: string;
+          reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at: string;
           status: Database["public"]["Enums"]["presence_status"];
           user_id: string;
@@ -1731,6 +1717,7 @@ export type Database = {
           end_at?: string | null;
           id?: string;
           org_id?: string;
+          reason?: Database["public"]["Enums"]["tamper_reason"] | null;
           start_at?: string;
           status?: Database["public"]["Enums"]["presence_status"];
           user_id?: string;
@@ -1953,6 +1940,9 @@ export type Database = {
           comment: string | null;
           created_at: string;
           id: string;
+          late_data_at: string | null;
+          late_data_count: number;
+          late_data_last_at: string | null;
           org_id: string;
           period_start: string;
           returned_at: string | null;
@@ -1967,6 +1957,9 @@ export type Database = {
           comment?: string | null;
           created_at?: string;
           id?: string;
+          late_data_at?: string | null;
+          late_data_count?: number;
+          late_data_last_at?: string | null;
           org_id: string;
           period_start: string;
           returned_at?: string | null;
@@ -1980,6 +1973,9 @@ export type Database = {
           comment?: string | null;
           created_at?: string;
           id?: string;
+          late_data_at?: string | null;
+          late_data_count?: number;
+          late_data_last_at?: string | null;
           org_id?: string;
           period_start?: string;
           returned_at?: string | null;
@@ -2029,6 +2025,7 @@ export type Database = {
         Row: {
           active: boolean;
           approval_required: boolean;
+          config_version: number;
           created_at: string;
           email: string;
           full_name: string;
@@ -2044,6 +2041,7 @@ export type Database = {
         Insert: {
           active?: boolean;
           approval_required?: boolean;
+          config_version?: number;
           created_at?: string;
           email: string;
           full_name: string;
@@ -2058,6 +2056,7 @@ export type Database = {
         Update: {
           active?: boolean;
           approval_required?: boolean;
+          config_version?: number;
           created_at?: string;
           email?: string;
           full_name?: string;
@@ -2175,6 +2174,7 @@ export type Database = {
           scheduled_today: boolean | null;
           since: string | null;
           status: Database["public"]["Enums"]["presence_status"] | null;
+          tamper_reason: Database["public"]["Enums"]["tamper_reason"] | null;
           timezone: string | null;
           user_id: string | null;
         };
@@ -2263,6 +2263,10 @@ export type Database = {
       };
       anticheat_mark_reviewed: { Args: { p_flag_id: string; p_note?: string }; Returns: undefined };
       approve_timesheet: { Args: { p_id: string }; Returns: undefined };
+      begin_user_data_request: {
+        Args: { p_action: string; p_email: string; p_user_id: string };
+        Returns: Json;
+      };
       can_approve_for: { Args: { target: string }; Returns: boolean };
       can_decide_timesheet: { Args: { target: string }; Returns: boolean };
       can_reopen_timesheet: { Args: { target: string }; Returns: boolean };
@@ -2305,6 +2309,7 @@ export type Database = {
           status: string;
         }[];
       };
+      delete_user_data: { Args: { p_email: string; p_user_id: string }; Returns: Json };
       due_segment_days: {
         Args: { p_limit?: number };
         Returns: {
@@ -2367,7 +2372,47 @@ export type Database = {
           name: string;
         }[];
       };
+      export_notice_ack_report: {
+        Args: { p_status?: string; p_version?: number };
+        Returns: {
+          acknowledged_at: string;
+          acknowledged_current: boolean;
+          acknowledged_selected: boolean;
+          acknowledged_version: number;
+          email: string;
+          full_name: string;
+          manager_name: string;
+          role: Database["public"]["Enums"]["user_role"];
+          user_id: string;
+        }[];
+      };
+      export_user_capture_views: {
+        Args: { p_days?: number; p_user_id: string };
+        Returns: {
+          checkin_at: string;
+          checkin_id: string;
+          viewed_at: string;
+          viewer_id: string;
+          viewer_name: string;
+          viewer_role: string;
+        }[];
+      };
+      list_user_capture_objects: {
+        Args: { p_limit?: number; p_user_id: string };
+        Returns: {
+          name: string;
+        }[];
+      };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
+      mark_alerts_read_matching: {
+        Args: {
+          p_from?: string;
+          p_kind?: Database["public"]["Enums"]["alert_kind"];
+          p_to?: string;
+          p_user_id?: string;
+        };
+        Returns: number;
+      };
       mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
       my_capture_views: {
         Args: { p_days?: number };
@@ -2414,6 +2459,20 @@ export type Database = {
           id: string;
         }[];
       };
+      notice_ack_report: {
+        Args: { p_version?: number };
+        Returns: {
+          acknowledged_at: string;
+          acknowledged_current: boolean;
+          acknowledged_selected: boolean;
+          acknowledged_version: number;
+          email: string;
+          full_name: string;
+          manager_name: string;
+          role: Database["public"]["Enums"]["user_role"];
+          user_id: string;
+        }[];
+      };
       notice_template: { Args: Record<PropertyKey, never>; Returns: Json };
       policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
@@ -2424,6 +2483,10 @@ export type Database = {
       record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
       record_segment_failure: {
         Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
+        Returns: undefined;
+      };
+      record_user_data_export: {
+        Args: { p_actor_id: string; p_counts: Json; p_user_id: string };
         Returns: undefined;
       };
       register_device: {
@@ -2616,6 +2679,7 @@ export type Database = {
         | "idle"
         | "active";
       region_preset: "us" | "eu" | "india";
+      tamper_reason: "capture_blocked" | "agent_stopped" | "no_heartbeat";
       user_role: "owner" | "admin" | "manager" | "employee";
     };
     CompositeTypes: {
@@ -2750,6 +2814,7 @@ export const Constants = {
         "active",
       ],
       region_preset: ["us", "eu", "india"],
+      tamper_reason: ["capture_blocked", "agent_stopped", "no_heartbeat"],
       user_role: ["owner", "admin", "manager", "employee"],
     },
   },

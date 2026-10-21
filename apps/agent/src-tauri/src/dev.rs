@@ -75,6 +75,9 @@ impl Platform for ActiveSession {
     fn permissions(&self) -> Permissions {
         self.0.permissions()
     }
+    fn accessibility_permission(&self) -> agent_core::contracts::PermissionState {
+        self.0.accessibility_permission()
+    }
     fn request_permission(&self, kind: agent_core::contracts::PermissionKind) {
         self.0.request_permission(kind)
     }
@@ -101,6 +104,9 @@ impl Platform for ActiveSession {
     }
     fn boot_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         self.0.boot_time()
+    }
+    fn on_session_end(&self, handler: agent_core::platform::SessionEndHandler) {
+        self.0.on_session_end(handler)
     }
 }
 

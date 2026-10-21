@@ -37,6 +37,7 @@ const base: AgentStatus = {
   last_checkin: null,
   missed_checkin: null,
   notice: null,
+  accessibility_missing: false,
 };
 
 describe("formatDuration", () => {
@@ -149,16 +150,24 @@ describe("countdownAnnouncement", () => {
 describe("permissionIssues", () => {
   it("flags denied and not-determined permissions", () => {
     expect(permissionIssues({ screen: "denied", camera: "granted" })).toEqual([
-      { kind: "screen", label: "Screen recording" },
+      { kind: "screen", label: "Screen recording", restricted: false },
     ]);
     expect(permissionIssues({ screen: "granted", camera: "not_determined" })).toEqual([
-      { kind: "camera", label: "Camera" },
+      { kind: "camera", label: "Camera", restricted: false },
     ]);
     expect(permissionIssues({ screen: "denied", camera: "denied" })).toHaveLength(2);
   });
-  it("leaves granted, restricted and unsupported alone", () => {
+  it("flags a permission restricted by device management, like the server's Tamper", () => {
+    expect(permissionIssues({ screen: "restricted", camera: "unsupported" })).toEqual([
+      { kind: "screen", label: "Screen recording", restricted: true },
+    ]);
+    expect(permissionIssues({ screen: "granted", camera: "restricted" })).toEqual([
+      { kind: "camera", label: "Camera", restricted: true },
+    ]);
+  });
+  it("leaves granted and unsupported alone", () => {
     expect(permissionIssues({ screen: "granted", camera: "granted" })).toEqual([]);
-    expect(permissionIssues({ screen: "restricted", camera: "unsupported" })).toEqual([]);
+    expect(permissionIssues({ screen: "unsupported", camera: "unsupported" })).toEqual([]);
   });
 });
 
@@ -180,6 +189,15 @@ describe("trayView", () => {
     for (const shift of ["off_shift", "working", "paused", "on_break"] as const) {
       expect(trayView({ ...base, shift, permissions: denied }).issues).toHaveLength(1);
     }
+  });
+  it("offers the optional Accessibility banner only when the core says so", () => {
+    expect(trayView(base).accessibility).toBe(false);
+    expect(trayView({ ...base, accessibility_missing: true }).accessibility).toBe(true);
+  });
+  it("never calls a missing Accessibility a capture problem", () => {
+    const view = trayView({ ...base, accessibility_missing: true });
+    expect(view.chip).toBe("active");
+    expect(view.issues).toEqual([]);
   });
   it("passes the missed check-in through", () => {
     const missed = { id: "c1", at: "2026-10-07T08:33:00Z" };

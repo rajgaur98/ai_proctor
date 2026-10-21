@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { agentFor, clientFor } from "./agent";
+import { ERIN, erinToday, rebuildSegments, timeAt } from "./helpers";
 
 const org = "00000000-0000-4000-8000-000000000001";
-const erinId = "00000000-0000-4000-8000-0000000000c1";
 // A 1×1 WebP.
 const webp = Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA", "base64");
 
@@ -23,8 +23,11 @@ async function expectNoA11yViolations(page: Page) {
   expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
-/** Erin passes a check-in (screenshot uploaded) and misses one; her manager opens the capture. */
-async function seedErinDay() {
+/**
+ * Erin passes a check-in (screenshot uploaded) and misses one; her manager opens the capture.
+ * Returns when each was shown, to find their rows among other specs' check-ins.
+ */
+async function seedErinDay(): Promise<{ missAt: string; passAt: string }> {
   const erin = await agentFor("erin@acme.test");
   await erin("clock_out", { reason: "manual" });
   await erin("clock_in", { reason: "manual" });
@@ -58,21 +61,26 @@ async function seedErinDay() {
   const uploader = await clientFor("erin@acme.test");
   const { error } = await uploader.storage
     .from("captures")
-    .upload(`${org}/${erinId}/${at.slice(0, 10)}/${checkinId}/screen-1.webp`, webp, {
+    .upload(`${org}/${ERIN}/${at.slice(0, 10)}/${checkinId}/screen-1.webp`, webp, {
       contentType: "image/webp",
     });
   expect(error).toBeNull();
+  // A few seconds clocked in, so the day has worked time (a session under a second has none).
+  await new Promise((resolve) => setTimeout(resolve, 3000));
   await erin("clock_out", { reason: "manual" });
 
   const manager = await clientFor("manager@acme.test");
   const opened = await manager.functions.invoke("capture-url", { body: { checkin_id: checkinId } });
   expect(opened.error).toBeNull();
+  // The day bar reads time segments; build today's now rather than waiting for the job.
+  await rebuildSegments(ERIN, [erinToday()]);
+  return { missAt, passAt: at };
 }
 
 test("an employee sees her day, check-ins and who viewed her captures; her own views stay out of it", async ({
   page,
 }) => {
-  await seedErinDay();
+  const { missAt, passAt } = await seedErinDay();
   await signIn(page, "erin@acme.test", /\/me$/);
 
   await expect(page.getByRole("heading", { name: "My data", level: 1 })).toBeVisible();
@@ -88,18 +96,18 @@ test("an employee sees her day, check-ins and who viewed her captures; her own v
 
   // A miss takes a reason (the #39 RPC).
   const misses = page.getByRole("region", { name: "Missed check-ins" });
-  await expect(misses.getByText("Missed", { exact: true }).first()).toBeVisible();
-  const meeting = misses.getByRole("button", { name: "Meeting" }).first();
+  const miss = misses.getByRole("listitem").filter({ has: page.locator(timeAt(missAt)) });
+  await expect(miss.getByText("Missed", { exact: true })).toBeVisible();
+  const meeting = miss.getByRole("button", { name: "Meeting" });
   await meeting.click();
   await expect(meeting).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    misses.getByText(/Reason: Meeting.* · visible to Max Manager/).first(),
-  ).toBeVisible();
+  await expect(miss.getByText(/Reason: Meeting.* · visible to Max Manager/)).toBeVisible();
 
   // The passed check-in, with the manager's view next to it.
   const checkins = page.getByRole("region", { name: "Today's check-ins" });
-  await expect(checkins.getByText("Passed").first()).toBeVisible();
-  await expect(checkins.getByText(/Viewed by Max Manager/).first()).toBeVisible();
+  const passed = checkins.getByRole("listitem").filter({ has: page.locator(timeAt(passAt)) });
+  await expect(passed.getByText("Passed")).toBeVisible();
+  await expect(passed.getByText(/Viewed by Max Manager/)).toBeVisible();
 
   // Who viewed my captures: the manager, not Erin.
   const viewed = page.getByRole("region", { name: "Who viewed my captures" });
@@ -110,11 +118,8 @@ test("an employee sees her day, check-ins and who viewed her captures; her own v
   await expectNoA11yViolations(page);
 
   // Opening her own capture is a (logged) view, but not one she is told about.
-  await checkins
-    .getByRole("button", { name: /^View the captures of the/ })
-    .last()
-    .click();
-  const shot = page.getByRole("img", { name: "Screen 1 at check-in" });
+  await passed.getByRole("button", { name: /^View the captures of the/ }).click();
+  const shot = page.getByRole("img", { name: "Display 1 at check-in" });
   await expect(shot).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => shot.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
   await expect(viewed.getByText("Erin Employee")).toHaveCount(0);

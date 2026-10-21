@@ -2,12 +2,9 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
+import { ERIN, ERIN_EMAIL, MANAGER_EMAIL, resetErinWeeks, ERIN_ZONE as ZONE } from "./helpers";
 
-const ERIN = "00000000-0000-4000-8000-0000000000c1";
 const INTERNAL = "00000000-0000-4000-8000-0000000000f2";
-const ERIN_EMAIL = "erin@acme.test";
-const MANAGER_EMAIL = "manager@acme.test";
-const ZONE = "America/Los_Angeles";
 
 // Last week, so every day of it is past and nothing else in the suite clocks in there.
 const lastWeek = DateTime.now().setZone(ZONE).startOf("week").minus({ weeks: 1 }).toISODate() ?? "";
@@ -32,23 +29,6 @@ async function expectNoA11yViolations(page: Page) {
       (v) => `${v.id}: ${v.help} ${v.nodes.map((n) => n.html.slice(0, 160)).join(" | ")}`,
     ),
   ).toEqual([]);
-}
-
-/** Opens every one of Erin's weeks to changes again, whatever earlier runs did to them. */
-async function resetWeeks() {
-  const manager = await clientFor(MANAGER_EMAIL);
-  const { data, error } = await manager.from("timesheets").select("id, status").eq("user_id", ERIN);
-  if (error) throw error;
-  for (const sheet of data) {
-    if (sheet.status === "approved") {
-      const r = await manager.rpc("reopen_timesheet", { p_id: sheet.id, p_reason: "e2e reset" });
-      if (r.error) throw r.error;
-    }
-    if (sheet.status === "approved" || sheet.status === "submitted") {
-      const r = await manager.rpc("return_timesheet", { p_id: sheet.id, p_comment: "e2e reset" });
-      if (r.error) throw r.error;
-    }
-  }
 }
 
 /**
@@ -118,7 +98,7 @@ test("an employee tags Unassigned time to a project on a draft week, submits, an
   // Each page open rebuilds seven days through the Edge Function.
   test.setTimeout(90_000);
   const note = `Internal sync ${Date.now()}`;
-  await resetWeeks();
+  await resetErinWeeks();
   await addUnassignedTime();
 
   await signIn(page, ERIN_EMAIL, /\/me$/);
@@ -149,7 +129,8 @@ test("an employee tags Unassigned time to a project on a draft week, submits, an
   await dialog.getByLabel("Note (optional)").fill(note);
   await expectNoA11yViolations(page);
   await dialog.getByRole("button", { name: "Tag project" }).click();
-  await expect(dialog).toBeHidden();
+  // It closes once the change is saved and the week rebuilt through the Edge Function.
+  await expect(dialog).toBeHidden({ timeout: 20_000 });
 
   // The stretch leaves the list and the totals follow: ten minutes moved.
   await expect(tenMinutes).toHaveCount(before - 1);
@@ -177,7 +158,8 @@ test("an employee tags Unassigned time to a project on a draft week, submits, an
 
   // Submitting locks it: the week is with the manager.
   await page.getByRole("button", { name: /^Submit week|^Submit again/ }).click();
-  await expect(page.getByText(/^Submitted · /)).toBeVisible();
+  // Submitting rebuilds the week first.
+  await expect(page.getByText(/^Submitted · /)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("region", { name: "Unassigned time" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Change project for / })).toHaveCount(0);
   const locked = await (await clientFor(ERIN_EMAIL)).rpc("reassign_my_time", {

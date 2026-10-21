@@ -12,14 +12,16 @@ import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Time, viewerZone } from "../../lib/time";
 import { CaptureViewer } from "../day/CaptureViewer";
-import { Marker, outcomeLabel } from "../day/DayPage";
+import { outcomeLabel } from "../day/checkinText";
+import { Marker } from "../day/DayTimeline";
+import { rebuildDay } from "../day/dayData";
 import { barSpan, deferralLabel, localDay, ticks } from "../day/timeline";
 import { shiftsQuery } from "../people/ShiftEditor";
 import { projectsQuery } from "../projects/projectData";
 import { exportMyData } from "./exportData";
 import {
   appLabel,
-  asPeriods,
+  asTimelineSegments,
   filesOf,
   imagesExpired,
   type MissReasonKind,
@@ -52,6 +54,7 @@ export function MyData() {
   const { profile } = useRouteContext({ from: "/_app" });
   const search = useSearch({ from: "/_app/me" });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const zone = profile.timezone;
   const viewer = viewerZone();
   const today = DateTime.now().setZone(zone).toISODate() ?? "";
@@ -66,7 +69,30 @@ export function MyData() {
   const manager = useQuery(myManagerQuery(profile.id));
   const retention = useQuery(retentionQuery);
   const shifts = useQuery(shiftsQuery(profile.id));
-  const segments = useQuery({ ...segmentsQuery(profile.id, from, to), refetchInterval: live });
+  // The day's segments are rebuilt when the page opens, as on the manager's day page
+  // (LLD section 6), so a just-finished day isn't empty until the 5-minute cron. A failed
+  // rebuild leaves what is stored. Today is rebuilt again every minute.
+  const rebuild = useQuery({
+    queryKey: ["my-data", "rebuild", profile.id, date],
+    staleTime: 60_000,
+    retry: false,
+    refetchInterval: isToday ? 60_000 : false,
+    queryFn: async () => {
+      const ok = await rebuildDay(profile.id, date).catch(() => false);
+      await Promise.all(
+        ["segments", "unassigned"].map((key) =>
+          queryClient.invalidateQueries({ queryKey: ["my-data", key, profile.id] }),
+        ),
+      );
+      return ok;
+    },
+  });
+  const refreshing = rebuild.status === "pending";
+  const segments = useQuery({
+    ...segmentsQuery(profile.id, from, to),
+    enabled: !refreshing,
+    refetchInterval: live,
+  });
   const checkins = useQuery({ ...checkinsQuery(profile.id, from, to), refetchInterval: live });
   const views = useQuery(capturesViewedQuery(profile.id));
   const apps = useQuery(appsAtCheckinsQuery(profile.id, checkins.data ?? []));
@@ -80,7 +106,7 @@ export function MyData() {
 
   const segs = segments.data ?? [];
   const list = checkins.data ?? [];
-  const span = barSpan(day, zone, shifts.data ?? [], asPeriods(segs), list, now);
+  const span = barSpan(day, zone, shifts.data ?? [], asTimelineSegments(segs), list);
   const placed = placeSegments(span, segs);
   const legend = typeTotals(span, segs);
   const shiftWindow = windowsBetween(shifts.data ?? [], new Date(day.start), new Date(day.end))[0];
@@ -131,8 +157,12 @@ export function MyData() {
                 {isToday ? `Today · ${dayTitle}` : dayTitle}
               </h2>
               <span className="text-[13px] text-ink2">
-                <span className="font-mono text-ink">{minutesText(workedSeconds(segs))}</span>{" "}
-                worked{isToday ? " so far" : ""}
+                {!refreshing && (
+                  <>
+                    <span className="font-mono text-ink">{minutesText(workedSeconds(segs))}</span>{" "}
+                    worked{isToday ? " so far" : ""}
+                  </>
+                )}
                 {shiftWindow && (
                   <>
                     {" "}
@@ -167,6 +197,10 @@ export function MyData() {
             {segments.error ? (
               <p role="alert" className="text-sm text-warnink">
                 Couldn't load the day: {segments.error.message}
+              </p>
+            ) : refreshing ? (
+              <p className="text-[12.5px] text-ink3" aria-live="polite">
+                Refreshing the day…
               </p>
             ) : (
               <>

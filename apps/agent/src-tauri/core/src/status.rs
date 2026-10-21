@@ -25,6 +25,9 @@ pub struct Tray {
     /// The permissions to show instead of the platform's own answer, when captures
     /// have shown it to be wrong (CAP-08).
     pub permissions: Option<Permissions>,
+    /// Browser domains are collected but Accessibility is off (#169): the tray offers
+    /// Fix. See `permissions::accessibility_missing`.
+    pub accessibility_missing: bool,
 }
 
 pub fn agent_status(
@@ -52,6 +55,7 @@ pub fn agent_status(
         last_checkin: tray.last_checkin,
         missed_checkin: tray.missed_checkin,
         notice: tray.notice,
+        accessibility_missing: tray.accessibility_missing,
     }
 }
 
@@ -91,6 +95,28 @@ mod tests {
             },
         );
         assert_eq!(status.permissions.screen, PermissionState::Denied);
+    }
+
+    #[test]
+    fn carries_the_accessibility_banner_flag() {
+        let fake = FakePlatform::default();
+        let status = agent_status(&fake, ShiftState::Working, true, "0.1.0", Tray::default());
+        assert!(!status.accessibility_missing);
+        let status = agent_status(
+            &fake,
+            ShiftState::Working,
+            true,
+            "0.1.0",
+            Tray {
+                accessibility_missing: true,
+                ..Tray::default()
+            },
+        );
+        assert!(status.accessibility_missing);
+        assert_eq!(
+            serde_json::to_value(&status).unwrap()["accessibility_missing"],
+            true
+        );
     }
 
     #[test]

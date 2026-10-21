@@ -80,6 +80,7 @@ export function Tray({ status, receivedAt }: { status: AgentStatus; receivedAt: 
         {view.issues.map((issue) => (
           <PermissionBanner key={issue.kind} issue={issue} />
         ))}
+        {view.accessibility && <AccessibilityBanner />}
         {view.notice === "review" && <NoticeReview />}
         {view.missed && <MissedCard missed={view.missed} />}
         {view.phase === "off_shift" && (
@@ -182,8 +183,44 @@ function PermissionBanner({ issue }: { issue: PermissionIssue }) {
         <span className="mark" aria-hidden="true">
           !
         </span>
+        {issue.restricted ? (
+          <p>
+            <strong>{issue.label} is turned off by your device management.</strong> Your manager
+            sees “Capture blocked”. Ask your IT admin to allow it.
+          </p>
+        ) : (
+          <p>
+            <strong>{issue.label} permission is off.</strong> Your manager sees “Capture blocked”.
+          </p>
+        )}
+      </div>
+      {!issue.restricted && (
+        <button
+          type="button"
+          className="btn btn-warn"
+          disabled={open.busy}
+          onClick={() => open.run(() => invoke("show_onboarding", { step: 2 }))}
+        >
+          Fix
+        </button>
+      )}
+      <InlineError message={open.error} />
+    </div>
+  );
+}
+
+/** Optional Accessibility (browser domains, #169): says what is lost, not "Capture blocked". */
+function AccessibilityBanner() {
+  const open = useCommand();
+  return (
+    <div className="t-warn">
+      <div className="msg">
+        <span className="mark" aria-hidden="true">
+          !
+        </span>
         <p>
-          <strong>{issue.label} permission is off.</strong> Your manager sees “Capture blocked”.
+          <strong>Accessibility is off.</strong> The websites you use in your browser aren’t
+          recorded. This is optional.
         </p>
       </div>
       <button
@@ -192,7 +229,7 @@ function PermissionBanner({ issue }: { issue: PermissionIssue }) {
         disabled={open.busy}
         onClick={() => open.run(() => invoke("show_onboarding", { step: 2 }))}
       >
-        Fix
+        Set up
       </button>
       <InlineError message={open.error} />
     </div>

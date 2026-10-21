@@ -11,11 +11,14 @@ import {
   isOn,
   needsRestart,
   permissionCards,
+  permissionsHeading,
+  permissionsIntro,
   screenCaption,
   settingsApp,
   statusLabel,
   stepFooter,
   stepMarks,
+  testCaptureShown,
   toStep,
   trayName,
 } from "./onboardingModel";
@@ -23,7 +26,11 @@ import {
 const mac: OnboardingState = {
   platform: "macos",
   permissions: { screen: "granted", camera: "not_determined" },
-  webcam: true,
+  screen_required: true,
+  camera_required: true,
+  screenshots: true,
+  accessibility: "denied",
+  domains: false,
   ready: false,
   restart_needed: false,
   completed: false,
@@ -60,6 +67,34 @@ describe("steps", () => {
     expect(stepFooter(2)).toBe("Step 2 of 4");
   });
 
+  it("skips the Test capture step when nothing would be captured", () => {
+    expect(testCaptureShown(mac)).toBe(true);
+    expect(testCaptureShown({ ...mac, screenshots: false })).toBe(true); // webcam only
+    expect(testCaptureShown({ ...mac, camera_required: false })).toBe(true); // screenshots only
+    expect(testCaptureShown({ ...mac, screenshots: false, camera_required: false })).toBe(false);
+    expect(testCaptureShown(null)).toBe(true);
+    // Window titles alone need Screen Recording but capture nothing: still no test step.
+    expect(
+      testCaptureShown({
+        ...mac,
+        screen_required: true,
+        screenshots: false,
+        camera_required: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("counts three steps, with Done the third, when the test is skipped", () => {
+    expect(stepMarks(4, false).map((m) => [m.name, m.state, m.mark])).toEqual([
+      ["Notice", "done", "✓"],
+      ["Permissions", "done", "✓"],
+      ["Done", "current", "3"],
+    ]);
+    expect(stepMarks(2, false).map((m) => m.state)).toEqual(["done", "current", "todo"]);
+    expect(stepFooter(2, false)).toBe("Step 2 of 3");
+    expect(stepFooter(4, false)).toBe("Step 3 of 3");
+  });
+
   it("keeps a step number from the core inside the flow", () => {
     expect([toStep(0), toStep(1), toStep(3), toStep(4), toStep(9), toStep(2.7)]).toEqual([
       1, 1, 3, 4, 4, 2,
@@ -77,7 +112,54 @@ describe("permission cards", () => {
   });
 
   it("skips the Camera card when the org's webcam setting is off", () => {
-    expect(permissionCards({ ...mac, webcam: false }).map((c) => c.kind)).toEqual(["screen"]);
+    expect(permissionCards({ ...mac, camera_required: false }).map((c) => c.kind)).toEqual([
+      "screen",
+    ]);
+  });
+
+  it("skips the Screen Recording card when nothing needs it", () => {
+    expect(permissionCards({ ...mac, screen_required: false }).map((c) => c.kind)).toEqual([
+      "camera",
+    ]);
+  });
+
+  it("shows no card when nothing is required, and says so", () => {
+    const none: OnboardingState = {
+      ...mac,
+      screen_required: false,
+      camera_required: false,
+      screenshots: false,
+      ready: true,
+    };
+    const cards = permissionCards(none);
+    expect(cards).toEqual([]);
+    expect(permissionsHeading(cards)).toBe("No permissions needed");
+    expect(permissionsIntro(none, cards)).toContain("doesn't collect anything that needs one");
+    expect(canContinue(none)).toBe(true);
+  });
+
+  it("keeps the optional Accessibility card when nothing else is required", () => {
+    const none: OnboardingState = {
+      ...mac,
+      screen_required: false,
+      camera_required: false,
+      domains: true,
+      ready: true,
+    };
+    const cards = permissionCards(none);
+    expect(cards.map((c) => c.kind)).toEqual(["accessibility"]);
+    expect(permissionsHeading(cards)).toBe("No permissions needed");
+    expect(permissionsIntro(none, cards)).toContain("Accessibility is optional");
+  });
+
+  it("counts only the shown required cards in the heading", () => {
+    expect(permissionsHeading(permissionCards(mac))).toBe("Allow two permissions");
+    expect(permissionsHeading(permissionCards({ ...mac, screen_required: false }))).toBe(
+      "Allow a permission",
+    );
+    expect(permissionsHeading(permissionCards({ ...mac, camera_required: false }))).toBe(
+      "Allow a permission",
+    );
   });
 
   it("gives the three macOS steps and a button that asks the OS", () => {
@@ -122,6 +204,62 @@ describe("permission cards", () => {
     });
     expect(camera?.on).toBe(true);
     expect(camera?.cta).toBeNull();
+  });
+
+  describe("Accessibility (browser domains)", () => {
+    const withDomains: OnboardingState = { ...mac, domains: true };
+
+    it("is left out unless the org collects domains", () => {
+      expect(permissionCards(mac).map((c) => c.kind)).toEqual(["screen", "camera"]);
+      expect(permissionCards({ ...mac, camera_required: false }).map((c) => c.kind)).toEqual([
+        "screen",
+      ]);
+    });
+
+    it("is an optional third card with its own steps and a button that asks the OS", () => {
+      const cards = permissionCards(withDomains);
+      expect(cards.map((c) => c.kind)).toEqual(["screen", "camera", "accessibility"]);
+      const accessibility = cards[2];
+      expect(accessibility?.optional).toBe(true);
+      expect(accessibility?.note).toContain("Optional");
+      expect(accessibility?.status).toBe("Not yet");
+      expect(accessibility?.pane).toBe("Accessibility");
+      expect(accessibility?.steps).toEqual([
+        "1 · Open System Settings → Privacy & Security",
+        "2 · Choose Accessibility",
+        "3 · Turn on AI Proctor, then come back here",
+      ]);
+      expect(accessibility?.cta).toBe("Open System Settings");
+    });
+
+    it("sits after Screen Recording when the webcam is off", () => {
+      expect(
+        permissionCards({ ...withDomains, camera_required: false }).map((c) => c.kind),
+      ).toEqual(["screen", "accessibility"]);
+    });
+
+    it("is done once granted", () => {
+      const card = permissionCards({ ...withDomains, accessibility: "granted" })[2];
+      expect(card?.on).toBe(true);
+      expect(card?.cta).toBeNull();
+    });
+
+    it("never shows on Windows, even if the state said domains are collected", () => {
+      expect(
+        permissionCards({ ...win, domains: true, accessibility: "unsupported" }).map((c) => c.kind),
+      ).toEqual(["screen", "camera"]);
+    });
+
+    it("does not hold up Continue and is not counted in the heading", () => {
+      expect(canContinue({ ...withDomains, ready: true })).toBe(true);
+      expect(permissionsHeading(permissionCards(withDomains))).toBe("Allow two permissions");
+      expect(permissionsHeading(permissionCards({ ...withDomains, camera_required: false }))).toBe(
+        "Allow a permission",
+      );
+      expect(permissionsHeading(permissionCards({ ...mac, camera_required: false }))).toBe(
+        "Allow a permission",
+      );
+    });
   });
 
   it("treats an OS with nothing to ask as on", () => {

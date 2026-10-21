@@ -1,9 +1,9 @@
-//! Windows (windows-rs). Presence signals (idle, lock/sleep, camera/mic, sharing)
-//! and capture (Desktop Duplication, Media Foundation) are real (#167); the pieces
+//! Windows (windows-rs). Presence signals (idle, lock/sleep, camera/mic, sharing),
+//! capture (Desktop Duplication, Media Foundation) and notifications (toast) are
+//! real (#167, #174); the pieces
 //! live in `windows/`, the decision rules in `agent_core` so they test on every OS.
 //! The input guard (ANT-02) is a low-level mouse hook below. Nothing here has run on
-//! a Windows device yet: see the device checklists on the PRs. Notifications stay a
-//! stub.
+//! a Windows device yet: see the device checklists on the PRs.
 //!
 //! `::windows` is the windows-rs crate; plain `windows` would be this module.
 
@@ -12,6 +12,7 @@ mod consent;
 mod foreground;
 mod screen;
 mod session;
+mod toast;
 mod webcam;
 
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
@@ -31,7 +32,7 @@ use std::time::{Duration, Instant};
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
     CallState, CaptureError, Foreground, Frame, InjectedInput, Platform, ScreenRect, ScreenShare,
-    SessionState,
+    SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{
     self, WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState, LABEL, SUPERVISED_ARG,
@@ -240,6 +241,12 @@ impl Platform for WindowsPlatform {
         }
     }
 
+    /// Windows has no Accessibility permission to ask for: reading the browser's domain
+    /// through UI Automation needs none.
+    fn accessibility_permission(&self) -> PermissionState {
+        PermissionState::Unsupported
+    }
+
     /// Windows has no prompt to trigger: the person turns the camera switches on in
     /// Settings (`ms-settings:privacy-webcam`, opened by the onboarding window).
     fn request_permission(&self, _kind: PermissionKind) {}
@@ -281,8 +288,10 @@ impl Platform for WindowsPlatform {
         }
     }
 
-    fn notify(&self, title: &str, _body: &str) {
-        tracing::debug!(title, "notification (stub)");
+    /// A toast, or a tray balloon where the toast can't be raised (see `toast`).
+    /// Returns at once; never prompts.
+    fn notify(&self, title: &str, body: &str) {
+        toast::notify(title, body);
     }
 
     fn install_watchdog(&self, spec: &WatchdogSpec) -> Result<WatchdogState, WatchdogError> {
@@ -295,6 +304,10 @@ impl Platform for WindowsPlatform {
 
     fn watchdog_installed(&self) -> bool {
         task::exists()
+    }
+
+    fn on_session_end(&self, handler: SessionEndHandler) {
+        session::set_end_handler(handler);
     }
 
     fn boot_time(&self) -> Option<DateTime<Utc>> {

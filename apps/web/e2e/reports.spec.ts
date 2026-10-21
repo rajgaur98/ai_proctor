@@ -1,12 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
-import { agentFor, clientFor } from "./agent";
+import { clientFor } from "./agent";
+import { ERIN, ERIN_EMAIL, flaggedTime, MANAGER_EMAIL } from "./helpers";
 
-const ERIN = "00000000-0000-4000-8000-0000000000c1";
 const LUCAS = "00000000-0000-4000-8000-0000000000c2";
-const ERIN_EMAIL = "erin@acme.test";
-const MANAGER_EMAIL = "manager@acme.test";
 const ADMIN_EMAIL = "admin@acme.test";
 
 /** The Monday-based week the page opens on, from the manager's calendar (Chicago). */
@@ -38,31 +36,6 @@ function duration(seconds: number): string {
   return h > 0 ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
 }
 
-/** Erin works a stretch with a missed check-in, so her week has worked and flagged time. */
-async function someTime() {
-  const erin = await agentFor(ERIN_EMAIL);
-  await erin("clock_out", { reason: "manual" });
-  await erin("clock_in", { reason: "manual" });
-  await erin("checkin", {
-    scheduled_at: new Date(Date.now() - 3_600_000).toISOString(),
-    shown_at: new Date().toISOString(),
-    outcome: "miss",
-    wrong_clicks: 0,
-    idle_s_at_show: 0,
-    device_state: "active",
-    object_keys: [],
-    flags: [],
-  });
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  await erin("clock_out", { reason: "manual" });
-  // Build today's segments now rather than waiting for the five-minute job.
-  const manager = await clientFor(MANAGER_EMAIL);
-  const rebuilt = await manager.functions.invoke("rebuild-segments", {
-    body: { user_id: ERIN, day: DateTime.now().setZone("America/Los_Angeles").toISODate() },
-  });
-  if (rebuilt.error) throw rebuilt.error;
-}
-
 async function body(page: Page) {
   const rows = page.getByRole("table").locator("tbody tr");
   return rows;
@@ -71,7 +44,8 @@ async function body(page: Page) {
 test("a manager reads the week's report and it matches the timesheet totals, sorted by any column", async ({
   page,
 }) => {
-  await someTime();
+  // Erin's week has worked and flagged time.
+  await flaggedTime();
   const manager = await clientFor(MANAGER_EMAIL);
   const { data: totalRows, error } = await manager.rpc("timesheet_totals", {
     p_from: weekFrom,
@@ -242,4 +216,119 @@ test("an admin sees the whole org's teams, and an employee has no Reports page",
   ).toHaveCount(0);
   await page.goto("/reports");
   await expect(page).toHaveURL(/\/me$/);
+});
+
+/**
+ * A 120-person report as `report_rows` returns it, served to the page in place of the real
+ * call: seeding more than a page of people into the shared e2e org would change every
+ * other spec's data. Person 001 to 120; person n worked n minutes, so the biggest is last
+ * by name and first by worked time.
+ */
+const BIG_TEAM = 120;
+async function serveBigReport(page: Page) {
+  const rows = Array.from({ length: BIG_TEAM }, (_, i) => {
+    const n = i + 1;
+    return {
+      user_id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+      full_name: `Person ${String(n).padStart(3, "0")}`,
+      manager_id: null,
+      worked_s: n * 60,
+      flagged_s: 0,
+      excluded_s: 0,
+      break_s: 0,
+      pause_s: 0,
+      manual_s: 0,
+      checkins_shown: 0,
+      checkins_passed: 0,
+      checkins_missed: 0,
+      checkins_failed: 0,
+      response_rate: null,
+      median_response_ms: null,
+      late_clock_ins: 0,
+    };
+  });
+  await page.route("**/rest/v1/rpc/report_rows", (route) =>
+    route.fulfill({
+      json: {
+        row_count: rows.length,
+        late_grace_min: 15,
+        team_median_response_ms: null,
+        rows,
+      },
+    }),
+  );
+}
+
+test("a long report is paged, sorts over every row and keeps the team row", async ({ page }) => {
+  await serveBigReport(page);
+  await signIn(page, MANAGER_EMAIL, /\/team$/);
+  await page.goto("/reports");
+  await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
+
+  const names = async () =>
+    (await page.getByRole("table").locator("tbody").getByRole("rowheader").allTextContents()).map(
+      (t) => t.trim(),
+    );
+  const pager = page.getByRole("navigation", { name: "Report pages" });
+  const previous = pager.getByRole("button", { name: "Previous" });
+  const next = pager.getByRole("button", { name: "Next" });
+
+  // 50 to a page, by name; the team row is everyone's, not the page's.
+  await expect(pager.getByText("Showing 1 to 50 of 120 people")).toBeVisible();
+  await expect(pager.getByText("Page 1 of 3")).toBeVisible();
+  expect(await names()).toHaveLength(50);
+  expect((await names())[0]).toBe("Person 001");
+  expect((await names())[49]).toBe("Person 050");
+  await expect(previous).toBeDisabled();
+  const teamRow = page
+    .getByRole("row")
+    .filter({ has: page.getByRole("rowheader", { name: `Team (${BIG_TEAM})` }) });
+  // 60 s * (1 + ... + 120) = 435 600 s
+  await expect(teamRow.getByRole("cell").nth(0)).toHaveText(duration(435_600));
+
+  // Charts show the first rows of the table's order, and say so.
+  await expect(page.getByText("Showing 25 of 120 by person, A to Z")).toHaveCount(2);
+
+  await expectNoA11yViolations(page);
+
+  await next.click();
+  await expect(pager.getByText("Showing 51 to 100 of 120 people")).toBeVisible();
+  expect((await names())[0]).toBe("Person 051");
+  await expect(previous).toBeEnabled();
+  await next.click();
+  await expect(pager.getByText("Showing 101 to 120 of 120 people")).toBeVisible();
+  expect(await names()).toHaveLength(20);
+  await expect(next).toBeDisabled();
+  await expect(teamRow.getByRole("cell").nth(0)).toHaveText(duration(435_600));
+
+  // Sorting is over all 120 people, not the page, and goes back to the first page.
+  await page
+    .getByRole("columnheader", { name: /Worked/ })
+    .getByRole("button")
+    .click();
+  await expect(pager.getByText("Showing 1 to 50 of 120 people")).toBeVisible();
+  expect((await names())[0]).toBe("Person 120");
+  expect((await names())[49]).toBe("Person 071");
+  await expect(page.getByText("Showing 25 of 120 by worked, highest first")).toHaveCount(2);
+  await expect(teamRow.getByRole("cell").nth(0)).toHaveText(duration(435_600));
+
+  // A bigger page.
+  await pager.getByLabel("Rows per page").selectOption("100");
+  await expect(pager.getByText("Showing 1 to 100 of 120 people")).toBeVisible();
+  await expect(pager.getByText("Page 1 of 2")).toBeVisible();
+  expect(await names()).toHaveLength(100);
+  await expectNoA11yViolations(page);
+});
+
+test("a report over the ceiling asks to narrow it down", async ({ page }) => {
+  await page.route("**/rest/v1/rpc/report_rows", (route) =>
+    route.fulfill({
+      status: 400,
+      json: { code: "54000", details: null, hint: null, message: "too_many_people" },
+    }),
+  );
+  await signIn(page, MANAGER_EMAIL, /\/team$/);
+  await page.goto("/reports");
+  await expect(page.getByRole("alert")).toContainText("Choose a team to narrow it down");
+  await expectNoA11yViolations(page);
 });

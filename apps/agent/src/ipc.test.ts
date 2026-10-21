@@ -20,6 +20,7 @@ const status: AgentStatus = {
   last_checkin: null,
   missed_checkin: null,
   notice: null,
+  accessibility_missing: false,
 };
 
 // Every nullable and list field filled in, as the core sends it mid-shift.
@@ -42,6 +43,7 @@ const fullStatus: AgentStatus = {
   last_checkin: { at: "2026-10-07T05:12:00Z", outcome: "pass" },
   missed_checkin: { id: "c1", at: "2026-10-07T08:33:00Z" },
   notice: { version: 2, acknowledged: false, required: false },
+  accessibility_missing: true,
 };
 
 describe("invoke", () => {
@@ -159,7 +161,11 @@ describe("onboarding", () => {
   const state = {
     platform: "macos",
     permissions: { screen: "granted", camera: "not_determined" },
-    webcam: true,
+    screen_required: true,
+    camera_required: true,
+    screenshots: true,
+    accessibility: "denied",
+    domains: true,
     ready: false,
     restart_needed: false,
     completed: false,

@@ -28,17 +28,38 @@ export interface StepMark {
   mark: string;
 }
 
-/** The progress strip across the top: done steps show a check. */
-export function stepMarks(current: Step): StepMark[] {
-  return STEPS.map((name, i) => {
-    const step = (i + 1) as Step;
+/**
+ * The Test capture step has something to show: the org takes screenshots or the webcam is on.
+ * With neither it would capture nothing, so the flow skips it (Permissions goes straight to Done).
+ */
+export function testCaptureShown(state: OnboardingState | null): boolean {
+  return state === null || state.screenshots || state.camera_required;
+}
+
+/** The steps the person walks through, as the strip and footer count them. */
+function visibleSteps(capture: boolean): Step[] {
+  return ([1, 2, 3, 4] as const).filter((step) => capture || step !== 3);
+}
+
+/**
+ * The progress strip across the top: done steps show a check. With the test capture skipped
+ * the strip has three steps and Done is the third.
+ */
+export function stepMarks(current: Step, capture = true): StepMark[] {
+  return visibleSteps(capture).map((step, i) => {
     const state = step < current ? "done" : step === current ? "current" : "todo";
-    return { step, name, state, mark: state === "done" ? "✓" : String(step) };
+    return {
+      step,
+      name: STEPS[step - 1] as string,
+      state,
+      mark: state === "done" ? "✓" : String(i + 1),
+    };
   });
 }
 
-export function stepFooter(step: Step): string {
-  return `Step ${step} of ${STEPS.length}`;
+export function stepFooter(step: Step, capture = true): string {
+  const steps = visibleSteps(capture);
+  return `Step ${steps.indexOf(step) + 1} of ${steps.length}`;
 }
 
 /** What the platform's settings app is called in the instructions. */
@@ -71,16 +92,38 @@ export interface PermissionCard {
   cta: string | null;
   /** The pane name drawn in the illustration. */
   pane: string;
+  /** Optional permissions can be skipped: the flow finishes without them. */
+  optional: boolean;
+  /** One line under the name saying what the permission is for; null when obvious. */
+  note: string | null;
 }
+
+/** What each permission is called on the card and in the settings pane. */
+const permissionNames: Record<PermissionKind, string> = {
+  screen: "Screen Recording",
+  camera: "Camera",
+  accessibility: "Accessibility",
+};
 
 function card(
   kind: PermissionKind,
   platform: OnboardingPlatform,
   state: PermissionState,
 ): PermissionCard {
-  const name = kind === "screen" ? "Screen Recording" : "Camera";
+  const name = permissionNames[kind];
   const app = settingsApp(platform);
-  const base = { kind, name, on: isOn(state), status: statusLabel(state), pane: name };
+  const optional = kind === "accessibility";
+  const base = {
+    kind,
+    name,
+    on: isOn(state),
+    status: statusLabel(state),
+    pane: name,
+    optional,
+    note: optional
+      ? "Optional. Lets AI Proctor note the website’s domain (not the full address) while you use a browser. Skip it if you prefer."
+      : null,
+  };
 
   if (platform === "windows") {
     if (kind === "screen") {
@@ -116,11 +159,47 @@ function card(
   };
 }
 
-/** The cards the permission step shows: the camera only when the org's webcam setting is on. */
+/**
+ * The cards the permission step shows: Screen Recording and Camera only when this person's
+ * collection needs them (the core says so with `screen_required` and `camera_required`, the
+ * rule the tray's warning uses), and the optional Accessibility card only when browser domains
+ * are collected and the OS has that permission (`domains`; never on Windows).
+ */
 export function permissionCards(state: OnboardingState): PermissionCard[] {
-  const cards = [card("screen", state.platform, state.permissions.screen)];
-  if (state.webcam) cards.push(card("camera", state.platform, state.permissions.camera));
+  const cards: PermissionCard[] = [];
+  if (state.screen_required) cards.push(card("screen", state.platform, state.permissions.screen));
+  if (state.camera_required) cards.push(card("camera", state.platform, state.permissions.camera));
+  if (state.domains && state.platform === "macos") {
+    cards.push(card("accessibility", state.platform, state.accessibility));
+  }
   return cards;
+}
+
+/** How many of the shown cards the flow needs: the optional ones don't count. */
+export function requiredCount(cards: PermissionCard[]): number {
+  return cards.filter((c) => !c.optional).length;
+}
+
+/** The heading: counts only the permissions the flow needs, not the optional ones. */
+export function permissionsHeading(cards: PermissionCard[]): string {
+  const count = requiredCount(cards);
+  if (count === 0) return "No permissions needed";
+  return count > 1 ? "Allow two permissions" : "Allow a permission";
+}
+
+/** The line under the heading. */
+export function permissionsIntro(state: OnboardingState, cards: PermissionCard[]): string {
+  const optional = cards.some((c) => c.optional);
+  if (requiredCount(cards) === 0) {
+    return optional
+      ? "Your organization doesn't collect anything that needs one. Accessibility is optional: you can skip it and carry on."
+      : "Your organization doesn't collect anything that needs one. Carry on whenever you're ready.";
+  }
+  const base =
+    state.platform === "windows"
+      ? "Windows asks nothing for the screen. AI Proctor only uses the camera during a check-in you pass."
+      : "macOS asks once. AI Proctor only uses Screen Recording and Camera during a check-in you pass.";
+  return optional ? `${base} Accessibility is optional: you can skip it and carry on.` : base;
 }
 
 /** Continue is enabled once what the core requires is on. */
