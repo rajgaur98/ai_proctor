@@ -1,6 +1,6 @@
 // Copies the pure rules the Edge Functions share with the dashboard (segments.ts,
 // status.ts, csv.ts, exportRows.ts and what it imports: overtime.ts, xlsx.ts, zip.ts,
-// from packages/core) into
+// and digest.ts, from packages/core) into
 // supabase/functions/_shared/core, because the local Edge runtime only sees
 // supabase/functions. `luxon` becomes the npm: import Deno resolves. `--check` writes
 // nothing and fails when a copy is stale (CI).
@@ -10,6 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const FILES = [
   "csv.ts",
+  "digest.ts",
   "exportRows.ts",
   "overtime.ts",
   "segments.ts",

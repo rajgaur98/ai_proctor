@@ -2,7 +2,8 @@
 // (kind, person, dates, read or unread), a page at a time, mark read one by one or for
 // everything the filters match, and a link to the person's day. The bell shows the
 // latest few. New alerts reach both through the bell's useLiveAlerts, which
-// invalidates every ["alerts", userId] query.
+// invalidates every ["alerts", userId] query. The daily digest email is switched on or
+// off here too (ALR-03, #67).
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { useId, useState } from "react";
@@ -20,6 +21,7 @@ import {
   dayLabel,
   KIND_LABELS,
 } from "./alertText";
+import { DigestToggle } from "./DigestToggle";
 
 const field =
   "h-10 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px] text-ink disabled:opacity-60";
@@ -63,9 +65,11 @@ export function AlertsPage() {
           <h1 className="text-2xl font-semibold tracking-[-0.025em]">Alerts</h1>
           <p className="mt-1 text-[13.5px] text-ink2">{profile.orgName}</p>
         </div>
+        <div className="ml-auto">
+          <DigestToggle userId={profile.id} />
+        </div>
         <Button
           variant="secondary"
-          className="ml-auto"
           disabled={filters.read === "read" || markMatching.isPending}
           onClick={() => markMatching.mutate()}
         >
