@@ -1,7 +1,9 @@
 // One person's week (#43, TS-10..13, TS-18, DSH-06), from the Claude Design Timesheet
 // screen. The manager (or delegate) reviews flagged time, decides on manual entries,
 // edits with reasons, then approves or returns it; the employee sees the same week
-// read-only with the manager's edits and reasons, and submits it.
+// read-only with the manager's edits and reasons, and submits it. While the week is a
+// draft (or returned) the employee also tags Unassigned time and changes the project of
+// a day (#139, PRJ-04); the manager sees those as the employee's edits.
 import { ReturnComment, TimesheetReason } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
@@ -12,8 +14,17 @@ import { supabase } from "../../lib/supabase";
 import { viewerZone } from "../../lib/time";
 import { dayEntriesQuery, type ManualEntry } from "../day/entryData";
 import { projectsQuery } from "../projects/projectData";
-import { AdjustDialog, type AdjustTarget, NoteDialog, ProjectDialog } from "./dialogs";
+import {
+  AdjustDialog,
+  type AdjustTarget,
+  NoteDialog,
+  ProjectDialog,
+  ReassignDialog,
+  type ReassignTarget,
+} from "./dialogs";
 import { FlaggedSegments } from "./FlaggedSegments";
+import { ProjectTime } from "./ProjectTime";
+import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
 import { EditsList, WeekEntries } from "./SheetPanels";
 import { SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration, projectSplit, summarizeWeek } from "./summary";
@@ -27,9 +38,11 @@ import {
   editsQuery,
   type FlaggedSegment,
   flaggedQuery,
+  reassignMyTime,
   rebuildWeek,
   reopenWeek,
   returnWeek,
+  segmentsQuery,
   submitWeek,
   timesheetQuery,
   weekStartQuery,
@@ -60,8 +73,10 @@ export function TimesheetPage() {
   const reopenRef = useRef<HTMLDialogElement>(null);
   const projectRef = useRef<HTMLDialogElement>(null);
   const adjustRef = useRef<HTMLDialogElement>(null);
+  const reassignRef = useRef<HTMLDialogElement>(null);
   const [projectTarget, setProjectTarget] = useState<FlaggedSegment | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<ReassignTarget | null>(null);
   // A target is set while its dialog is open (the dialogs clear it when they close), and
   // the dialog opens once the target is rendered into it.
   useEffect(() => {
@@ -70,6 +85,9 @@ export function TimesheetPage() {
   useEffect(() => {
     if (adjustTarget && !adjustRef.current?.open) adjustRef.current?.showModal();
   }, [adjustTarget]);
+  useEffect(() => {
+    if (reassignTarget && !reassignRef.current?.open) reassignRef.current?.showModal();
+  }, [reassignTarget]);
 
   const person = useQuery({
     queryKey: ["timesheet-person", userId],
@@ -106,6 +124,11 @@ export function TimesheetPage() {
   const fresh = ready && rebuild.status !== "pending";
   const breakdown = useQuery({ ...breakdownQuery(userId, week), enabled: fresh });
   const flagged = useQuery({ ...flaggedQuery(userId, week), enabled: fresh });
+  const isSelfView = userId === profile.id;
+  const segments = useQuery({
+    ...segmentsQuery(userId, week),
+    enabled: fresh && isSelfView,
+  });
   const edits = useQuery({ ...editsQuery(sheet.data?.id ?? ""), enabled: !!sheet.data });
   const canDecideQ = useQuery(canDecideQuery(userId));
   const canReopenQ = useQuery(canReopenQuery(userId));
@@ -139,6 +162,7 @@ export function TimesheetPage() {
         ["timesheet", userId],
         ["timesheet-breakdown", userId],
         ["timesheet-flagged", userId],
+        ["timesheet-segments", userId],
         ["timesheet-edits"],
         ["manual-entries", userId],
         ["timesheet-list"],
@@ -193,7 +217,11 @@ export function TimesheetPage() {
   const projectName = (id: string | null) =>
     id ? ((projects.data ?? []).find((p) => p.id === id)?.name ?? "Project") : "Unassigned";
   const editorName = (id: string | null) =>
-    (id && editors.data?.get(id)) || (isSelf ? "Your manager" : "A manager");
+    id === userId
+      ? isSelf
+        ? "You"
+        : name
+      : (id && editors.data?.get(id)) || (isSelf ? "Your manager" : "A manager");
 
   const flaggedList = flagged.data ?? [];
   const entryList = entries.data ?? [];
@@ -211,7 +239,10 @@ export function TimesheetPage() {
   const loadError = sheet.error ?? breakdown.error ?? flagged.error ?? entries.error;
   const canSubmit = isSelf && (status === "draft" || status === "returned") && week <= today;
   const listPath = profile.role === "employee" ? myTimesheetPath : timesheetsPath;
+  const canReassign = canReassignWeek(isSelf, status);
+  const myProjects = allowedProjects(projects.data ?? [], profile.id);
 
+  const openReassign = setReassignTarget;
   const openAdjust = setAdjustTarget;
 
   return (
@@ -395,6 +426,16 @@ export function TimesheetPage() {
                             .map((p) => `${projectName(p.projectId)} ${formatDuration(p.seconds)}`)
                             .join(" · ")}
                         </span>
+                        {canReassign && (
+                          <Button
+                            variant="secondary"
+                            className="h-8 self-start px-3 text-[12.5px]"
+                            aria-label={`Change project for ${d.label}`}
+                            onClick={() => openReassign({ kind: "day", day: d.day })}
+                          >
+                            Change project
+                          </Button>
+                        )}
                       </div>
                     )}
                   </td>
@@ -443,13 +484,25 @@ export function TimesheetPage() {
             onChangeProject={setProjectTarget}
           />
         ) : (
-          <EditsList
-            heading={isSelf ? "Edits to your time" : "Manager edits"}
-            edits={edits.data ?? []}
-            zone={zone}
-            editorName={editorName}
-            projectName={projectName}
-          />
+          <div className="flex flex-col gap-5">
+            {canReassign && (
+              <ProjectTime
+                spans={unassignedSpans(segments.data ?? [])}
+                zone={zone}
+                loading={!fresh || segments.isPending}
+                hasProjects={myProjects.length > 0}
+                onTag={(s) => openReassign({ kind: "span", startAt: s.startAt, endAt: s.endAt })}
+              />
+            )}
+            <EditsList
+              heading={isSelf ? "Edits to your time" : "Edits this week"}
+              edits={edits.data ?? []}
+              zone={zone}
+              editorName={editorName}
+              projectName={projectName}
+              viewerIsEmployee={isSelf}
+            />
+          </div>
         )}
         <div className="flex flex-col gap-5">
           <WeekEntries
@@ -511,6 +564,25 @@ export function TimesheetPage() {
           schema={TimesheetReason}
           onSubmit={async (text) => {
             await reopenWeek(sheet.data.id, text);
+            await refreshAfterRebuild();
+          }}
+        />
+      )}
+
+      {canReassign && (
+        <ReassignDialog
+          dialogRef={reassignRef}
+          zone={zone}
+          projects={myProjects}
+          target={reassignTarget}
+          onClose={() => setReassignTarget(null)}
+          onSubmit={async (r) => {
+            await reassignMyTime({
+              startAt: r.startAt,
+              endAt: r.endAt,
+              projectId: r.projectId,
+              reason: r.note,
+            });
             await refreshAfterRebuild();
           }}
         />

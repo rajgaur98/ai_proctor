@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, clientFor } from "./agent";
 
@@ -135,6 +135,8 @@ test("the manager's Change project and Adjust dialogs open on each segment and e
     await signIn(page, MANAGER_EMAIL, /\/team$/);
     await page.goto(`/timesheets/${ERIN}?week=${week.toISODate()}`);
     await expect(page.getByText(/^Submitted · /)).toBeVisible();
+    // The week is rebuilt when the page opens; the lists fill in once that is done.
+    await expect(page.getByText("Refreshing the week…")).toBeHidden({ timeout: 30_000 });
 
     // The newest flagged segment of each project is this run's.
     const flagged = page.getByRole("region", { name: "Flagged segments" }).getByRole("listitem");
@@ -190,5 +192,78 @@ test("the manager's Change project and Adjust dialogs open on each segment and e
   } finally {
     await cancelEntries();
     await resetWeek();
+  }
+});
+
+// Last week, so every day of it is past and nothing else in the suite clocks in there.
+const lastWeek = week.minus({ weeks: 1 }).toISODate() ?? "";
+
+/** Adds `minutes` of Unassigned time to Erin's last week, in a free twenty-minute slot picked at random. */
+async function addUnassignedTime(minutes: number) {
+  const manager = await clientFor(MANAGER_EMAIL);
+  const ensured = await manager.rpc("ensure_timesheet", {
+    p_user_id: ERIN,
+    p_period_start: lastWeek,
+  });
+  if (ensured.error) throw ensured.error;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const start = DateTime.fromISO(lastWeek, { zone: ZONE }).plus({
+      minutes: Math.floor(Math.random() * 504) * 20,
+    });
+    const added = await manager.rpc("adjust_time", {
+      p_timesheet_id: ensured.data,
+      p_start_at: start.toUTC().toISO() ?? "",
+      p_end_at: start.plus({ minutes }).toUTC().toISO() ?? "",
+      p_project_id: null as unknown as string,
+      p_reason: "e2e unassigned time",
+      p_entry_id: null as unknown as string,
+    });
+    if (!added.error) return;
+    if (!added.error.message.startsWith("overlaps")) throw added.error;
+  }
+  throw new Error("No free slot in last week");
+}
+
+test("the employee's Tag a project and Change project dialogs open on each stretch and day in turn", async ({
+  page,
+}) => {
+  // Each page open rebuilds seven days through the Edge Function.
+  test.setTimeout(90_000);
+  await resetWeek();
+  await addUnassignedTime(11);
+  await addUnassignedTime(17);
+
+  await signIn(page, ERIN_EMAIL, /\/me$/);
+  await page.goto(`/timesheets/${ERIN}?week=${lastWeek}`);
+  const stretches = page.getByRole("region", { name: "Unassigned time" }).getByRole("listitem");
+  // The week is rebuilt when the page opens; the list fills in once that is done.
+  await expect(stretches.nth(1)).toBeVisible({ timeout: 20_000 });
+  const timeOf = (row: Locator) => row.locator("span.font-mono").first();
+  const stretchA = stretches.nth(0);
+  const stretchB = stretches.nth(1);
+  const timeA = await timeOf(stretchA).innerText();
+  const timeB = await timeOf(stretchB).innerText();
+  expect(timeA).not.toBe(timeB);
+
+  const tag = page.getByRole("dialog", { name: "Tag a project" });
+  const day = page.getByRole("dialog", { name: "Change project" });
+  const dayButton = page.getByRole("button", { name: /^Change project for / }).first();
+  for (const [open, dialog, expected] of [
+    [stretchA.getByRole("button", { name: "Tag a project" }), tag, timeA],
+    [stretchB.getByRole("button", { name: "Tag a project" }), tag, timeB],
+    [stretchA.getByRole("button", { name: "Tag a project" }), tag, timeA],
+    [dayButton, day, null],
+    [stretchB.getByRole("button", { name: "Tag a project" }), tag, timeB],
+  ] as const) {
+    await open.click();
+    await expect(dialog).toBeVisible();
+    // Each opening starts a fresh form on its own target.
+    await expect(dialog.getByLabel("Project")).toHaveValue("");
+    await expect(dialog.getByLabel("Note (optional)")).toHaveValue("");
+    if (expected) await expect(dialog.locator("span.font-mono")).toHaveText(expected);
+    await expectNoA11yViolations(page);
+    await dialog.getByLabel("Note (optional)").fill("left over");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
   }
 });

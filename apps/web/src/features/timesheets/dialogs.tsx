@@ -1,14 +1,17 @@
 // Dialogs of the timesheet page (#43): a note (return comment, reopen reason), a
-// project change, and added or adjusted time. Each validates with Zod before it
-// calls the database, which checks the rules again.
+// project change, and added or adjusted time; and (#139) the employee's own project
+// change on a draft week. Each validates with Zod before it calls the database, which
+// checks the rules again.
 import { ManualEntryRequest } from "@ai-proctor/contracts";
 import { useMutation } from "@tanstack/react-query";
 import { DateTime } from "luxon";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Time } from "../../lib/time";
 import type { Project } from "../projects/projectData";
+import { daySpan } from "./reassign";
 import { dayLabel } from "./weeks";
 
 const dialogClass =
@@ -447,6 +450,211 @@ export function AdjustDialog({
           dialogRef={dialogRef}
           busy={send.isPending}
           label={adjusting ? "Save changes" : "Add time"}
+          onClose={() => {
+            setProblem(null);
+            send.reset();
+          }}
+        />
+      </form>
+    </dialog>
+  );
+}
+
+const blankReassign = { projectId: "", part: false, start: "09:00", end: "17:00", note: "" };
+
+/** What the employee is re-assigning: an exact stretch of time, or a day (or part of it). */
+export type ReassignTarget =
+  | { kind: "span"; startAt: string; endAt: string }
+  | { kind: "day"; day: string };
+
+/**
+ * PRJ-04: the employee moves their own time to a project they're on, while the week is
+ * a draft. A stretch of Unassigned time is tagged as it is; a day can be moved whole or
+ * between two times. The note is optional; nothing is sent to the manager, who sees the
+ * change in the week's edits.
+ */
+export function ReassignDialog({
+  dialogRef,
+  zone,
+  projects,
+  target,
+  onSubmit,
+  onClose,
+}: {
+  dialogRef: Ref;
+  zone: string;
+  /** Projects the employee is assigned to. */
+  projects: Project[];
+  target: ReassignTarget | null;
+  onSubmit: (r: {
+    startAt: string;
+    endAt: string;
+    projectId: string | null;
+    note: string;
+  }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const isDay = target?.kind === "day";
+  const [form, setForm] = useState(blankReassign);
+  const [problem, setProblem] = useState<string | null>(null);
+  const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+  const send = useMutation({
+    mutationFn: onSubmit,
+    onSuccess: () => {
+      set({ note: "" });
+      dialogRef.current?.close();
+    },
+  });
+  // A new target starts a fresh form. (Not a `key`: a remount would swap the opened dialog
+  // for a closed one. The page sets the target, opens the dialog in an effect, and clears
+  // the target from `onClose`.)
+  const { reset } = send;
+  useEffect(() => {
+    if (!target) return;
+    setForm(blankReassign);
+    setProblem(null);
+    reset();
+  }, [target, reset]);
+
+  function range(): { startAt: string; endAt: string } | null {
+    if (!target) return null;
+    if (target.kind === "span") return target;
+    const whole = daySpan(target.day, zone);
+    if (!whole || !form.part) return whole;
+    const at = (time: string) => DateTime.fromISO(`${target.day}T${time}`, { zone });
+    const start = at(form.start);
+    const end = at(form.end);
+    if (!start.isValid || !end.isValid || end <= start) {
+      setProblem("The end must be after the start.");
+      return null;
+    }
+    if (end > DateTime.now()) {
+      setProblem("The time can't end in the future.");
+      return null;
+    }
+    return { startAt: start.toUTC().toISO() ?? "", endAt: end.toUTC().toISO() ?? "" };
+  }
+
+  function submit() {
+    setProblem(null);
+    if (!isDay && !form.projectId) {
+      setProblem("Choose a project.");
+      return;
+    }
+    const r = range();
+    if (!r) {
+      setProblem((p) => p ?? "There's no time to move on that day yet.");
+      return;
+    }
+    send.mutate({ ...r, projectId: form.projectId || null, note: form.note });
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="reassign-title"
+      className={dialogClass}
+      onClose={onClose}
+    >
+      <form
+        method="dialog"
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <h2 id="reassign-title" className="text-lg font-semibold">
+          {isDay ? "Change project" : "Tag a project"}
+        </h2>
+        <p className="text-[13px] text-ink2">
+          {target?.kind === "span" ? (
+            <>
+              <span className="font-mono">
+                {DateTime.fromISO(target.startAt, { zone: "local" }).toFormat("ccc d")} ·{" "}
+                <Time iso={target.startAt} employeeZone={zone} />–
+                <Time iso={target.endAt} employeeZone={zone} />
+              </span>
+              .{" "}
+            </>
+          ) : target ? (
+            <>{dayLabel(target.day)}. </>
+          ) : null}
+          Moves your time to a project you're on. Your manager sees the change when they review the
+          week. Flagged time stays flagged.
+        </p>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="reassign-project">Project</Label>
+          <select
+            id="reassign-project"
+            value={form.projectId}
+            onChange={(e) => set({ projectId: e.target.value })}
+            className={fieldClass}
+          >
+            <option value="">{isDay ? "Unassigned" : "Choose a project"}</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {isDay && (
+          <>
+            <label className="flex items-center gap-2 text-[13.5px]">
+              <input
+                type="checkbox"
+                checked={form.part}
+                onChange={(e) => set({ part: e.target.checked })}
+              />
+              Only part of the day
+            </label>
+            {form.part && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="reassign-start">From</Label>
+                  <Input
+                    id="reassign-start"
+                    type="time"
+                    required
+                    value={form.start}
+                    onChange={(e) => set({ start: e.target.value })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="reassign-end">To</Label>
+                  <Input
+                    id="reassign-end"
+                    type="time"
+                    required
+                    value={form.end}
+                    onChange={(e) => set({ end: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="reassign-note">Note (optional)</Label>
+          <textarea
+            id="reassign-note"
+            rows={2}
+            maxLength={500}
+            value={form.note}
+            onChange={(e) => set({ note: e.target.value })}
+            className="rounded-[9px] border border-line2 bg-panel p-3 text-sm text-ink"
+          />
+        </div>
+        {(problem || send.error) && (
+          <p role="alert" className="text-sm text-warnink">
+            {problem ?? send.error?.message}
+          </p>
+        )}
+        <Actions
+          dialogRef={dialogRef}
+          busy={send.isPending}
+          label={isDay ? "Change project" : "Tag project"}
           onClose={() => {
             setProblem(null);
             send.reset();

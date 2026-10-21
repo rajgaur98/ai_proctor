@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(72);
+select plan(84);
 
 -- Org 1 (seed, default policy) has Erin. Org 2 has a short policy; org 3's policy is
 -- out of range or not a number, so it falls back to / is clamped to the limits.
@@ -189,6 +189,34 @@ values (:org1, :erin, 'timesheet.returned', '{"k": "old"}', now() - interval '13
        (:org2, :u2, 'timesheet.returned', '{"k": "old"}', now() - interval '7 months'),
        (:org2, :u2, 'timesheet.returned', '{"k": "recent"}', now() - interval '2 months'),
        (:org3, :u3, 'timesheet.returned', '{"k": "kept"}', now() - interval '7 months');
+
+-- Messages (#185), on the events window (12 months for orgs 1 and 3, 6 for org 2). Mail
+-- is labelled by batch_key. Org 1: sent and given-up-on mail past the window goes, mail
+-- still waiting to go out stays however old. Alerts are labelled by episode.
+insert into public.email_outbox (org_id, to_email, template, batch_key, created_at, sent_at, attempts)
+values (:org1, 'max@example.test', 'alert', 'a-sent-13m', now() - interval '13 months', now() - interval '13 months', 1),
+       (:org1, 'max@example.test', 'alert', 'b-pending-13m', now() - interval '13 months', null, 0),
+       (:org1, 'max@example.test', 'alert', 'c-failed-13m', now() - interval '13 months', null, 5),
+       (:org1, 'max@example.test', 'alert', 'd-sent-2m', now() - interval '2 months', now() - interval '2 months', 1),
+       (:org1, 'max@example.test', 'alert', 'e-retrying-13m', now() - interval '13 months', null, 2),
+       (:org2, 'u2@short.test', 'alert', 'f-sent-7m', now() - interval '7 months', now() - interval '7 months', 1),
+       (:org2, 'u2@short.test', 'alert', 'g-sent-2m', now() - interval '2 months', now() - interval '2 months', 1),
+       (:org3, 'u3@wild.test', 'alert', 'h-sent-7m', now() - interval '7 months', now() - interval '7 months', 1);
+insert into public.alerts (org_id, user_id, recipient_id, kind, episode, triggered_at, email_id)
+values (:org1, :erin, :max, 'offline', 'a-13m', now() - interval '13 months',
+        (select id from public.email_outbox where batch_key = 'a-sent-13m')),
+       (:org1, :erin, :max, 'offline', 'b-13m-unqueued', now() - interval '13 months', null),
+       (:org1, :erin, :max, 'offline', 'c-2m', now() - interval '2 months',
+        (select id from public.email_outbox where batch_key = 'd-sent-2m')),
+       (:org2, :u2, :u2, 'offline', 'd-7m', now() - interval '7 months', null),
+       (:org2, :u2, :u2, 'offline', 'e-2m', now() - interval '2 months', null),
+       (:org3, :u3, :u3, 'offline', 'f-7m', now() - interval '7 months', null);
+insert into internal.segment_rebuilds (user_id, day, rebuilt_at)
+values (:erin, current_date - 400, now() - interval '13 months'),
+       (:erin, current_date - 60, now() - interval '2 months'),
+       (:u2, current_date - 210, now() - interval '7 months'),
+       (:u2, current_date - 60, now() - interval '2 months'),
+       (:u3, current_date - 210, now() - interval '7 months');
 
 -- The audit log, with an entry far older than any retention.
 insert into public.audit_log (org_id, action, metadata, at) values
@@ -409,6 +437,64 @@ select is(
 );
 select is((select r ->> 'timesheets' from purged), '3', 'the totals include them');
 select is(public.retention_purge_rows(), '{}'::jsonb, 'a second run finds nothing more');
+
+-- Messages (#185) -------------------------------------------------------------------------------
+
+select is(
+  (select array_agg(episode order by episode) from public.alerts where org_id = :org1),
+  array['c-2m'], 'alerts: those past the 12-month window go, queued for email or not'
+);
+select is(
+  (select array_agg(episode) from public.alerts where org_id = :org2),
+  array['e-2m'], 'org 2 on 6 months'
+);
+select is(
+  (select array_agg(episode) from public.alerts where org_id = :org3),
+  array['f-7m'], 'org 3 on the default 12: its 7-month-old alert stays'
+);
+select is(
+  (select email_id is not null from public.alerts where episode = 'c-2m'),
+  true, 'a kept alert keeps its email link'
+);
+select is(
+  (select array_agg(batch_key order by batch_key) from public.email_outbox where org_id = :org1),
+  array['b-pending-13m', 'd-sent-2m', 'e-retrying-13m'],
+  'email: sent and given-up-on mail past the window goes, unsent mail stays however old'
+);
+select is(
+  (select array_agg(batch_key) from public.email_outbox where org_id = :org2),
+  array['g-sent-2m'], 'org 2''s 7-month-old sent mail goes (6 months)'
+);
+select is(
+  (select array_agg(batch_key) from public.email_outbox where org_id = :org3),
+  array['h-sent-7m'], 'org 3''s stays'
+);
+select is(
+  (select array_agg(day order by day) from internal.segment_rebuilds where user_id = :erin),
+  array[current_date - 60], 'rebuild log: entries past the window go'
+);
+select is(
+  (select array_agg(day) from internal.segment_rebuilds where user_id = :u2),
+  array[current_date - 60], 'by the org''s own setting (org 2: 6 months)'
+);
+select is(
+  (select count(*)::int from internal.segment_rebuilds where user_id = :u3), 1,
+  'org 3 keeps its 7-month-old entry'
+);
+select is(
+  (select jsonb_object_agg(org_id || '/' || category, deleted) from public.retention_runs
+   where category in ('alerts', 'email_outbox', 'segment_rebuilds')),
+  jsonb_build_object(
+    :org1::text || '/alerts', 2, :org1::text || '/email_outbox', 2, :org1::text || '/segment_rebuilds', 1,
+    :org2::text || '/alerts', 1, :org2::text || '/email_outbox', 1, :org2::text || '/segment_rebuilds', 1),
+  'counts are logged per org and category (org 3 lost none)'
+);
+select is(
+  (select jsonb_build_array(metadata -> 'alerts', metadata -> 'email_outbox', metadata -> 'segment_rebuilds')
+   from public.audit_log where action = 'retention.purged' and org_id = :org2 and metadata ? 'alerts'
+   order by id desc limit 1),
+  '[1, 1, 1]'::jsonb, 'and in the org''s audit row'
+);
 
 -- The audit log is never purged -----------------------------------------------------------------
 
