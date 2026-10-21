@@ -53,6 +53,19 @@ For each issue in the build order (`docs/progress.md`):
 
 **UI work** (#20 card, #27 onwards, #37 tray): the design reference is the Claude Design project linked in `CLAUDE.md`. Read the screen files with the `DesignSync` tool and commit a copy of the ones you used under `docs/design/` in the same PR.
 
+**Signing debug builds (#108):** the agent's `.app` is signed with the self-signed code-signing identity "AI Proctor Dev" in Raj's login keychain, so rebuilds keep the Screen Recording and Camera grants and keychain access. Tauri reads the identity from `APPLE_SIGNING_IDENTITY`:
+
+```
+APPLE_SIGNING_IDENTITY="AI Proctor Dev" pnpm --filter @ai-proctor/agent tauri build --debug
+```
+
+`scripts/agent-e2e.sh` sets it on its own when `security find-identity -v -p codesigning` lists the identity. Without it (CI, other Macs) the bundle stays ad hoc signed, and every rebuild loses the grants again.
+- Check a build: `codesign -d -r- "target/debug/bundle/macos/AI Proctor.app"` should print `designated => identifier "com.aiproctor.agent" and certificate leaf = H"afcdc3cc…"`, the same after every rebuild. An ad hoc build prints `cdhash H"…"`, which changes on every build.
+- Signing with an identity turns on the hardened runtime. The camera then needs the `com.apple.security.device.camera` entitlement (`apps/agent/src-tauri/Entitlements.plist`, wired in through `bundle.macOS.entitlements`). Screen Recording needs no entitlement.
+- The first launch after switching from ad hoc builds may show one keychain prompt for the outbox key: click "Always Allow". It shouldn't come back after later rebuilds.
+- The identity and its private key live only in the login keychain, never in the repo. The certificate expires on 21 Oct 2027; make a new one in Keychain Access (Certificate Assistant → Create a Certificate…, type Code Signing) with the same name, then re-grant once.
+- A binary started from a shell (`cargo test`, including `e2e_bundle`) gets its permissions from the shell's app, not from the bundle. Only a bundle started with `open` uses its own grants.
+
 **CI budget:** Linux jobs on every PR. The Windows job also runs automatically on PRs that touch Windows code. Otherwise macOS and Windows jobs run only on the `ci:full` label or nightly, since they cost 10× and 2× the free minutes. macOS release builds happen locally.
 
 ## Running long
