@@ -163,6 +163,25 @@ const danaPass = await dana.send(
   ago(60),
 );
 await dana.send("clock_out", { reason: "manual" }, ago(5));
+// A late clock-in (SHF-06, #67; written with the service role: Dana has no shift).
+const danaSession = await call(
+  `/rest/v1/clock_sessions?user_id=eq.${DANA}&order=start_at.desc&limit=1&select=id`,
+  service,
+);
+assert.equal(danaSession.status, 200, `clock session ${JSON.stringify(danaSession.json)}`);
+const danaLate = await call("/rest/v1/late_clock_ins", service, {
+  body: {
+    org_id: ORG,
+    user_id: DANA,
+    clock_session_id: danaSession.json[0].id,
+    day: dayOf(ago(150)),
+    shift_start: ago(150).toISOString(),
+    clocked_in_at: ago(120).toISOString(),
+    late_s: 1800,
+    grace_min: 10,
+  },
+});
+assert.equal(danaLate.status, 201, `late_clock_ins ${JSON.stringify(danaLate.json)}`);
 const screenshot = `${ORG}/${DANA}/${dayOf(ago(60))}/${danaPass}/screen-1.webp`;
 const uploaded = await fetch(`${url}/storage/v1/object/captures/${screenshot}`, {
   method: "POST",
@@ -306,6 +325,7 @@ try {
     "status-periods",
     "time-segments",
     "timesheets",
+    "late-clock-ins",
   ]) {
     assert.deepEqual(
       JSON.parse(asAdmin.text(`data/${dataset}.json`)),
@@ -322,6 +342,13 @@ try {
     profile.map((p) => p.id),
     [DANA],
   );
+  const adminLate = JSON.parse(asAdmin.text("data/late-clock-ins.json")) as Record<
+    string,
+    unknown
+  >[];
+  assert.equal(adminLate.length, 1, "her late clock-in is in the admin's export");
+  assert.equal(adminLate[0]?.late_s, 1800, "in raw seconds");
+  assert.equal(adminLate[0]?.user_id, DANA);
   const selfPauses = JSON.parse(own.text("data/pauses.json")) as { private_reason?: string }[];
   assert.equal(selfPauses[0]?.private_reason, "private note", "her own export has her reason");
   const adminPauses = JSON.parse(asAdmin.text("data/pauses.json")) as Record<string, unknown>[];
@@ -406,6 +433,7 @@ try {
     "activity_samples",
     "agent_events_raw",
     "notifications",
+    "late_clock_ins",
     "notice_acks",
     "presence",
     "last_seen",
