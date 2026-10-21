@@ -55,7 +55,7 @@ fn queued_events_and_captures_reach_supabase() {
     let api = Api::new(config.clone(), Arc::new(Password(token.clone()))).unwrap();
     let hardware = format!("it-{}", Uuid::now_v7());
     let registration = api
-        .register_device("macos", "26.7", "0.1.0", &hardware)
+        .register_device("macos", "26.7", "0.1.0", &hardware, None)
         .unwrap();
 
     let dir = tempfile::tempdir().unwrap();

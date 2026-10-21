@@ -170,4 +170,10 @@ pub trait Platform: Send + Sync {
     /// must clock out and mark the exit before it does, and quickly. A second call
     /// replaces the first; an announcement the OS then takes back is not reported.
     fn on_session_end(&self, handler: SessionEndHandler);
+    /// AGT-01 (#86): the org enrollment token IT set through MDM, raw (the caller
+    /// checks its shape: `enrollment::managed_token`). macOS reads the forced
+    /// (managed) preference `EnrollmentToken` of `com.aiproctor.agent`; Windows the
+    /// `EnrollmentToken` value under `HKLM\SOFTWARE\Policies\AIProctor\Agent`. `None` on
+    /// a manual install. Never shows anything; cheap enough to call at launch.
+    fn managed_enrollment_token(&self) -> Option<String>;
 }

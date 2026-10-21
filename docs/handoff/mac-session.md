@@ -64,7 +64,7 @@ APPLE_SIGNING_IDENTITY="AI Proctor Dev" pnpm --filter @ai-proctor/agent tauri bu
 - Signing with an identity turns on the hardened runtime. The camera then needs the `com.apple.security.device.camera` entitlement (`apps/agent/src-tauri/Entitlements.plist`, wired in through `bundle.macOS.entitlements`). Screen Recording needs no entitlement.
 - The first launch after switching from ad hoc builds may show one keychain prompt for the outbox key: click "Always Allow". It shouldn't come back after later rebuilds.
 - The identity and its private key live only in the login keychain, never in the repo. The certificate expires on 21 Oct 2027; make a new one in Keychain Access (Certificate Assistant → Create a Certificate…, type Code Signing) with the same name, then re-grant once.
-- A binary started from a shell (`cargo test`, including `e2e_bundle`) gets its permissions from the shell's app, not from the bundle. Only a bundle started with `open` uses its own grants.
+- A binary started from a shell (`cargo test`) gets its permissions from the shell's app, not from the bundle. Only a bundle started with `open` uses its own grants. So `scripts/agent-e2e.sh` starts the bundle with `open -n --env …` by default (#227) and then checks that the check-in's screenshots and webcam frame reach Storage; `AI_PROCTOR_E2E_LAUNCH=direct` starts the binary from the test instead, with no capture checks, for a Mac without the grants.
 
 **CI budget:** Linux jobs on every PR. The Windows job also runs automatically on PRs that touch Windows code. Otherwise macOS and Windows jobs run only on the `ci:full` label or nightly, since they cost 10× and 2× the free minutes. macOS release builds happen locally.
 

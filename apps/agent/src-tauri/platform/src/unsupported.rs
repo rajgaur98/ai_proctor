@@ -81,4 +81,8 @@ impl Platform for UnsupportedPlatform {
     }
 
     fn on_session_end(&self, _handler: SessionEndHandler) {}
+
+    fn managed_enrollment_token(&self) -> Option<String> {
+        None
+    }
 }
