@@ -3,7 +3,7 @@
 //! whenever the heartbeat reports a new `config_version`.
 //!
 //! `policy` is the org's policy with the collection keys (`screenshots`, `webcam`,
-//! `window_titles`, `excluded_apps`, `activity_sampling`) replaced by what this
+//! `window_titles`, `excluded_apps`, `activity_sampling`, `face_presence`) replaced by what this
 //! person has acknowledged (#48, AGT-05), so those keys are what may run. Every key
 //! is read here into the typed policy the module that uses it takes (#144), with the
 //! ranges `update_policy` enforces on the server (`packages/contracts/src/policy.ts`):
@@ -139,6 +139,10 @@ impl AgentConfig {
             },
             webcam: self.webcam_enabled(),
             excluded_apps: self.excluded_apps(),
+            // CAP-07: off unless the server sends it on. The server already forces it
+            // off for EU organisations and biometric-law work locations, and for
+            // anyone who hasn't acknowledged a notice that describes it.
+            face_presence: self.flag("face_presence", false),
         }
     }
 
@@ -354,6 +358,7 @@ mod tests {
                 screenshots: ScreenshotMode::Blurred,
                 webcam: false,
                 excluded_apps: vec!["Slack".into(), "Signal".into()],
+                face_presence: false,
             }
         );
         assert_eq!(
@@ -376,6 +381,24 @@ mod tests {
                 .screenshots,
             ScreenshotMode::Full
         );
+    }
+
+    #[test]
+    fn face_presence_runs_only_when_the_server_says_so() {
+        assert!(
+            p(json!({ "face_presence": true }))
+                .capture_policy()
+                .face_presence
+        );
+        for policy in [
+            json!({}),
+            json!({ "face_presence": false }),
+            json!({ "face_presence": "true" }),
+            json!({ "face_presence": 1 }),
+            json!({ "face_presence": null }),
+        ] {
+            assert!(!p(policy).capture_policy().face_presence);
+        }
     }
 
     #[test]

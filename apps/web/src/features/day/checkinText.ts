@@ -23,12 +23,24 @@ export function deferralText(reason: string | null): string {
   return (reason && deferralLabel[reason]) || "Held back";
 }
 
-/** What the marker button says: the outcome, the time, and for a deferral the reason. */
+/**
+ * CAP-07: a pass whose webcam frame showed no face, by on-device detection. A hint for
+ * the manager to look at the frame (stepped away, camera covered or pointed elsewhere),
+ * never a penalty and never about who the person is.
+ */
+export function noFace(c: Pick<Checkin, "outcome" | "facePresent">): boolean {
+  return c.outcome === "pass" && c.facePresent === false;
+}
+
+export const NO_FACE = "No face detected";
+
+/** What the marker button says: the outcome, the time, for a deferral the reason, and a no-face hint. */
 export function markerLabel(c: Checkin, zone: string): string {
   const at = DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone }).toFormat("HH:mm");
   const reason =
     c.outcome === "deferred" ? ` (${deferralText(c.deferralReason).toLowerCase()})` : "";
-  return `${outcomeLabel[c.outcome]} at ${at}${reason}`;
+  const face = noFace(c) ? `, ${NO_FACE.toLowerCase()} (needs review)` : "";
+  return `${outcomeLabel[c.outcome]} at ${at}${reason}${face}`;
 }
 
 /** "11 min", "1 h 05 min": whole minutes, for display only. */

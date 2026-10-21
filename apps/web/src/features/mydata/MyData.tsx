@@ -13,7 +13,7 @@ import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Time, viewerZone } from "../../lib/time";
 import { CaptureViewer } from "../day/CaptureViewer";
-import { outcomeLabel } from "../day/checkinText";
+import { noFace, outcomeLabel } from "../day/checkinText";
 import { Marker } from "../day/DayTimeline";
 import { rebuildDay } from "../day/dayData";
 import { TopApps } from "../day/TopApps";
@@ -521,6 +521,11 @@ function CheckinRow({
             {c.outcome === "deferred"
               ? (deferralLabel[c.deferralReason ?? ""] ?? "Held back")
               : "No captures"}
+          </span>
+        )}
+        {noFace(c) && (
+          <span className="text-[12.5px] text-ink2">
+            No face detected in the webcam frame (checked on your computer, only yes or no is kept)
           </span>
         )}
         <div className="flex min-w-[140px] flex-col gap-0.5 text-[12.5px] text-ink2">

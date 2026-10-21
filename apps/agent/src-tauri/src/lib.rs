@@ -685,7 +685,11 @@ impl AgentState {
     /// window to show. Nothing is queued, uploaded or written: the images exist only
     /// in this reply. Blocks about 2 s (camera warm-up): never on the UI thread.
     fn test_capture(&self) -> TestCaptureResult {
-        let policy = self.capture_policy.lock().unwrap().clone();
+        let policy = CapturePolicy {
+            // CAP-07: nothing to show the person here, so the detector doesn't run.
+            face_presence: false,
+            ..self.capture_policy.lock().unwrap().clone()
+        };
         let captured = capture::capture(self.platform.as_ref(), &policy);
         let os = self.platform.permissions();
         tracing::info!(
@@ -3294,6 +3298,64 @@ mod tests {
         assert_eq!(checkin["flags"], serde_json::json!(["virtual_machine"]));
         assert_eq!(checkin["object_keys"], serde_json::json!([]));
         assert_eq!(w.platform.snapshot().webcam_captures, 0);
+    }
+
+    // --- Face presence (CAP-07) ------------------------------------------------------------
+
+    #[test]
+    fn face_presence_puts_only_a_boolean_on_a_pass() {
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({ "face_presence": true })));
+        w.platform.update(|s| s.face = Some(false));
+        w.pass();
+        w.platform.update(|s| s.face = Some(true));
+        w.pass();
+        // The detector couldn't run: the check-in says nothing about a face.
+        w.platform.update(|s| s.face = None);
+        w.pass();
+        let checkins = w.checkins();
+        assert_eq!(checkins[0]["face_present"], serde_json::json!(false));
+        assert_eq!(checkins[1]["face_present"], serde_json::json!(true));
+        assert!(checkins[2].get("face_present").is_none());
+        for c in &checkins {
+            // Nothing else about the face: the same files as without detection.
+            assert_eq!(
+                c["object_keys"],
+                serde_json::json!(["screen-1.webp", "webcam.webp"])
+            );
+            assert_eq!(c["flags"], serde_json::json!([]));
+        }
+        assert_eq!(w.platform.snapshot().face_checks, 3);
+    }
+
+    #[test]
+    fn a_miss_or_a_failed_challenge_carries_no_face_answer() {
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({ "face_presence": true })));
+        w.card_due();
+        w.clock.advance(chrono::Duration::seconds(95));
+        assert_eq!(w.state.card_tick(), CardAction::Hide);
+        let card = w.card_due();
+        let first = w.state.card_click(&card.card_id, wrong(&card), true);
+        let next = first.next.unwrap();
+        w.state.card_click(&card.card_id, wrong(&next), true);
+        let checkins = w.checkins();
+        assert_eq!(checkins[0]["outcome"], "miss");
+        assert_eq!(checkins[1]["outcome"], "failed");
+        for c in &checkins {
+            assert!(c.get("face_present").is_none(), "{c}");
+        }
+        let snapshot = w.platform.snapshot();
+        assert_eq!((snapshot.webcam_captures, snapshot.face_checks), (0, 0));
+    }
+
+    #[test]
+    fn face_presence_is_off_unless_the_server_turns_it_on() {
+        let w = working();
+        apply_policy(&w, collection(serde_json::json!({})));
+        w.pass();
+        assert!(w.checkins()[0].get("face_present").is_none());
+        assert_eq!(w.platform.snapshot().face_checks, 0);
     }
 
     #[test]

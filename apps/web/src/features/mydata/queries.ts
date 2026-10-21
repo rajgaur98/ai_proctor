@@ -21,6 +21,8 @@ export interface MyCheckin {
   missedReasonKind: string | null;
   objectKeys: string[];
   projectId: string | null;
+  /** CAP-07: whether the webcam frame showed a face; null when not checked. */
+  facePresent: boolean | null;
 }
 
 export interface ActivityRow {
@@ -72,7 +74,7 @@ export const checkinsQuery = (userId: string, from: string, to: string) =>
       const { data, error } = await supabase
         .from("checkin_events")
         .select(
-          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys, project_id",
+          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys, project_id, face_present",
         )
         .eq("user_id", userId)
         .gte("scheduled_at", from)
@@ -92,6 +94,7 @@ export const checkinsQuery = (userId: string, from: string, to: string) =>
         missedReasonKind: c.missed_reason_kind,
         objectKeys: c.object_keys,
         projectId: c.project_id,
+        facePresent: c.face_present,
       }));
     },
   });

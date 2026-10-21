@@ -11,6 +11,7 @@ export const us: Policy = {
   window_titles: true,
   excluded_apps: ["1Password", "Bitwarden"],
   activity_sampling: true,
+  face_presence: false,
   auto_clock_in: false,
   forgotten_clock_out_min: 30,
   breaks_paid: false,
