@@ -9,9 +9,9 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (21 Oct, night):** every unblocked Phase 1 milestone issue is merged. What's left needs Raj (below) or is the later P1 backlog under #62 (#63–#67, #86, #202), which waits for Raj's go-ahead.
-- **Open PRs:** #209 (#189, merge commit waiting on Raj).
-- **Next:** device checks below; then Raj's decisions on #168 / #175 and the M6 accounts (#55–#57, #60, #61, #108). Nightly CI now repeats the e2e to catch order dependence (#221).
+- **Now (22 Oct):** the P1 backlog is merged: teams and per-team policy (#66, #202), anti-cheat extras (#63), MDM enrollment tokens (#86), XLSX export and overtime (#65), daily digest / top apps / recorded late clock-ins (#67, #237, #238), stable debug signing (#108) and the signed-bundle agent e2e (#227). #64 face presence is the last open PR.
+- **Open PRs:** #233 (#64 face presence).
+- **Next:** device checks below; Raj's product questions in the merged PRs (#228 teams, #229 anti-cheat, #230 MDM, #232 overtime, #233 face presence, #236 digest); the M6 accounts (#55–#57, #60, #61); #168 / #175.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
@@ -27,7 +27,12 @@ Read this first after a restart or a context compaction. Update it with every PR
   11. Accessibility step (#169, PR #215 checklist): optional card, tray banner only when activity sampling is on, no Tamper.
   12. Tamper follows the policy (#161, PR #217 checklist): screenshots and window titles off → no banner or Tamper with Screen Recording revoked.
   13. Restricted permission (#212): an MDM-restricted Screen Recording shows the device-management banner and Capture blocked.
-  - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals, #174 HDR / UWP / stale calls / toasts (PR #214). Each PR has its checklist.
+  14. Stable signing (#108, PR #226 steps): grant Screen Recording and Camera once to the signed bundle; after a rebuild no prompt returns (keychain too).
+  15. Agent e2e with real captures (#227, PR #231 steps): `bash scripts/agent-e2e.sh` passes after the one-time grant.
+  16. Anti-cheat extras (#63, PR #229 checklist): real trackpad clicks are not flagged synthetic (check first); OBS virtual camera, still frame, Screen Sharing, VM; card variation.
+  17. MDM enrollment (#86, PR #230 checklist): managed-preference token enrolls at sign-in; user-level value ignored; revoke stops new devices.
+  18. Face presence (#64, PR #233 checklist): facing the camera vs covered; off for an Illinois work location.
+  - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals, #174 HDR / UWP / stale calls / toasts (PR #214), #63 VM/RDP/virtual camera (PR #229), #86 registry token (PR #230), #64 FaceDetector (PR #233). Each PR has its checklist.
 
 ## Build order
 
@@ -102,9 +107,7 @@ Format: `- #<issue>: <exact question or action needed>`
 - #168: Accessibility tools that inject clicks can't answer the check-in card on Windows (the injected-click guard swallows them, ANT-02). Should admins be able to mark a person as using assistive input (flag-only instead of block, audit-logged), or should we add a keyboard path to answer the card? Until you decide, injected clicks stay blocked.
 - #175: Webcam frames keep the camera's aspect (16:9 → 320×180). CAP-06 says 320×240. Crop to 4:3 (consistent thumbnails) or keep the aspect (no cropping of the face)? Until you decide, aspect is kept.
 - #54 (#196): after a data deletion the person's name stays as a snapshot in the deletion tombstone and in the audit rows about them, as the legal record (AUD-01/03). Is that the reading you want, or should names be removed too?
-- #189 (#209): the main-merge for #209 is resolved and verified (lint, typecheck, unit, full e2e 45/45) in `ai_proctor-td189`, but committing it was blocked by the permission system for the worker. Commit it yourself (`git add` the three timesheet files and `git commit --no-edit` there), or tell the session to commit it.
 
-- #108: create a stable code-signing identity for debug builds (free Apple Development certificate via Xcode → Settings → Accounts, or a self-signed code-signing certificate in Keychain Access), so rebuilt agents keep their Screen Recording, Camera and keychain grants.
 - #12, #13, #14 (Windows halves), #56: a Windows machine or VM, or a decision that the pilot is Mac-only.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
 - #21 / tech-stack week-1 spike: the target "webcam frame < 1 s" isn't reachable on Raj's Mac: the camera takes ~1.3 s to deliver a usable frame, so the light is on 1.6–1.7 s (spike #13). Accept **≤ 2 s camera-on time** as the target? Default if no answer: yes.
