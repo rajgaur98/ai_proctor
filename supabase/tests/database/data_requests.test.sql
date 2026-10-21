@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(76);
+select plan(78);
 
 \set org '''00000000-0000-4000-8000-000000000001'''
 \set org2 '''00000000-0000-4000-8000-000000000002'''
@@ -152,6 +152,20 @@ begin
   insert into public.project_members (project_id, user_id, org_id)
   values (v_project, u, '00000000-0000-4000-8000-000000000001');
   insert into public.dirty_days (user_id, day) values (u, current_date) on conflict do nothing;
+  -- #67: a late clock-in, the digest setting, a digest sent to them and one about them.
+  insert into public.late_clock_ins (org_id, user_id, clock_session_id, day, shift_start,
+    clocked_in_at, late_s, grace_min)
+  values ('00000000-0000-4000-8000-000000000001', u, v_clock, current_date,
+          now() - interval '5 hours', now() - interval '4 hours', 3600, 15)
+  on conflict do nothing;
+  insert into public.notification_prefs (user_id, org_id, daily_digest)
+  values (u, '00000000-0000-4000-8000-000000000001', false);
+  insert into public.digests_sent (org_id, recipient_id, day)
+  values ('00000000-0000-4000-8000-000000000001', u, current_date - 1);
+  insert into public.email_outbox (org_id, to_email, template, payload)
+  values ('00000000-0000-4000-8000-000000000001', 'manager@acme.test', 'digest',
+          jsonb_build_object('day', current_date - 1,
+            'reports', jsonb_build_array(jsonb_build_object('user_id', u, 'full_name', slug))));
 end;
 $$;
 
@@ -480,6 +494,16 @@ select is_empty(
   $$ select tbl || '.' || col || '=' || n from pg_temp.pointing_tables('00000000-0000-4000-8000-0000000000c1')
      where n > 0 $$,
   'no table has a row that points at her any more (partitions included)'
+);
+select is(
+  (select count(*)::int from public.email_outbox
+   where template = 'digest' and payload -> 'reports' @> jsonb_build_array(jsonb_build_object('user_id', :erin))),
+  0, 'the digests that list her are gone too (#67)'
+);
+select is(
+  (select count(*)::int from public.email_outbox
+   where template = 'digest' and payload -> 'reports' @> jsonb_build_array(jsonb_build_object('user_id', :lucas))),
+  1, 'but not the ones about someone else'
 );
 
 -- Everyone else is untouched ---------------------------------------------------------------

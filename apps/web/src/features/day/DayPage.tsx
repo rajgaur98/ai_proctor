@@ -1,6 +1,7 @@
 // One employee's day (#33, #124, DSH-03/04/05), from the Claude Design DayView screen:
 // totals and a bar of time_segments with check-in markers on top, the selected
-// check-in on the left and the list of check-ins on the right. Today refreshes live.
+// check-in on the left and the list of check-ins on the right, then the day's top apps
+// (ACT-04, #67). Today refreshes live.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { DateTime } from "luxon";
@@ -27,6 +28,7 @@ import { statCards } from "./dayStats";
 import { flagCheckinIds } from "./flagText";
 import { ManualEntries } from "./ManualEntries";
 import { dayFlagsQuery, NeedsReviewBadge, NeedsReviewPanel, NoFaceBadge } from "./NeedsReview";
+import { TopApps } from "./TopApps";
 import { barSegments, barSpan, localDay, shiftText, ticks, withTamperReasons } from "./timeline";
 
 // Pages made by router.tsx's page() aren't in the typed route tree (same as the nav).
@@ -333,6 +335,14 @@ export function DayPage() {
           )}
         </section>
       </div>
+
+      <TopApps
+        userId={userId}
+        from={new Date(day.start).toISOString()}
+        to={new Date(day.end).toISOString()}
+        isToday={isToday}
+        live={live}
+      />
 
       <ManualEntries
         userId={userId}

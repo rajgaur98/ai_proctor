@@ -135,6 +135,10 @@ apps/agent/
 
 **Alerts.** `alert_eval` (pg_cron, every minute) writes `alerts` rows for the employee's direct manager and the manager's active delegates: N consecutive misses, offline during a shift, Tamper, late clock-in, pause over the daily cap. One condition raises one alert per episode. Each kind has `alert_<kind>_enabled` (default on) in `orgs.policy`, plus `alert_consecutive_misses` (3), `alert_offline_min` (15) and `late_clock_in_min` (15); the full list is in the header of `supabase/migrations/*_manager_alerts.sql`. The dashboard shows them in a bell in the top bar.
 
+**Late clock-ins (SHF-06).** A trigger on `clock_sessions` records each late clock-in in `late_clock_ins` (shift start, clock-in, seconds late, the grace that applied), with the alert's rule and `late_clock_in_min` grace, so editing a shift later doesn't rewrite them.
+
+**Daily digest (ALR-03).** `digest` (pg_cron, every 15 min) queues one email a day to each active person with direct reports, from 09:00 in their own zone (not after 18:00): yesterday's hours, flagged time, missed check-ins and late clock-ins per report, raw seconds rounded only in the email. Delegates don't get it. Each person can turn it off on the Alerts page (`notification_prefs.daily_digest`, default on).
+
 **Email batching.** `alert_eval` also queues emails in `email_outbox`: at most one per recipient, employee and alert type per hour. Alerts raised inside that hour are held and go out together in the next email.
 
 **Sending.** `send_emails` (pg_cron, every minute) calls the `send-emails` Edge Function through `pg_net` when mail is due. It claims rows, sends through Resend's HTTP API and retries with backoff (1, 2, 4, 8 min, then gives up after 5 attempts; `last_error` says why).

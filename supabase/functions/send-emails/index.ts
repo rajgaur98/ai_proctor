@@ -1,6 +1,8 @@
-// send-emails (#50, #46; ALR-01, ALR-02, TS-17, LLD jobs table): delivers the emails
-// waiting in email_outbox (alerts, and the reminder_* timesheet reminders). Called every minute by the send_emails cron job (internal.send_emails_kick,
-// through pg_net) with the service-role key as the bearer token; nobody else may call it.
+// send-emails (#50, #46, #67; ALR-01, ALR-02, ALR-03, TS-17, LLD jobs table): delivers the
+// emails waiting in email_outbox (alerts, the reminder_* timesheet reminders and the
+// managers' daily digest). Called every minute by the send_emails cron job
+// (internal.send_emails_kick, through pg_net) with the service-role key as the bearer
+// token; nobody else may call it.
 //
 // It claims due rows with email_claim (which counts the attempt and sets the retry
 // backoff), sends each, and records the result with email_mark_sent / email_mark_failed.
@@ -16,6 +18,7 @@
 // DASHBOARD_URL (default http://localhost:5173) is the base of the links in the mail.
 // Reply: { claimed, sent, failed }.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
+import { type DigestReport, digestLineText, digestSummary } from "../_shared/core/digest.ts";
 
 const MAX_BATCH = 50;
 // Resend allows 2 requests a second on the free tier.
@@ -219,8 +222,65 @@ function reminderMessage(row: OutboxRow, dashboardUrl: string): Message {
   return { subject, text, html };
 }
 
+/**
+ * The managers' daily digest (ALR-03, #67): yesterday per direct report. The payload is
+ * written by internal.digest_eval with raw seconds; only these lines round them.
+ */
+function digestMessage(row: OutboxRow, dashboardUrl: string): Message {
+  const p = row.payload;
+  const base = dashboardUrl.replace(/\/$/, "");
+  const date = String(p.day);
+  const reports = (Array.isArray(p.reports) ? p.reports : []) as DigestReport[];
+  const { lines, total } = digestSummary(reports);
+  const greeting = `Hi ${String(p.recipient_name ?? "there")},`;
+  const intro = `Your team on ${day(date)}:`;
+  const subject = `Daily digest: your team on ${day(date)}`;
+  const dayLink = (id: string) =>
+    `${base}/team/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`;
+  const reportsLink = `${base}/reports`;
+  const note =
+    "Flagged time needs review; nothing is deducted. You get this email once a day; turn it off on the Alerts page.";
+  const totalLine = digestLineText({ name: "Total", ...total });
+
+  const text = [
+    greeting,
+    "",
+    intro,
+    ...lines.map((l) => `- ${digestLineText(l)} (${dayLink(l.userId)})`),
+    lines.length > 1 ? `- ${totalLine}` : null,
+    "",
+    `Reports: ${reportsLink}`,
+    "",
+    note,
+  ]
+    .filter((l): l is string => l !== null)
+    .join("\n");
+
+  const cell = "padding:4px 12px 4px 0;text-align:left";
+  const num = "padding:4px 12px 4px 0;text-align:right;font-family:monospace";
+  const html = [
+    `<p>${escapeHtml(greeting)}</p>`,
+    `<p>${escapeHtml(intro)}</p>`,
+    `<table style="border-collapse:collapse;font-size:14px">`,
+    `<thead><tr><th style="${cell}">Person</th><th style="${num}">Worked</th><th style="${num}">Flagged</th><th style="${num}">Missed check-ins</th><th style="${num}">Late clock-ins</th></tr></thead>`,
+    "<tbody>",
+    ...lines.map(
+      (l) =>
+        `<tr><td style="${cell}"><a href="${escapeHtml(dayLink(l.userId))}">${escapeHtml(l.name)}</a></td><td style="${num}">${l.worked}</td><td style="${num}">${l.flagged}</td><td style="${num}">${l.misses}</td><td style="${num}">${l.lateClockIns}</td></tr>`,
+    ),
+    lines.length > 1
+      ? `<tr><td style="${cell};font-weight:600">Total</td><td style="${num}">${total.worked}</td><td style="${num}">${total.flagged}</td><td style="${num}">${total.misses}</td><td style="${num}">${total.lateClockIns}</td></tr>`
+      : "",
+    "</tbody></table>",
+    `<p><a href="${escapeHtml(reportsLink)}">Open reports</a></p>`,
+    `<p style="color:#696d74;font-size:13px">${escapeHtml(note)}</p>`,
+  ].join("\n");
+  return { subject, text, html };
+}
+
 function render(row: OutboxRow, dashboardUrl: string): Message {
   if (row.template === "alert") return alertMessage(row, dashboardUrl);
+  if (row.template === "digest") return digestMessage(row, dashboardUrl);
   if (
     row.template === "reminder_submit" ||
     row.template === "reminder_approval" ||

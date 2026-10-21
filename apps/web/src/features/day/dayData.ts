@@ -1,8 +1,9 @@
 // What the day page reads (#33, #124): the day's time_segments, its Tamper periods (for
-// the reason, #160), its check-ins and the org's response window.
+// the reason, #160), its check-ins, its top apps (#67) and the org's response window.
 import type { SegmentType } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
+import type { TopApp } from "./appsData";
 import type { Checkin, DaySegment, Span, TamperPeriod } from "./timeline";
 
 export interface CheckinRow extends Checkin {
@@ -122,3 +123,22 @@ export const responseWindowQuery = queryOptions({
     return typeof policy.checkin_response_s === "number" ? policy.checkin_response_s : 90;
   },
 });
+
+/** How many apps the top apps card lists (ACT-04). */
+export const TOP_APPS = 5;
+
+/** A person's top apps over [from, to) (ISO instants); empty while their sampling is off. */
+export const topAppsQuery = (userId: string, from: string, to: string) =>
+  queryOptions({
+    queryKey: ["top-apps", userId, from, to],
+    queryFn: async (): Promise<TopApp[]> => {
+      const { data, error } = await supabase.rpc("top_apps", {
+        p_user_id: userId,
+        p_from: from,
+        p_to: to,
+        p_limit: TOP_APPS,
+      });
+      if (error) throw error;
+      return data.map((r) => ({ appName: r.app_name, seconds: r.seconds }));
+    },
+  });
