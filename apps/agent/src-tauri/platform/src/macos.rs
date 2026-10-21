@@ -12,6 +12,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
+use agent_core::enrollment;
 use agent_core::foreground::{clean_title, domain_of, domain_of_address};
 use agent_core::pixels::webcam_frame_ready;
 use agent_core::platform::{
@@ -41,7 +42,8 @@ use objc2_core_audio::{
     AudioObjectGetPropertyData, AudioObjectPropertyAddress,
 };
 use objc2_core_foundation::{
-    CFArray, CFBoolean, CFDictionary, CFRetained, CFString, CFType, CFURL,
+    CFArray, CFBoolean, CFDictionary, CFPreferencesAppValueIsForced, CFPreferencesCopyAppValue,
+    CFRetained, CFString, CFType, CFURL,
 };
 use objc2_core_graphics::{
     CGDataProvider, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayMode, CGEventSource,
@@ -380,6 +382,22 @@ impl Platform for MacPlatform {
             *held = Some(handler);
         }
     }
+
+    fn managed_enrollment_token(&self) -> Option<String> {
+        managed_string(enrollment::MACOS_DOMAIN, enrollment::TOKEN_KEY)
+    }
+}
+
+/// A string preference that MDM forces: a configuration profile's payload, which
+/// macOS keeps under `/Library/Managed Preferences`. A value the person set
+/// themselves (`defaults write`) isn't forced and is ignored (#86).
+fn managed_string(domain: &str, key: &str) -> Option<String> {
+    let (domain, key) = (CFString::from_str(domain), CFString::from_str(key));
+    if !CFPreferencesAppValueIsForced(&key, &domain) {
+        return None;
+    }
+    let value = CFPreferencesCopyAppValue(&key, &domain)?;
+    value.downcast_ref::<CFString>().map(|s| s.to_string())
 }
 
 // --- Decision rules (pure, unit-tested) ---------------------------------------

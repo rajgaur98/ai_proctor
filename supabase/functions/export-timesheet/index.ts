@@ -1,6 +1,6 @@
 // export-timesheet (#45; TS-20 CSV, TS-21..23, AUD-01): a timesheet export as a CSV
 // download. Request: { view: "daily" | "project" | "segments", filters: { from, to,
-// user_ids?, manager_id?, client_ids?, project_ids?, statuses? } } with `from` and `to` the
+// user_ids?, manager_id?, team_id?, client_ids?, project_ids?, statuses? } } with `from` and `to` the
 // employee-local days to include. Reply: text/csv with a Content-Disposition filename.
 //
 // The rows, the access check (can_view_user) and the audit row all come from
@@ -57,6 +57,7 @@ interface Filters {
   to: string;
   user_ids: string[];
   manager_id: string | null;
+  team_id: string | null;
   client_ids: string[];
   project_ids: string[];
   statuses: string[];
@@ -72,12 +73,14 @@ function parseFilters(v: unknown): Filters | null {
   if (!isDay(f.from) || !isDay(f.to) || f.to < f.from) return null;
   if (!user_ids || !client_ids || !project_ids) return null;
   if (f.manager_id !== undefined && f.manager_id !== null && !isUuid(f.manager_id)) return null;
+  if (f.team_id !== undefined && f.team_id !== null && !isUuid(f.team_id)) return null;
   if (!Array.isArray(statuses) || !statuses.every((s) => STATUSES.includes(s))) return null;
   return {
     from: f.from,
     to: f.to,
     user_ids,
     manager_id: (f.manager_id as string | null | undefined) ?? null,
+    team_id: (f.team_id as string | null | undefined) ?? null,
     client_ids,
     project_ids,
     statuses,
@@ -110,6 +113,7 @@ Deno.serve(async (req) => {
     p_view: view,
     p_user_ids: filters.user_ids,
     p_manager_id: filters.manager_id,
+    p_team_id: filters.team_id,
     p_client_ids: filters.client_ids,
     p_project_ids: filters.project_ids,
     p_statuses: filters.statuses,

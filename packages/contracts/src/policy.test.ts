@@ -7,6 +7,9 @@ import {
   PolicyKeys,
   PolicySettings,
   policySchema,
+  TEAM_POLICY_KEYS,
+  TeamPolicyKeys,
+  teamPolicySchema,
   UpdatePolicyReply,
 } from "./policy";
 
@@ -180,5 +183,47 @@ describe("the database's ranges", () => {
       (m) => m[1],
     );
     expect(keys.sort()).toEqual(Object.keys(PolicyKeys.shape).sort());
+  });
+});
+
+describe("teamPolicySchema", () => {
+  it("takes any of the team keys, none at all, and the org's ranges", () => {
+    expect(teamPolicySchema.safeParse({}).success).toBe(true);
+    expect(
+      teamPolicySchema.safeParse({ checkin_response_s: 60, auto_clock_in: true }).success,
+    ).toBe(true);
+    expect(teamPolicySchema.safeParse({ checkin_response_s: 20 }).success).toBe(false);
+    expect(teamPolicySchema.safeParse({ idle_threshold_min: 2.5 }).success).toBe(false);
+  });
+
+  it("refuses keys that stay org-wide", () => {
+    expect(teamPolicySchema.safeParse({ screenshots: "off" }).success).toBe(false);
+    expect(teamPolicySchema.safeParse({ late_clock_in_min: 10 }).success).toBe(false);
+  });
+
+  it("needs both ends of the interval, shortest at most longest", () => {
+    const issue = (v: unknown) => teamPolicySchema.safeParse(v).error?.issues[0];
+    expect(issue({ checkin_min_interval_min: 15 })?.path).toEqual(["checkin_max_interval_min"]);
+    expect(issue({ checkin_max_interval_min: 15 })?.path).toEqual(["checkin_min_interval_min"]);
+    expect(issue({ checkin_min_interval_min: 40, checkin_max_interval_min: 30 })?.message).toBe(
+      "Must be at least the shortest interval",
+    );
+    expect(
+      teamPolicySchema.safeParse({ checkin_min_interval_min: 15, checkin_max_interval_min: 30 })
+        .success,
+    ).toBe(true);
+  });
+
+  it("lists the same keys as the database", () => {
+    const sql = readFileSync(
+      new URL("../../../supabase/migrations/20261022100000_teams.sql", import.meta.url),
+      "utf8",
+    );
+    const body = sql.match(
+      /team_policy_keys\(\)\s+returns text\[\][\s\S]*?array\[([\s\S]*?)\]/,
+    )?.[1];
+    const keys = [...(body ?? "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect(keys).toEqual([...TEAM_POLICY_KEYS]);
+    expect(Object.keys(TeamPolicyKeys.shape).sort()).toEqual([...TEAM_POLICY_KEYS].sort());
   });
 });

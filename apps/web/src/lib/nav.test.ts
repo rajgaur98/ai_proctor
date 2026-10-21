@@ -15,6 +15,7 @@ describe("navFor", () => {
   it("gives owners and admins the admin set", () => {
     expect(navFor("owner")).toEqual(navFor("admin"));
     expect(navFor("admin").map((l) => l.label)).toContain("People");
+    expect(navFor("admin").map((l) => l.label)).toContain("Teams");
     expect(navFor("admin").map((l) => l.label)).toContain("Reports");
     expect(navFor("admin").map((l) => l.label)).toContain("Projects");
     expect(navFor("admin").map((l) => l.label)).toContain("Policy");

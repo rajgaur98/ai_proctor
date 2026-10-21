@@ -15,6 +15,8 @@ export interface Member {
   active: boolean;
   /** TS-16: false means their week is approved as soon as they submit it. */
   approvalRequired: boolean;
+  /** ORG-08: their team, if any (set on the Teams page). */
+  teamId: string | null;
 }
 
 export const membersQuery = queryOptions({
@@ -23,7 +25,7 @@ export const membersQuery = queryOptions({
     const { data, error } = await supabase
       .from("users")
       .select(
-        "id, full_name, email, role, manager_id, work_country, work_state, timezone, active, approval_required",
+        "id, full_name, email, role, manager_id, work_country, work_state, timezone, active, approval_required, team_id",
       )
       .order("full_name");
     if (error) throw error;
@@ -38,6 +40,7 @@ export const membersQuery = queryOptions({
       timezone: u.timezone,
       active: u.active,
       approvalRequired: u.approval_required,
+      teamId: u.team_id,
     }));
   },
 });
