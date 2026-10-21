@@ -222,6 +222,7 @@ export function MyTimesheets() {
         from: week,
         to: weekDays(week).at(-1) ?? week,
         userId: profile.id,
+        teamId: "",
         clientId: "",
         projectId: "",
         status: "",

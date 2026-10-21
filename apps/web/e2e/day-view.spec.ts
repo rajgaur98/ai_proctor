@@ -1,7 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, asEmployee, clientFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 // The day page follows the Claude Design DayView screen (#124): totals, the bar of
 // segments, the selected check-in on the left, the list on the right. The day is built
@@ -103,13 +103,6 @@ async function seedDay() {
       p_note: "Client call",
     }),
   );
-}
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
 
 test("a manager reads a seeded day: totals, the bar, a pass, a miss, the neighbouring days and the timesheet", async ({

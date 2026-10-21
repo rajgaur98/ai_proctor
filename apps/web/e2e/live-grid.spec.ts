@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { agentFor } from "./agent";
+import { expectNoA11yViolations } from "./helpers";
 
 test("the live grid updates in real time when an employee's status changes", async ({ page }) => {
   const erin = await agentFor("erin@acme.test");
@@ -24,10 +24,7 @@ test("the live grid updates in real time when an employee's status changes", asy
   await erin("lock");
   await expect(row.getByText("Away · locked")).toBeVisible({ timeout: 10_000 });
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expectNoA11yViolations(page);
 
   await erin("unlock");
   await erin("clock_out", { reason: "manual" });

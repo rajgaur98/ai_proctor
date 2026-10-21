@@ -1,14 +1,7 @@
 import { readFileSync } from "node:fs";
-import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { acknowledgeLatestNotice, asEmployee, clientFor } from "./agent";
-
-async function expectNoA11yViolations(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
-}
+import { expectNoA11yViolations } from "./helpers";
 
 // Erin has the current version whatever ran before (publishing in the notice spec resets everyone).
 test.beforeAll(async () => {

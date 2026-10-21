@@ -11,6 +11,11 @@ export const actionLabels: Record<string, string> = {
   "member.shifts_changed": "Changed shifts",
   "member.deactivated": "Deactivated a member",
   "member.reactivated": "Reactivated a member",
+  "member.team_changed": "Changed a member's team",
+  "team.created": "Created a team",
+  "team.renamed": "Renamed a team",
+  "team.deleted": "Deleted a team",
+  "team.policy_changed": "Changed a team's policy",
   "capture.viewed": "Viewed captures",
   "audit_log.exported": "Exported the audit log",
 };
@@ -58,6 +63,18 @@ export function summarize(
     case "member.deactivated":
     case "member.reactivated":
       return "—";
+    case "member.team_changed":
+      return `${text(m.from_name) ?? "No team"} → ${text(m.to_name) ?? "No team"}`;
+    case "team.created":
+      return text(m.name) ?? "—";
+    case "team.renamed":
+      return `${text(m.from) ?? "—"} → ${text(m.to) ?? "—"}`;
+    case "team.deleted":
+      return `${text(m.name) ?? "—"} · ${plural(count(m.members), "member")}`;
+    case "team.policy_changed": {
+      const changed = m.changed && typeof m.changed === "object" ? Object.keys(m.changed) : [];
+      return `${text(m.name) ?? "—"} · ${plural(changed.length, "setting")}`;
+    }
     case "capture.viewed": {
       const id = text(m.checkin_id);
       const files = count(m.objects);
