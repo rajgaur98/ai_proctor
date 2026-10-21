@@ -43,6 +43,11 @@ export function sortRows(rows: TeamRow[], key: SortKey): TeamRow[] {
   }
 }
 
+/** DSH-02: the rows of one team ("" is everyone). */
+export function inTeam(rows: TeamRow[], teamId: string): TeamRow[] {
+  return teamId ? rows.filter((r) => r.team_id === teamId) : rows;
+}
+
 export function filterRows(
   rows: TeamRow[],
   status: PresenceStatus | "all",

@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { cn } from "../../lib/cn";
+import { teamsQuery } from "../teams/teamData";
 import { formatDuration } from "../timesheets/summary";
 import { weekStartQuery } from "../timesheets/timesheetData";
 import { formatRate, formatResponse } from "./format";
@@ -19,7 +20,7 @@ import { chartNote } from "./paging";
 import { CHART_PEOPLE, ReportCharts } from "./ReportCharts";
 import { columnTitle, ReportTable, useReportTable } from "./ReportTable";
 import { type DateRange, presetLabel, presetOf, presetRange, presets, rangeProblem } from "./range";
-import { reportQuery, teamManagersQuery } from "./reportData";
+import { reportQuery } from "./reportData";
 
 const NO_ROWS: ReportRow[] = [];
 const fieldClass = "h-10 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px] text-ink";
@@ -30,12 +31,13 @@ export function Reports() {
   const today = DateTime.now().setZone(profile.timezone).toISODate() ?? "";
   const [picked, setPicked] = useState<DateRange | null>(null);
   const range = picked ?? presetRange("this-week", today, startDay.data ?? 1);
-  const [managerId, setManagerId] = useState("");
-  const managers = useQuery(teamManagersQuery);
+  // The team filter (DSH-07, #202): the teams the viewer can read.
+  const [teamId, setTeamId] = useState("");
+  const teams = useQuery(teamsQuery);
 
   const problem = rangeProblem(range);
   const report = useQuery({
-    ...reportQuery(range.from, range.to, managerId),
+    ...reportQuery(range.from, range.to, teamId),
     enabled: startDay.isSuccess && problem === null,
   });
   const rows = report.data?.rows;
@@ -95,14 +97,14 @@ export function Reports() {
           <Label htmlFor="report-team">Team</Label>
           <select
             id="report-team"
-            value={managerId}
-            onChange={(e) => setManagerId(e.target.value)}
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value)}
             className={fieldClass}
           >
             <option value="">Everyone I can see</option>
-            {(managers.data ?? []).map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}'s team
+            {(teams.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
               </option>
             ))}
           </select>
