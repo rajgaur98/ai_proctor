@@ -13,12 +13,14 @@ import {
 interface Props {
   state: OnboardingState;
   busy: PermissionKind | null;
+  /** Permissions the person was sent to the settings for in this session. */
+  asked: ReadonlySet<PermissionKind>;
   onRequest: (kind: PermissionKind) => void;
   onRestart: () => void;
 }
 
-export function PermissionsStep({ state, busy, onRequest, onRestart }: Props) {
-  const cards = permissionCards(state);
+export function PermissionsStep({ state, busy, asked, onRequest, onRestart }: Props) {
+  const cards = permissionCards(state, asked);
   return (
     <>
       <header>
@@ -44,6 +46,7 @@ export function PermissionsStep({ state, busy, onRequest, onRestart }: Props) {
               card={card}
               busy={busy === card.kind}
               onRequest={() => onRequest(card.kind)}
+              onRestart={onRestart}
             />
           ))}
         </div>
@@ -62,10 +65,12 @@ function PermissionCardView({
   card,
   busy,
   onRequest,
+  onRestart,
 }: {
   card: PermissionCard;
   busy: boolean;
   onRequest: () => void;
+  onRestart: () => void;
 }) {
   return (
     <section className="n-perm" aria-labelledby={`perm-${card.kind}`}>
@@ -86,7 +91,17 @@ function PermissionCardView({
           <li key={text}>{text}</li>
         ))}
       </ol>
-      {card.cta ? (
+      {card.restart && card.restartCta && card.cta ? (
+        <>
+          <p className="n-perm-restart">{card.restartPrompt}</p>
+          <button type="button" className="n-primary n-block" onClick={onRestart}>
+            {card.restartCta}
+          </button>
+          <button type="button" className="n-linkbtn" disabled={busy} onClick={onRequest}>
+            {card.cta}
+          </button>
+        </>
+      ) : card.cta ? (
         <button type="button" className="n-primary n-block" disabled={busy} onClick={onRequest}>
           {card.cta}
         </button>

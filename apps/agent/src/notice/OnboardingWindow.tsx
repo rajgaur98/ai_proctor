@@ -42,6 +42,9 @@ export function OnboardingWindow() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState<PermissionKind | null>(null);
+  // Permissions the person was sent to the settings for since the window opened: macOS applies
+  // Screen Recording and Accessibility only after a restart, so those cards then offer one.
+  const [asked, setAsked] = useState<ReadonlySet<PermissionKind>>(new Set());
   // The window is up: the permission step only polls then, not while it sits hidden.
   const [open, setOpen] = useState(false);
   // Only the latest test capture counts; an older one that returns late is dropped.
@@ -125,6 +128,7 @@ export function OnboardingWindow() {
       setCapture({ kind: "idle" });
       setBusy(false);
       setAsking(null);
+      setAsked(new Set());
       setError(null);
     });
     const onFocus = () => {
@@ -179,7 +183,8 @@ export function OnboardingWindow() {
     setError(null);
     try {
       const result = await invoke("request_permission", { kind });
-      if (!result.ok) setError(result.error ?? "Couldn't open the settings.");
+      if (result.ok) setAsked((prev) => new Set(prev).add(kind));
+      else setError(result.error ?? "Couldn't open the settings.");
     } catch (e) {
       setError(String(e));
     } finally {
@@ -274,7 +279,13 @@ export function OnboardingWindow() {
         {step === 1 && <NoticeStep content={notice} />}
         {step === 2 &&
           (state ? (
-            <PermissionsStep state={state} busy={asking} onRequest={request} onRestart={restart} />
+            <PermissionsStep
+              state={state}
+              busy={asking}
+              asked={asked}
+              onRequest={request}
+              onRestart={restart}
+            />
           ) : (
             <p className="n-state">{error ? `Couldn't load: ${error}` : "Loading…"}</p>
           ))}

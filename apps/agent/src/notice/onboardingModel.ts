@@ -96,7 +96,18 @@ export interface PermissionCard {
   optional: boolean;
   /** One line under the name saying what the permission is for; null when obvious. */
   note: string | null;
+  /**
+   * macOS applies Screen Recording and Accessibility only to a fresh start. Set once the
+   * person has been sent to the settings and the OS still says no: the card then offers
+   * a restart (`restartPrompt`, `restartCta`) and `cta` becomes the secondary link.
+   */
+  restart: boolean;
+  restartPrompt: string | null;
+  restartCta: string | null;
 }
+
+/** The permissions macOS applies only after the app restarts (Camera takes effect live). */
+const needsRestartToApply = new Set<PermissionKind>(["screen", "accessibility"]);
 
 /** What each permission is called on the card and in the settings pane. */
 const permissionNames: Record<PermissionKind, string> = {
@@ -109,10 +120,18 @@ function card(
   kind: PermissionKind,
   platform: OnboardingPlatform,
   state: PermissionState,
+  asked: boolean,
 ): PermissionCard {
   const name = permissionNames[kind];
   const app = settingsApp(platform);
   const optional = kind === "accessibility";
+  const restart =
+    asked &&
+    platform === "macos" &&
+    needsRestartToApply.has(kind) &&
+    state !== "granted" &&
+    state !== "unsupported" &&
+    state !== "restricted";
   const base = {
     kind,
     name,
@@ -120,6 +139,9 @@ function card(
     status: statusLabel(state),
     pane: name,
     optional,
+    restart,
+    restartPrompt: restart ? "Turned it on? Restart AI Proctor to finish." : null,
+    restartCta: restart ? "Restart AI Proctor" : null,
     note: optional
       ? "Optional. Lets AI Proctor note the website’s domain (not the full address) while you use a browser. Skip it if you prefer."
       : null,
@@ -164,13 +186,23 @@ function card(
  * collection needs them (the core says so with `screen_required` and `camera_required`, the
  * rule the tray's warning uses), and the optional Accessibility card only when browser domains
  * are collected and the OS has that permission (`domains`; never on Windows).
+ * `asked` holds the kinds the person was sent to the settings for in this onboarding session:
+ * a Screen Recording or Accessibility card in it that is still off offers a restart.
  */
-export function permissionCards(state: OnboardingState): PermissionCard[] {
+export function permissionCards(
+  state: OnboardingState,
+  asked: ReadonlySet<PermissionKind> = new Set(),
+): PermissionCard[] {
   const cards: PermissionCard[] = [];
-  if (state.screen_required) cards.push(card("screen", state.platform, state.permissions.screen));
-  if (state.camera_required) cards.push(card("camera", state.platform, state.permissions.camera));
-  if (state.domains && state.platform === "macos") {
-    cards.push(card("accessibility", state.platform, state.accessibility));
+  const { platform } = state;
+  if (state.screen_required) {
+    cards.push(card("screen", platform, state.permissions.screen, asked.has("screen")));
+  }
+  if (state.camera_required) {
+    cards.push(card("camera", platform, state.permissions.camera, asked.has("camera")));
+  }
+  if (state.domains && platform === "macos") {
+    cards.push(card("accessibility", platform, state.accessibility, asked.has("accessibility")));
   }
   return cards;
 }
