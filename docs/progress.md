@@ -104,13 +104,10 @@ Answered by Raj on 20 Oct 2026.
 
 Format: `- #<issue>: <exact question or action needed>`
 
-- #168: Accessibility tools that inject clicks can't answer the check-in card on Windows (the injected-click guard swallows them, ANT-02). Should admins be able to mark a person as using assistive input (flag-only instead of block, audit-logged), or should we add a keyboard path to answer the card? Until you decide, injected clicks stay blocked.
-- #175: Webcam frames keep the camera's aspect (16:9 → 320×180). CAP-06 says 320×240. Crop to 4:3 (consistent thumbnails) or keep the aspect (no cropping of the face)? Until you decide, aspect is kept.
-- #54 (#196): after a data deletion the person's name stays as a snapshot in the deletion tombstone and in the audit rows about them, as the legal record (AUD-01/03). Is that the reading you want, or should names be removed too?
-
-- #12, #13, #14 (Windows halves), #56: a Windows machine or VM, or a decision that the pilot is Mac-only.
+- #12, #13, #14 (Windows halves), #56: a Windows VM (Raj is setting one up, 22 Oct). CI builds an unsigned Windows installer to install there; then the Windows checklists in each PR.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
-- #21 / tech-stack week-1 spike: the target "webcam frame < 1 s" isn't reachable on Raj's Mac: the camera takes ~1.3 s to deliver a usable frame, so the light is on 1.6–1.7 s (spike #13). Accept **≤ 2 s camera-on time** as the target? Default if no answer: yes.
+
+Decided 22 Oct 2026: #168 per-person assistive-input exemption (flag, don't block); #175 keep the camera's aspect (CAP-06 updated); #54 names stay in the deletion tombstone and audit rows as the legal record; #21 camera-on target ≤ 2 s; the pilot includes Windows (VM).
 
 ## M6 device-test checklist
 

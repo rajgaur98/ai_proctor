@@ -125,9 +125,29 @@ unsafe impl Send for Observer {}
 
 /// Shows the Screen Recording prompt (first time only; afterwards macOS just returns
 /// the current answer and the person has to use System Settings).
+///
+/// On recent macOS (seen on 26) `CGRequestScreenCaptureAccess` can answer "no" at once
+/// without a prompt and without listing the app in System Settings (#242). Asking
+/// ScreenCaptureKit for shareable content is what makes macOS prompt and list the app,
+/// so that follows whenever the CG call says no. The reply is only logged; the answer
+/// itself is read later by `screen_permission()`. macOS copies the completion block,
+/// so nothing here has to outlive the call.
 fn request_screen() {
     let screen = CGRequestScreenCaptureAccess();
     tracing::info!(screen, "asked for Screen Recording");
+    if screen {
+        return;
+    }
+    let handler = RcBlock::new(|content: *mut SCShareableContent, error: *mut NSError| {
+        let listed = !content.is_null();
+        let error = (!error.is_null()).then(|| sck_error(error, "shareable content").to_string());
+        tracing::info!(
+            listed,
+            ?error,
+            "asked ScreenCaptureKit for Screen Recording"
+        );
+    });
+    unsafe { SCShareableContent::getShareableContentWithCompletionHandler(&handler) };
 }
 
 /// Shows the Camera prompt while the answer is still undecided. The reply arrives
