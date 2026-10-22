@@ -1,0 +1,61 @@
+name: Windows installer
+
+# Manual only: builds an UNSIGNED Windows installer of the agent for the Windows
+# device checklists (needs-device-test). Never runs on PRs.
+on:
+  workflow_dispatch:
+    inputs:
+      supabase_url:
+        description: "Supabase API URL the agent talks to (compiled in; reachable from the VM, e.g. a tunnel https URL)"
+        required: true
+        type: string
+      supabase_anon_key:
+        description: "Supabase anon (public) key (compiled in)"
+        required: true
+        type: string
+      dashboard_url:
+        description: "Dashboard URL for the My data / notice links (compiled in). Empty keeps http://localhost:5173"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  installer:
+    name: Build unsigned NSIS installer (debug)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: Swatinem/rust-cache@v2
+      # rustup reads rust-toolchain.toml and installs the pinned toolchain.
+      # Debug build on purpose: only debug builds honour the AI_PROCTOR_DEV_* knobs
+      # (e.g. AI_PROCTOR_DEV_CHECKIN_S) that the device checklists use on the VM.
+      # AI_PROCTOR_* are read with option_env!, so they are compiled in here.
+      # Inputs go through env (not interpolated into the script) so they can't inject shell.
+      - name: Build (tauri build --debug, NSIS)
+        shell: pwsh
+        env:
+          AI_PROCTOR_SUPABASE_URL: ${{ inputs.supabase_url }}
+          AI_PROCTOR_SUPABASE_ANON_KEY: ${{ inputs.supabase_anon_key }}
+          INPUT_DASHBOARD_URL: ${{ inputs.dashboard_url }}
+        run: |
+          if ($env:INPUT_DASHBOARD_URL) { $env:AI_PROCTOR_DASHBOARD_URL = $env:INPUT_DASHBOARD_URL }
+          pnpm --filter @ai-proctor/agent tauri build --debug --bundles nsis
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ai-proctor-agent-windows-unsigned
+          path: target/debug/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 14
