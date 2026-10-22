@@ -260,7 +260,7 @@ AWS Activate, Microsoft for Startups, Google for Startups Cloud, Cloudflare for 
 Prove on Windows 11 and the latest macOS, with two monitors:
 1. Check-in card above a full-screen app, never takes keyboard focus, first click registers.
 2. Screenshot of each display; detect when Screen Recording permission is revoked.
-3. One webcam frame in < 1 s, camera released immediately (webcam light off).
+3. One webcam frame with the camera on for ≤ 2 s, camera released immediately (webcam light off). (Was < 1 s; a Mac camera needs ~1.3 s for a usable frame, spike #13. Accepted 22 Oct 2026.)
 4. Detect camera/mic in use by Zoom, Meet (browser) and Teams; detect screen lock.
 5. Signed upload to Supabase Storage and an idempotent `agent_events()` call from the agent.
 
