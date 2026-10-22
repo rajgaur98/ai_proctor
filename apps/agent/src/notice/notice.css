@@ -222,6 +222,26 @@ body {
 .n-block {
   width: 100%;
 }
+/* Small text link under a card's primary button (re-open the settings) */
+.n-linkbtn {
+  align-self: center;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--acctext);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.n-linkbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.n-linkbtn:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
 
 /* Warning (restart guidance, capture problems) */
 .n-warn {
@@ -264,6 +284,12 @@ body {
   font-size: 12px;
   line-height: 1.35;
   color: var(--ink2);
+}
+.n-perm-restart {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 .n-perm {
   min-width: 0;

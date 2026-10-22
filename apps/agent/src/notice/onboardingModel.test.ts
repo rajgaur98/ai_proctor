@@ -1,4 +1,4 @@
-import type { OnboardingState, TestCaptureResult } from "@ai-proctor/contracts";
+import type { OnboardingState, PermissionKind, TestCaptureResult } from "@ai-proctor/contracts";
 import { describe, expect, it } from "vitest";
 import {
   type ButtonContext,
@@ -172,6 +172,83 @@ describe("permission cards", () => {
     expect(camera?.cta).toBe("Open System Settings");
     expect(screen?.steps[2]).toBe("3 · AI Proctor is on — nothing else to do");
     expect(screen?.cta).toBeNull();
+  });
+
+  describe("restart after the settings were opened", () => {
+    const off: OnboardingState = {
+      ...mac,
+      permissions: { screen: "denied", camera: "denied" },
+      domains: true,
+    };
+    const asked = (...kinds: PermissionKind[]) => new Set<PermissionKind>(kinds);
+
+    it("stays normal until the person was sent to the settings", () => {
+      for (const card of permissionCards(off)) {
+        expect(card.restart).toBe(false);
+        expect(card.restartPrompt).toBeNull();
+        expect(card.restartCta).toBeNull();
+        expect(card.cta).toBe("Open System Settings");
+      }
+      // Asking for another kind changes nothing for this one.
+      const [screen] = permissionCards(off, asked("accessibility"));
+      expect(screen?.restart).toBe(false);
+    });
+
+    it("offers a restart for Screen Recording and Accessibility once asked and still off", () => {
+      const [screen, camera, accessibility] = permissionCards(
+        off,
+        asked("screen", "camera", "accessibility"),
+      );
+      expect(screen?.restart).toBe(true);
+      expect(screen?.restartPrompt).toBe("Turned it on? Restart AI Proctor to finish.");
+      expect(screen?.restartCta).toBe("Restart AI Proctor");
+      expect(screen?.cta).toBe("Open System Settings"); // kept as the secondary link
+      expect(screen?.on).toBe(false);
+      expect(accessibility?.restart).toBe(true);
+      expect(accessibility?.cta).toBe("Open System Settings");
+      expect(camera?.restart).toBe(false); // Camera takes effect live
+    });
+
+    it("also covers a permission that was never decided (not_determined)", () => {
+      const [screen] = permissionCards(
+        { ...off, permissions: { screen: "not_determined", camera: "denied" } },
+        asked("screen"),
+      );
+      expect(screen?.restart).toBe(true);
+    });
+
+    it("is granted once the OS says so, whatever was asked", () => {
+      const [screen, , accessibility] = permissionCards(
+        { ...off, permissions: { screen: "granted", camera: "denied" }, accessibility: "granted" },
+        asked("screen", "accessibility"),
+      );
+      for (const card of [screen, accessibility]) {
+        expect(card?.restart).toBe(false);
+        expect(card?.on).toBe(true);
+        expect(card?.status).toBe("Granted");
+        expect(card?.cta).toBeNull();
+        expect(card?.restartCta).toBeNull();
+      }
+    });
+
+    it("leaves Camera alone, and a device-blocked permission", () => {
+      const [, camera] = permissionCards(off, asked("camera"));
+      expect(camera?.restart).toBe(false);
+      expect(camera?.cta).toBe("Open System Settings");
+      const [screen] = permissionCards(
+        { ...off, permissions: { screen: "restricted", camera: "denied" } },
+        asked("screen"),
+      );
+      expect(screen?.restart).toBe(false);
+    });
+
+    it("never applies on Windows", () => {
+      const cards = permissionCards(
+        { ...win, permissions: { screen: "granted", camera: "denied" } },
+        asked("screen", "camera", "accessibility"),
+      );
+      for (const card of cards) expect(card.restart).toBe(false);
+    });
   });
 
   it("says when the device blocks a permission", () => {
