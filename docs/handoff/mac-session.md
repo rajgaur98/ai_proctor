@@ -68,6 +68,17 @@ APPLE_SIGNING_IDENTITY="AI Proctor Dev" pnpm --filter @ai-proctor/agent tauri bu
 
 **CI budget:** Linux jobs on every PR. The Windows job also runs automatically on PRs that touch Windows code. Otherwise macOS and Windows jobs run only on the `ci:full` label or nightly, since they cost 10× and 2× the free minutes. macOS release builds happen locally.
 
+**Windows installer for the VM (#246):** the manual workflow `.github/workflows/windows-installer.yml` builds an unsigned NSIS installer of the agent on `windows-latest`. It is a **debug** build, so the VM honours the dev knobs (`AI_PROCTOR_DEV_CHECKIN_S` etc.); the Supabase URL and anon key are compiled in. It never runs on PRs. It hasn't been run yet, so the first run may need a fix.
+1. Make the local Supabase API reachable from the VM (below) and note the URL the VM will use.
+2. GitHub → Actions → "Windows installer" → Run workflow, on the branch you want to test. Fill `supabase_url`, `supabase_anon_key` (from `pnpm supabase status`; it's public) and optionally `dashboard_url` (the default `http://localhost:5173` won't resolve from the VM). CLI: `gh workflow run windows-installer.yml --ref <branch> -f supabase_url=… -f supabase_anon_key=…`.
+3. When it's green, download the artifact `ai-proctor-agent-windows-unsigned` (kept 14 days), unzip it, copy the `.exe` into the VM and run it. It's unsigned, so SmartScreen shows "Windows protected your PC": More info → Run anyway. It installs per user.
+4. Debug builds open a console window beside the app; that's expected. Dev knobs are plain environment variables: set them in PowerShell, then start the installed exe from that same window, e.g. `$env:AI_PROCTOR_DEV_CHECKIN_S=30; & "$env:LOCALAPPDATA\AI Proctor\AI Proctor.exe"` (confirm the install path once; `aiproctor://auth` sign-in links open the installed app).
+- The URL and key are fixed at build time. To point at another Supabase, rebuild, or override at run time with `AI_PROCTOR_SUPABASE_URL` / `AI_PROCTOR_SUPABASE_ANON_KEY` in the VM.
+- **Reaching your local Supabase from the VM.** The API listens on `127.0.0.1:54321`, so only the Mac sees it. Options, simplest first:
+  - Tunnel (recommended; an https URL that works on any VM network): `cloudflared tunnel --url http://127.0.0.1:54321`, then use the printed `https://….trycloudflare.com` as `supabase_url`. The URL changes each run, so rebuild after restarting the tunnel. Sign-in emails land in Mailpit on the Mac (`http://127.0.0.1:54324`): open them there, or in the VM through a second tunnel to port 54324.
+  - SSH forward from the VM (Remote Login must be on in the Mac): `ssh -N -L 54321:127.0.0.1:54321 <mac-user>@<gateway-ip>`; then `http://127.0.0.1:54321` works inside the VM, so use that as `supabase_url`.
+  - Gateway IP (Parallels/UTM shared network): the Mac is the VM's default gateway (`ipconfig` in the VM; Parallels is usually `10.211.55.2`). This only works if the API listens beyond loopback, which the default stack doesn't. Binding it to `0.0.0.0` exposes the stack to the whole network, so prefer the tunnel. `config.toml` is unchanged.
+
 ## Running long
 
 After Raj approves the plan, he may set a goal such as:
