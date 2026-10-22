@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 
 use crate::contracts::{PermissionKind, PermissionState, Permissions};
 use crate::platform::{
-    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, GuardMode, InjectedInput, Platform,
     RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use crate::watchdog::{WatchdogError, WatchdogOutcome, WatchdogSpec, WatchdogState};
@@ -65,6 +65,8 @@ pub struct FakeState {
     pub face_checks: u32,
     /// The area the input guard is watching; `None` when it isn't running.
     pub input_guard: Option<ScreenRect>,
+    /// What the guard was last started to do with injected clicks (#168).
+    pub input_guard_mode: Option<GuardMode>,
     pub notifications: Vec<(String, String)>,
     /// The registered watchdog, if any.
     pub watchdog: Option<WatchdogSpec>,
@@ -108,6 +110,7 @@ impl Default for FakeState {
             face: Some(true),
             face_checks: 0,
             input_guard: None,
+            input_guard_mode: None,
             notifications: Vec::new(),
             watchdog: None,
             supervised: false,
@@ -269,8 +272,10 @@ impl Platform for FakePlatform {
         self.state.lock().unwrap().permission_requests.push(kind);
     }
 
-    fn start_input_guard(&self, area: ScreenRect) {
-        self.state.lock().unwrap().input_guard = Some(area);
+    fn start_input_guard(&self, area: ScreenRect, mode: GuardMode) {
+        let mut state = self.state.lock().unwrap();
+        state.input_guard = Some(area);
+        state.input_guard_mode = Some(mode);
     }
 
     fn stop_input_guard(&self) -> InjectedInput {

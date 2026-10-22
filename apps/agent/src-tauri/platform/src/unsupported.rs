@@ -3,7 +3,7 @@
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, GuardMode, InjectedInput, Platform,
     RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
@@ -58,7 +58,7 @@ impl Platform for UnsupportedPlatform {
 
     fn request_permission(&self, _kind: PermissionKind) {}
 
-    fn start_input_guard(&self, _area: ScreenRect) {}
+    fn start_input_guard(&self, _area: ScreenRect, _mode: GuardMode) {}
 
     fn stop_input_guard(&self) -> InjectedInput {
         InjectedInput::default()

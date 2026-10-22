@@ -450,11 +450,12 @@ impl AgentState {
     }
 
     /// ANT-02: while the card is up, injected clicks inside it are swallowed and
-    /// counted by the platform. Only starts if the card is still current (it may
-    /// have ended while its window was being placed); `area` is the card window.
+    /// counted by the platform; for a person who uses assistive input they are only
+    /// counted (#168). Only starts if the card is still current (it may have ended
+    /// while its window was being placed); `area` is the card window.
     fn start_input_guard(&self, area: ScreenRect) {
-        if self.card.lock().unwrap().is_some() {
-            self.platform.start_input_guard(area);
+        if let Some(card) = self.card.lock().unwrap().as_ref() {
+            self.platform.start_input_guard(area, card.guard_mode);
         }
     }
 
@@ -1135,7 +1136,13 @@ impl AgentState {
         if dev_schedule_policy().is_none() {
             self.scheduler.set_policy(config.schedule_policy());
         }
-        self.card_policy.lock().unwrap().countdown = config.card_policy().countdown;
+        {
+            let mut card_policy = self.card_policy.lock().unwrap();
+            let from_config = config.card_policy();
+            card_policy.countdown = from_config.countdown;
+            // #168: set by an admin; the next card uses it.
+            card_policy.assistive_input = from_config.assistive_input;
+        }
         // Same setting the server uses for Idle (minutes; default 10).
         self.presence
             .lock()
@@ -2139,6 +2146,7 @@ mod tests {
     use agent_core::clock::FakeClock;
     use agent_core::contracts::{PermissionState, ShiftState};
     use agent_core::fake::FakePlatform;
+    use agent_core::platform::GuardMode;
 
     use super::*;
 
@@ -3196,6 +3204,77 @@ mod tests {
         assert_eq!(checkin["outcome"], "miss");
         assert_eq!(checkin["flags"], serde_json::json!(["injected_click:5"]));
         assert_eq!(w.platform.snapshot().input_guard, None);
+    }
+
+    // #168: a person an admin marked as using assistive input.
+
+    fn assistive(on: bool) -> agent_core::config::AgentConfig {
+        serde_json::from_value(serde_json::json!({
+            "policy": {}, "policy_version": 2, "timezone": "UTC", "shifts": [],
+            "notice": notice_json(1, true, Some(1)), "assistive_input": on
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn without_assistive_input_the_guard_blocks_injected_clicks() {
+        let w = working();
+        w.state.apply_config(&assistive(false));
+        w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(
+            w.platform.snapshot().input_guard_mode,
+            Some(GuardMode::Block)
+        );
+    }
+
+    #[test]
+    fn with_assistive_input_injected_clicks_count_and_are_still_flagged() {
+        let w = working();
+        w.state.apply_config(&assistive(true));
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(
+            w.platform.snapshot().input_guard_mode,
+            Some(GuardMode::CountOnly)
+        );
+        // The tool's clicks reached the card: the right one is a pass.
+        w.platform.update(|s| s.injected_clicks = 2);
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        assert_eq!(reply.result, CardClickResult::Pass);
+        w.state.finish_pass(reply.pass.unwrap());
+        let checkin = &w.checkins()[0];
+        assert_eq!(checkin["outcome"], "pass");
+        assert_eq!(checkin["flags"], serde_json::json!(["injected_click:2"]));
+    }
+
+    #[test]
+    fn a_card_keeps_the_mode_it_was_shown_with() {
+        let w = working();
+        w.state.apply_config(&assistive(true));
+        w.card_due();
+        // Turned off while the card is up: this card still lets the clicks through.
+        w.state.apply_config(&assistive(false));
+        w.state.start_input_guard(CARD_AREA);
+        assert_eq!(
+            w.platform.snapshot().input_guard_mode,
+            Some(GuardMode::CountOnly)
+        );
+    }
+
+    #[test]
+    fn synthetic_clicks_stay_flag_only_with_assistive_input() {
+        let w = working();
+        w.state.apply_config(&assistive(true));
+        let card = w.card_due();
+        w.state.start_input_guard(CARD_AREA);
+        w.platform.update(|s| s.synthetic_clicks = 1);
+        let reply = w.state.card_click(&card.card_id, card.target, true);
+        w.state.finish_pass(reply.pass.unwrap());
+        assert_eq!(
+            w.checkins()[0]["flags"],
+            serde_json::json!(["synthetic_click:1"])
+        );
     }
 
     #[test]

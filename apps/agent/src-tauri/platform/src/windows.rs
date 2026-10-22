@@ -2,8 +2,8 @@
 //! capture (Desktop Duplication, Media Foundation), face presence (FaceAnalysis,
 //! CAP-07) and notifications (toast) are real (#167, #174, #64); the pieces
 //! live in `windows/`, the decision rules in `agent_core` so they test on every OS.
-//! The input guard (ANT-02) is a low-level mouse hook below. Nothing here has run on
-//! a Windows device yet: see the device checklists on the PRs.
+//! The input guard (ANT-02; assistive input #168) is a low-level mouse hook below.
+//! Nothing here has run on a Windows device yet: see the device checklists on the PRs.
 //!
 //! `::windows` is the windows-rs crate; plain `windows` would be this module.
 
@@ -18,7 +18,7 @@ mod session;
 mod toast;
 mod webcam;
 
-use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::thread::JoinHandle;
 
@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 
 use agent_core::contracts::{PermissionKind, PermissionState, Permissions};
 use agent_core::platform::{
-    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, GuardMode, InjectedInput, Platform,
     RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{
@@ -49,12 +49,22 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_secs(8);
 use crate::input_guard::{judge, Verdict};
 
 // What the hook callback reads. It is a plain function with no closure state, so the
-// card's area and the running count live here; one guard runs at a time.
+// card's area, the mode and the running count live here; one guard runs at a time.
 static AREA_X: AtomicI32 = AtomicI32::new(0);
 static AREA_Y: AtomicI32 = AtomicI32::new(0);
 static AREA_W: AtomicU32 = AtomicU32::new(0);
 static AREA_H: AtomicU32 = AtomicU32::new(0);
 static INJECTED_CLICKS: AtomicU32 = AtomicU32::new(0);
+/// `GuardMode::CountOnly` (assistive input, #168): injected clicks pass, still counted.
+static COUNT_ONLY: AtomicBool = AtomicBool::new(false);
+
+fn mode() -> GuardMode {
+    if COUNT_ONLY.load(Ordering::Relaxed) {
+        GuardMode::CountOnly
+    } else {
+        GuardMode::Block
+    }
+}
 
 fn set_area(area: ScreenRect) {
     AREA_X.store(area.x, Ordering::Relaxed);
@@ -85,12 +95,17 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
             event.pt.x,
             event.pt.y,
             &area(),
+            mode(),
         ) {
             Verdict::Pass => {}
             Verdict::Swallow => return LRESULT(1),
             Verdict::SwallowAndCount => {
                 INJECTED_CLICKS.fetch_add(1, Ordering::Relaxed);
                 return LRESULT(1);
+            }
+            // Let through to the card (#168): falls through to the next hook.
+            Verdict::PassAndCount => {
+                INJECTED_CLICKS.fetch_add(1, Ordering::Relaxed);
             }
         }
     }
@@ -263,12 +278,13 @@ impl Platform for WindowsPlatform {
     /// Settings (`ms-settings:privacy-webcam`, opened by the onboarding window).
     fn request_permission(&self, _kind: PermissionKind) {}
 
-    fn start_input_guard(&self, area: ScreenRect) {
+    fn start_input_guard(&self, area: ScreenRect, mode: GuardMode) {
         let mut guard = self.guard.lock().unwrap();
         if let Some(old) = guard.take() {
             old.stop();
         }
         set_area(area);
+        COUNT_ONLY.store(mode == GuardMode::CountOnly, Ordering::Relaxed);
         INJECTED_CLICKS.store(0, Ordering::Relaxed);
         let (ready_tx, ready_rx) = mpsc::channel();
         let join = std::thread::Builder::new()
@@ -296,8 +312,8 @@ impl Platform for WindowsPlatform {
         };
         thread.stop();
         InjectedInput {
+            // Blocked, or let through for assistive input (#168): `injected_click` either way.
             count: INJECTED_CLICKS.swap(0, Ordering::Relaxed),
-            // Injected clicks are blocked here, never let through (ANT-02).
             synthetic: 0,
         }
     }

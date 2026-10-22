@@ -1,8 +1,9 @@
 // What an anti-cheat flag says on the day page (ANT-08). Flags are "needs review"
 // signals for the manager, never verdicts: the wording stays neutral and nothing
 // here touches status, hours or timesheets. Details come from anticheat_eval and
-// the check-in trigger (injected clicks #26; synthetic clicks, virtual cameras,
-// duplicate frames, virtual machines and remote sessions #63).
+// the check-in trigger (injected clicks #26, accepted for assistive input #168;
+// synthetic clicks, virtual cameras, duplicate frames, virtual machines and remote
+// sessions #63).
 import type { Enums, Json } from "@ai-proctor/contracts";
 
 export type FlagKind = Enums<"anticheat_kind">;
@@ -18,6 +19,11 @@ export function flagCheckinIds(details: Json): string[] {
   if (typeof details !== "object" || details === null || Array.isArray(details)) return [];
   const ids = details.checkin_ids;
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+}
+
+function bool(details: Json, key: string): boolean {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return false;
+  return details[key] === true;
 }
 
 function strings(details: Json, key: string): string[] {
@@ -40,6 +46,13 @@ export function flagText(kind: FlagKind, details: Json): { title: string; detail
   switch (kind) {
     case "injected_click": {
       const clicks = num(details, "clicks");
+      // #168: the person uses assistive input, so their agent let these clicks through.
+      if (bool(details, "assistive_input")) {
+        return {
+          title: "Accessibility tool used, accepted",
+          detail: `${clicks === null ? "Some clicks" : plural(clicks, "click", "clicks")} on the card came from another program, such as an accessibility tool, and ${clicks === 1 ? "was" : "were"} accepted. This person uses assistive input.`,
+        };
+      }
       return {
         title: "Check-in clicks from another program",
         detail: `${clicks === null ? "Some clicks" : plural(clicks, "click", "clicks")} on the card didn't come from a mouse or trackpad and ${clicks === 1 ? "was" : "were"} blocked.`,

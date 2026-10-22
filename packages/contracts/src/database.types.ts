@@ -2314,6 +2314,7 @@ export type Database = {
         Row: {
           active: boolean;
           approval_required: boolean;
+          assistive_input: boolean;
           config_version: number;
           created_at: string;
           email: string;
@@ -2331,6 +2332,7 @@ export type Database = {
         Insert: {
           active?: boolean;
           approval_required?: boolean;
+          assistive_input?: boolean;
           config_version?: number;
           created_at?: string;
           email: string;
@@ -2347,6 +2349,7 @@ export type Database = {
         Update: {
           active?: boolean;
           approval_required?: boolean;
+          assistive_input?: boolean;
           config_version?: number;
           created_at?: string;
           email?: string;
@@ -2998,6 +3001,7 @@ export type Database = {
       };
       update_member: {
         Args: {
+          p_assistive_input?: boolean;
           p_full_name: string;
           p_manager_id: string;
           p_role: Database["public"]["Enums"]["user_role"];

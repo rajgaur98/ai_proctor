@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::anticheat::{environment_flags, SYNTHETIC_CLICK_FLAG};
-use crate::platform::{InjectedInput, Platform, SessionState};
+use crate::platform::{GuardMode, InjectedInput, Platform, SessionState};
 use crate::scheduler::{Deferral, Outcome, Random};
 
 /// CHK-20: 90 s by default, 30–300 s per org.
@@ -33,6 +33,9 @@ pub struct CardPolicy {
     /// CHK-22: optional sound and OS notification when the card appears.
     pub sound: bool,
     pub notify: bool,
+    /// #168: the person uses assistive input (set by an admin), so injected clicks on
+    /// the card are let through instead of blocked. Still counted and flagged.
+    pub assistive_input: bool,
 }
 
 impl Default for CardPolicy {
@@ -42,6 +45,7 @@ impl Default for CardPolicy {
             extension: Duration::zero(),
             sound: false,
             notify: false,
+            assistive_input: false,
         }
     }
 }
@@ -51,6 +55,15 @@ impl CardPolicy {
     /// employee's extension.
     pub fn window(&self) -> Duration {
         self.countdown.clamp(MIN_COUNTDOWN, MAX_COUNTDOWN) + self.extension.max(Duration::zero())
+    }
+
+    /// What the input guard does with injected clicks on this card (ANT-02, #168).
+    pub fn guard_mode(&self) -> GuardMode {
+        if self.assistive_input {
+            GuardMode::CountOnly
+        } else {
+            GuardMode::Block
+        }
     }
 }
 
@@ -169,8 +182,11 @@ pub struct Card {
     pub device_state: &'static str,
     pub project_id: Option<Uuid>,
     pub flags: Vec<String>,
-    /// Injected clicks the input guard swallowed on this card (ANT-02).
+    /// Injected clicks the input guard counted on this card (ANT-02): swallowed, or
+    /// let through for assistive input (#168).
     pub injected_clicks: u32,
+    /// What the input guard does with them, from the policy the card was shown with.
+    pub guard_mode: GuardMode,
     /// Clicks on this card that looked synthetic and were let through (ANT-03).
     pub synthetic_clicks: u32,
     /// CHK-15: chosen when the card is shown, kept through reshuffles.
@@ -212,14 +228,16 @@ impl Card {
             // ANT-07: a virtual machine or a remote session, as the card was shown.
             flags: environment_flags(platform.run_environment()),
             injected_clicks: 0,
+            guard_mode: policy.guard_mode(),
             synthetic_clicks: 0,
             look: CardLook::random(random),
         }
     }
 
     /// What the input guard saw while the card was up (ANT-02, ANT-03). The check-in
-    /// still ends by its own outcome: the injected clicks never reached the card and
-    /// count for nothing, the synthetic-looking ones are only noted.
+    /// still ends by its own outcome: blocked injected clicks never reached the card and
+    /// count for nothing; let-through ones (assistive input, #168) and the
+    /// synthetic-looking ones are only noted.
     pub fn record_injected(&mut self, input: InjectedInput) {
         self.injected_clicks = self.injected_clicks.saturating_add(input.count);
         self.synthetic_clicks = self.synthetic_clicks.saturating_add(input.synthetic);

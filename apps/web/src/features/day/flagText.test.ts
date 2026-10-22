@@ -12,6 +12,26 @@ describe("flagText", () => {
     );
   });
 
+  it("says injected clicks were accepted for a person who uses assistive input", () => {
+    expect(
+      flagText("injected_click", { clicks: 3, assistive_input: true, checkin_ids: [] }),
+    ).toEqual({
+      title: "Accessibility tool used, accepted",
+      detail:
+        "3 clicks on the card came from another program, such as an accessibility tool, and were accepted. This person uses assistive input.",
+    });
+    expect(flagText("injected_click", { clicks: 1, assistive_input: true }).detail).toMatch(
+      /^1 click on the card .* and was accepted\./,
+    );
+    // Without the exemption (or from before it existed) they were blocked.
+    for (const details of [{ clicks: 2, assistive_input: false }, { clicks: 2 }]) {
+      expect(flagText("injected_click", details).title).toBe(
+        "Check-in clicks from another program",
+      );
+    }
+    expect(flagText("injected_click", { assistive_input: "yes" }).detail).toContain("blocked");
+  });
+
   it("describes fast responses with the fastest time", () => {
     expect(flagText("fast_response", { count: 2, min_response_ms: 250 }).detail).toBe(
       "2 check-ins were answered in under 0.3 s (fastest 250 ms).",

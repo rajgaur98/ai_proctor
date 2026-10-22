@@ -113,10 +113,23 @@ impl ScreenRect {
     }
 }
 
+/// What the input guard does with injected clicks on the card (ANT-02).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GuardMode {
+    /// Swallow them, so they never reach the card, and count them.
+    #[default]
+    Block,
+    /// Let them through and count them: a person an admin marked as using assistive
+    /// input, whose accessibility tool clicks for them (#168). The check-in is still
+    /// flagged for review.
+    CountOnly,
+}
+
 /// What the input guard saw while the card was up (ANT-02, #26; ANT-03, #63).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InjectedInput {
-    /// Injected mouse clicks inside the card, none of which reached it (Windows).
+    /// Injected mouse clicks inside the card (Windows): swallowed, or let through in
+    /// `GuardMode::CountOnly` (#168).
     pub count: u32,
     /// Clicks on the card that look synthetic but were let through: flag only, never
     /// blocked (macOS, best effort: the OS can't always tell).
@@ -175,13 +188,14 @@ pub trait Platform: Send + Sync {
     /// without waiting for the answer; `permissions()` and `accessibility_permission()`
     /// report it. A no-op where there is nothing to ask.
     fn request_permission(&self, kind: PermissionKind);
-    /// Starts watching for injected mouse clicks inside `area` (the card window)
-    /// and swallowing them, so they never reach the card (ANT-02). Called when the
-    /// card is shown; a second call replaces the first.
-    fn start_input_guard(&self, area: ScreenRect);
-    /// Stops the guard and returns what it swallowed since `start_input_guard`
+    /// Starts watching for injected mouse clicks inside `area` (the card window) and
+    /// counting them; in `GuardMode::Block` they are also swallowed, so they never
+    /// reach the card (ANT-02), in `GuardMode::CountOnly` they pass (assistive input,
+    /// #168). Called when the card is shown; a second call replaces the first.
+    fn start_input_guard(&self, area: ScreenRect, mode: GuardMode);
+    /// Stops the guard and returns what it counted since `start_input_guard`
     /// (zero when none was running or the OS can't tell). On macOS nothing is
-    /// swallowed: clicks that look synthetic are only counted (ANT-03).
+    /// swallowed in either mode: clicks that look synthetic are only counted (ANT-03).
     fn stop_input_guard(&self) -> InjectedInput;
     /// The camera `capture_webcam` would use, by name, without opening it (ANT-05).
     /// `None` when there is none or the OS can't say.

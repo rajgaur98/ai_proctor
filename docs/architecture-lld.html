@@ -422,9 +422,10 @@ pub trait Platform: Send + Sync {
     fn detect_face(&amp;self, frame: &amp;Frame) -&gt; Option&lt;bool&gt;;
     fn permissions(&amp;self) -&gt; Permissions;    <span class="cm">// screen, camera</span>
     <span class="cm">// Windows: low-level mouse hook while the card is up; injected clicks
-    // inside it are swallowed and counted (ANT-02). macOS: presses on the
-    // card that look synthetic are counted, never blocked (ANT-03).</span>
-    fn start_input_guard(&amp;self, area: ScreenRect);
+    // inside it are swallowed and counted (ANT-02), or only counted for a
+    // person who uses assistive input (GuardMode::CountOnly, #168). macOS:
+    // presses on the card that look synthetic are counted, never blocked (ANT-03).</span>
+    fn start_input_guard(&amp;self, area: ScreenRect, mode: GuardMode);
     fn stop_input_guard(&amp;self) -&gt; InjectedInput;
     fn camera_device(&amp;self) -&gt; Option&lt;CameraDevice&gt;; <span class="cm">// ANT-05</span>
     fn run_environment(&amp;self) -&gt; RunEnvironment;      <span class="cm">// VM, remote (ANT-07)</span>

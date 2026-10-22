@@ -45,6 +45,10 @@ pub struct AgentConfig {
     /// The monitoring notice (#48, AGT-04/05). Without one nothing may be collected.
     #[serde(default)]
     pub notice: Option<NoticeConfig>,
+    /// #168: an admin marked this person as using assistive input; injected clicks on
+    /// the card are accepted (and still flagged). Off when an older server leaves it out.
+    #[serde(default)]
+    pub assistive_input: bool,
 }
 
 /// The org's current notice and where this person stands with it. The `policy` in
@@ -202,6 +206,7 @@ impl AgentConfig {
                 CHECKIN_RESPONSE_S,
                 DEFAULT_COUNTDOWN.num_seconds(),
             )),
+            assistive_input: self.assistive_input,
             ..CardPolicy::default()
         }
     }
@@ -249,6 +254,7 @@ impl AgentConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::GuardMode;
     use serde_json::json;
 
     fn config(policy: Value, shifts: Value) -> AgentConfig {
@@ -455,6 +461,21 @@ mod tests {
             (20, 90),
             "wrong types: defaults"
         );
+    }
+
+    #[test]
+    fn assistive_input_comes_with_the_config_and_is_off_without_it() {
+        let off = config(json!({}), json!([]));
+        assert!(!off.assistive_input);
+        assert_eq!(off.card_policy().guard_mode(), GuardMode::Block);
+
+        let on: AgentConfig = serde_json::from_value(json!({
+            "policy": {}, "policy_version": 3, "timezone": "UTC", "shifts": [],
+            "assistive_input": true
+        }))
+        .unwrap();
+        assert!(on.card_policy().assistive_input);
+        assert_eq!(on.card_policy().guard_mode(), GuardMode::CountOnly);
     }
 
     #[test]

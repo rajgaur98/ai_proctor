@@ -320,7 +320,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | ID | Pri | Requirement |
 |---|---|---|
 | ANT-01 | P0 | **Watchdog:** a helper process restarts the agent if it is killed. A heartbeat gap during clock-in while the device is online (detected on next sync) raises Tamper |
-| ANT-02 | P0 | **Injected input detection (Windows):** check-in clicks with the injected flag (`LLMHF_INJECTED`) are rejected and flagged |
+| ANT-02 | P0 | **Injected input detection (Windows):** check-in clicks with the injected flag (`LLMHF_INJECTED`) are rejected and flagged. Exception (#168): for a person an admin marks as using assistive input (accessibility tools that click for them), injected clicks are accepted and still flagged for review; changing the setting is audit-logged |
 | ANT-03 | P1 | **Injected input detection (macOS):** best-effort detection of synthetic events; flag only |
 | ANT-04 | P0 | **Response-time analysis:** flag employees whose response times are implausibly fast (< 300 ms from show) or implausibly consistent (very low variance across a day) |
 | ANT-05 | P1 | **Virtual camera detection:** flag when the selected camera is a known virtual device (e.g. OBS Virtual Camera) |
