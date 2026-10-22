@@ -148,7 +148,8 @@ export function People() {
           </table>
         )}
         <p className="px-5 py-3 text-xs text-ink3">
-          Role, manager, location, approval and delegation changes are recorded in the audit log.
+          Role, manager, location, approval, assistive input and delegation changes are recorded in
+          the audit log.
         </p>
       </div>
 
@@ -245,6 +246,20 @@ function EditDialog({
             </span>
           </label>
         )}
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={draft.assistiveInput}
+            onChange={(e) => setDraft({ ...draft, assistiveInput: e.target.checked })}
+            className="mt-0.5 h-5 w-5 flex-none accent-acc"
+          />
+          <span>
+            <span className="font-medium">Uses assistive input</span>
+            <span className="block text-[12.5px] text-ink2">
+              Clicks from accessibility tools are accepted and marked for review.
+            </span>
+          </span>
+        </label>
         {error && (
           <p role="alert" className="text-sm text-warnink">
             {error.message}

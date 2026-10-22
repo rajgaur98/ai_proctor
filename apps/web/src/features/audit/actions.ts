@@ -12,6 +12,7 @@ export const actionLabels: Record<string, string> = {
   "member.deactivated": "Deactivated a member",
   "member.reactivated": "Reactivated a member",
   "member.team_changed": "Changed a member's team",
+  "member.assistive_input_changed": "Changed assistive input",
   "team.created": "Created a team",
   "team.renamed": "Renamed a team",
   "team.deleted": "Deleted a team",
@@ -41,6 +42,7 @@ const place = (v: unknown): string => {
   const p = (v ?? {}) as { country?: unknown; state?: unknown };
   return [text(p.country), text(p.state)].filter(Boolean).join(" · ") || "—";
 };
+const onOff = (v: unknown): string => (v === true ? "On" : v === false ? "Off" : "—");
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const count = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
 /** An enrollment token (#86): its name and prefix, never the token. */
@@ -73,6 +75,8 @@ export function summarize(
       return "—";
     case "member.team_changed":
       return `${text(m.from_name) ?? "No team"} → ${text(m.to_name) ?? "No team"}`;
+    case "member.assistive_input_changed":
+      return `${onOff(m.from)} → ${onOff(m.to)}`;
     case "team.created":
       return text(m.name) ?? "—";
     case "team.renamed":

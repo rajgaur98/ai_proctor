@@ -16,7 +16,7 @@ use agent_core::enrollment;
 use agent_core::foreground::{clean_title, domain_of, domain_of_address};
 use agent_core::pixels::webcam_frame_ready;
 use agent_core::platform::{
-    CallState, CameraDevice, CaptureError, Foreground, Frame, InjectedInput, Platform,
+    CallState, CameraDevice, CaptureError, Foreground, Frame, GuardMode, InjectedInput, Platform,
     RunEnvironment, ScreenRect, ScreenShare, SessionEndHandler, SessionState,
 };
 use agent_core::watchdog::{WatchdogError, WatchdogSpec, WatchdogState};
@@ -377,8 +377,9 @@ impl Platform for MacPlatform {
     }
 
     /// ANT-03: counts presses on the card that look synthetic, letting them through
-    /// (flag only; see `macos_anticheat`). No permission needed.
-    fn start_input_guard(&self, area: ScreenRect) {
+    /// (flag only; see `macos_anticheat`). No permission needed. Nothing is blocked
+    /// here, so both modes are the same (#168).
+    fn start_input_guard(&self, area: ScreenRect, _mode: GuardMode) {
         let old = self.card_guard.lock().unwrap().take();
         if let Some(old) = old {
             old.stop();

@@ -17,6 +17,8 @@ export interface Member {
   approvalRequired: boolean;
   /** ORG-08: their team, if any (set on the Teams page). */
   teamId: string | null;
+  /** #168: injected clicks on the check-in card are accepted (and flagged), not blocked. */
+  assistiveInput: boolean;
 }
 
 export const membersQuery = queryOptions({
@@ -25,7 +27,7 @@ export const membersQuery = queryOptions({
     const { data, error } = await supabase
       .from("users")
       .select(
-        "id, full_name, email, role, manager_id, work_country, work_state, timezone, active, approval_required, team_id",
+        "id, full_name, email, role, manager_id, work_country, work_state, timezone, active, approval_required, team_id, assistive_input",
       )
       .order("full_name");
     if (error) throw error;
@@ -41,6 +43,7 @@ export const membersQuery = queryOptions({
       active: u.active,
       approvalRequired: u.approval_required,
       teamId: u.team_id,
+      assistiveInput: u.assistive_input,
     }));
   },
 });
@@ -60,6 +63,7 @@ export async function updateMember(m: Member) {
     p_work_country: m.country,
     p_work_state: (m.country === "US" ? m.state : null) as string,
     p_timezone: m.timezone,
+    p_assistive_input: m.assistiveInput,
   });
   if (error) throw new Error(explain(error.message));
 }

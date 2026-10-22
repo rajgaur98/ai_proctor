@@ -2,7 +2,7 @@
 //! so they are unit-tested on every OS. The hook callback in `windows.rs` only
 //! reads the event and applies the `Verdict` from here.
 
-use agent_core::platform::ScreenRect;
+use agent_core::platform::{GuardMode, ScreenRect};
 
 /// `MSLLHOOKSTRUCT.flags`: the event was injected (SendInput and friends).
 pub const LLMHF_INJECTED: u32 = 0x01;
@@ -29,6 +29,9 @@ pub enum Verdict {
     Swallow,
     /// An injected button press inside the card: swallowed and counted.
     SwallowAndCount,
+    /// An injected button press inside the card of a person who uses assistive input
+    /// (#168): let through and counted, so the check-in is still flagged.
+    PassAndCount,
 }
 
 /// Whether the event came from `SendInput` or similar rather than a device.
@@ -51,17 +54,24 @@ fn is_release(message: u32) -> bool {
 }
 
 /// Only injected button events inside the card are touched: moves, the wheel and
-/// everything outside the card (the person's real work) pass.
-pub fn judge(message: u32, flags: u32, x: i32, y: i32, card: &ScreenRect) -> Verdict {
+/// everything outside the card (the person's real work) pass. In `CountOnly` (assistive
+/// input, #168) nothing is swallowed; presses are still counted.
+pub fn judge(
+    message: u32,
+    flags: u32,
+    x: i32,
+    y: i32,
+    card: &ScreenRect,
+    mode: GuardMode,
+) -> Verdict {
     if !is_injected(flags) || !card.contains(x, y) {
         return Verdict::Pass;
     }
-    if is_press(message) {
-        Verdict::SwallowAndCount
-    } else if is_release(message) {
-        Verdict::Swallow
-    } else {
-        Verdict::Pass
+    match mode {
+        GuardMode::Block if is_press(message) => Verdict::SwallowAndCount,
+        GuardMode::Block if is_release(message) => Verdict::Swallow,
+        GuardMode::CountOnly if is_press(message) => Verdict::PassAndCount,
+        _ => Verdict::Pass,
     }
 }
 
@@ -107,12 +117,19 @@ mod tests {
             WM_XBUTTONDOWN,
         ] {
             assert_eq!(
-                judge(message, LLMHF_INJECTED, 200, 100, &card()),
+                judge(message, LLMHF_INJECTED, 200, 100, &card(), GuardMode::Block),
                 Verdict::SwallowAndCount
             );
         }
         assert_eq!(
-            judge(WM_LBUTTONDOWN, LLMHF_LOWER_IL_INJECTED, 200, 100, &card()),
+            judge(
+                WM_LBUTTONDOWN,
+                LLMHF_LOWER_IL_INJECTED,
+                200,
+                100,
+                &card(),
+                GuardMode::Block
+            ),
             Verdict::SwallowAndCount
         );
     }
@@ -121,7 +138,7 @@ mod tests {
     fn an_injected_release_inside_the_card_is_swallowed_but_not_counted() {
         for message in [WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP, WM_XBUTTONUP] {
             assert_eq!(
-                judge(message, LLMHF_INJECTED, 200, 100, &card()),
+                judge(message, LLMHF_INJECTED, 200, 100, &card(), GuardMode::Block),
                 Verdict::Swallow
             );
         }
@@ -129,8 +146,14 @@ mod tests {
 
     #[test]
     fn real_clicks_always_pass() {
-        assert_eq!(judge(WM_LBUTTONDOWN, 0, 200, 100, &card()), Verdict::Pass);
-        assert_eq!(judge(WM_LBUTTONUP, 0, 200, 100, &card()), Verdict::Pass);
+        assert_eq!(
+            judge(WM_LBUTTONDOWN, 0, 200, 100, &card(), GuardMode::Block),
+            Verdict::Pass
+        );
+        assert_eq!(
+            judge(WM_LBUTTONUP, 0, 200, 100, &card(), GuardMode::Block),
+            Verdict::Pass
+        );
     }
 
     #[test]
@@ -138,13 +161,27 @@ mod tests {
         // Left of, above, right of (the edge is outside) and below it.
         for (x, y) in [(99, 100), (200, 49), (460, 100), (200, 270)] {
             assert_eq!(
-                judge(WM_LBUTTONDOWN, LLMHF_INJECTED, x, y, &card()),
+                judge(
+                    WM_LBUTTONDOWN,
+                    LLMHF_INJECTED,
+                    x,
+                    y,
+                    &card(),
+                    GuardMode::Block
+                ),
                 Verdict::Pass,
                 "({x}, {y})"
             );
         }
         assert_eq!(
-            judge(WM_LBUTTONDOWN, LLMHF_INJECTED, 100, 50, &card()),
+            judge(
+                WM_LBUTTONDOWN,
+                LLMHF_INJECTED,
+                100,
+                50,
+                &card(),
+                GuardMode::Block
+            ),
             Verdict::SwallowAndCount,
             "the top-left corner is inside"
         );
@@ -153,12 +190,95 @@ mod tests {
     #[test]
     fn injected_moves_and_wheel_inside_the_card_pass() {
         assert_eq!(
-            judge(WM_MOUSEMOVE, LLMHF_INJECTED, 200, 100, &card()),
+            judge(
+                WM_MOUSEMOVE,
+                LLMHF_INJECTED,
+                200,
+                100,
+                &card(),
+                GuardMode::Block
+            ),
             Verdict::Pass
         );
         assert_eq!(
-            judge(WM_MOUSEWHEEL, LLMHF_INJECTED, 200, 100, &card()),
+            judge(
+                WM_MOUSEWHEEL,
+                LLMHF_INJECTED,
+                200,
+                100,
+                &card(),
+                GuardMode::Block
+            ),
             Verdict::Pass
+        );
+    }
+
+    // #168: a person who uses assistive input.
+
+    #[test]
+    fn with_assistive_input_an_injected_press_inside_the_card_passes_and_is_counted() {
+        for message in [
+            WM_LBUTTONDOWN,
+            WM_RBUTTONDOWN,
+            WM_MBUTTONDOWN,
+            WM_XBUTTONDOWN,
+        ] {
+            assert_eq!(
+                judge(
+                    message,
+                    LLMHF_INJECTED,
+                    200,
+                    100,
+                    &card(),
+                    GuardMode::CountOnly
+                ),
+                Verdict::PassAndCount
+            );
+        }
+        assert_eq!(
+            judge(
+                WM_LBUTTONDOWN,
+                LLMHF_LOWER_IL_INJECTED,
+                200,
+                100,
+                &card(),
+                GuardMode::CountOnly
+            ),
+            Verdict::PassAndCount
+        );
+    }
+
+    #[test]
+    fn with_assistive_input_releases_moves_and_everything_else_pass_uncounted() {
+        for message in [WM_LBUTTONUP, WM_RBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL] {
+            assert_eq!(
+                judge(
+                    message,
+                    LLMHF_INJECTED,
+                    200,
+                    100,
+                    &card(),
+                    GuardMode::CountOnly
+                ),
+                Verdict::Pass
+            );
+        }
+        assert_eq!(
+            judge(WM_LBUTTONDOWN, 0, 200, 100, &card(), GuardMode::CountOnly),
+            Verdict::Pass,
+            "a real click is not counted"
+        );
+        assert_eq!(
+            judge(
+                WM_LBUTTONDOWN,
+                LLMHF_INJECTED,
+                99,
+                100,
+                &card(),
+                GuardMode::CountOnly
+            ),
+            Verdict::Pass,
+            "outside the card is not counted"
         );
     }
 
@@ -171,11 +291,25 @@ mod tests {
             height: 220,
         };
         assert_eq!(
-            judge(WM_LBUTTONDOWN, LLMHF_INJECTED, -1800, 10, &left),
+            judge(
+                WM_LBUTTONDOWN,
+                LLMHF_INJECTED,
+                -1800,
+                10,
+                &left,
+                GuardMode::Block
+            ),
             Verdict::SwallowAndCount
         );
         assert_eq!(
-            judge(WM_LBUTTONDOWN, LLMHF_INJECTED, 100, 10, &left),
+            judge(
+                WM_LBUTTONDOWN,
+                LLMHF_INJECTED,
+                100,
+                10,
+                &left,
+                GuardMode::Block
+            ),
             Verdict::Pass
         );
     }

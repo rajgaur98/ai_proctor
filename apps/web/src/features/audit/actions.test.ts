@@ -53,6 +53,17 @@ describe("summarize", () => {
     ).toBe("US · CA → IN");
   });
 
+  it("reads assistive input changes", () => {
+    expect(actionLabel("member.assistive_input_changed")).toBe("Changed assistive input");
+    expect(summarize("member.assistive_input_changed", { from: false, to: true }, nameOf)).toBe(
+      "Off → On",
+    );
+    expect(summarize("member.assistive_input_changed", { from: true, to: false }, nameOf)).toBe(
+      "On → Off",
+    );
+    expect(summarize("member.assistive_input_changed", {}, nameOf)).toBe("— → —");
+  });
+
   it("counts shifts and files", () => {
     expect(summarize("member.shifts_changed", { from: [1, 2], to: [1] }, nameOf)).toBe(
       "2 shifts → 1 shift",
