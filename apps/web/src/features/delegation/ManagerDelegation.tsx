@@ -3,9 +3,10 @@
 // history (upcoming, active, completed, ended early). Opened from the People page.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { DelegateForm } from "./DelegateForm";
-import { DelegationRows } from "./DelegationRows";
+import { DelegationRows, delegationTable } from "./DelegationRows";
 import { delegationsQuery, endDelegation } from "./delegationData";
 
 export function ManagerDelegation({
@@ -39,9 +40,21 @@ export function ManagerDelegation({
           Delegation for {manager.fullName}
         </h2>
         <section aria-labelledby="manager-delegation-history" className="flex flex-col gap-2">
-          <h3 id="manager-delegation-history" className="text-sm font-semibold">
-            History
-          </h3>
+          <div className="flex items-center gap-3">
+            <h3 id="manager-delegation-history" className="text-sm font-semibold">
+              History
+            </h3>
+            <ExportButton
+              title="Delegations"
+              className="ml-auto h-9"
+              ready={!history.isPending && !history.error}
+              spec={{
+                page: "delegations",
+                filters: { manager: manager.fullName },
+                table: () => delegationTable(rows),
+              }}
+            />
+          </div>
           <div className="overflow-hidden rounded-xl border border-line">
             {history.error ? (
               <p role="alert" className="px-5 py-4 text-sm text-warnink">
