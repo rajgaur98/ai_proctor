@@ -25,6 +25,7 @@ import {
   Permissions,
   ProjectRef,
   ShiftState,
+  TaskRef,
   TestCaptureFailure,
   TestCaptureResult,
 } from "../src/ipc.ts";
@@ -34,6 +35,7 @@ for (const schema of [
   PermissionState,
   Permissions,
   ShiftState,
+  TaskRef,
   ProjectRef,
   CheckinOutcome,
   LastCheckin,

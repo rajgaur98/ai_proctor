@@ -33,8 +33,9 @@ export interface Segment extends Span {
   /** null = Unassigned (PRJ-03). */
   projectId: string | null;
   /**
-   * The project's task (#254, PRJ-05), or null. Only manual entries and dashboard edits
-   * carry one; the agent sends a project only, so clocked time starts with no task.
+   * The project's task (#254, PRJ-05), or null. Manual entries, dashboard edits and the
+   * tray's project switches carry one (#268); a clock-in doesn't, so a session starts
+   * with no task until the person picks one.
    */
   taskId: string | null;
   /** Counted as worked time (TS-01; breaks only when the org pays them). */
@@ -56,7 +57,8 @@ export interface DayInput {
   /** The server's status timeline; supplies offline, locked, meeting, idle and tamper. */
   statusPeriods: { status: PresenceStatus; start: number; end: number | null }[];
   checkins: { at: number; outcome: "pass" | "miss" | "failed" }[];
-  projectSwitches: { at: number; projectId: string | null }[];
+  /** The tray's project (and task, #268) switches; a switch without a task clears it. */
+  projectSwitches: { at: number; projectId: string | null; taskId?: string | null }[];
   /**
    * Project edits, the manager's (TS-13) and the employee's (PRJ-04), oldest first so the
    * latest over a span wins; applied last. An edit sets the task too (null: none).
@@ -277,24 +279,29 @@ function unverifiedWindows(input: DayInput): Span[] {
 }
 
 /**
- * The project in force at a moment: session start, then switches, then edits. Only an
- * edit carries a task; the agent's switches don't (the tray picks a project only).
+ * The project and task in force at a moment: session start (no task), then switches
+ * (each sets both, #268), then edits.
  */
 function projectTimeline(input: DayInput): (t: number) => Assignment {
   const switches = [...input.projectSwitches].sort(
-    (a, b) => a.at - b.at || byProject(a.projectId, b.projectId),
+    (a, b) =>
+      a.at - b.at ||
+      byProject(a.projectId, b.projectId) ||
+      byProject(a.taskId ?? null, b.taskId ?? null),
   );
   const sessions = [...input.clockSessions].sort((a, b) => a.start - b.start);
   return (t) => {
     const edited = editAt(input, t);
     if (edited !== undefined) return edited;
     const session = sessions.filter((s) => s.start <= t).at(-1);
-    let project = session?.projectId ?? null;
+    let assignment: Assignment = { projectId: session?.projectId ?? null, taskId: null };
     for (const s of switches) {
       if (s.at > t) break;
-      if (!session || s.at >= session.start) project = s.projectId;
+      if (!session || s.at >= session.start) {
+        assignment = { projectId: s.projectId, taskId: s.taskId ?? null };
+      }
     }
-    return { projectId: project, taskId: null };
+    return assignment;
   };
 }
 

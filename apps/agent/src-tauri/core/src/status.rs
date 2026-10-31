@@ -3,6 +3,7 @@
 
 use crate::contracts::{
     AgentStatus, LastCheckin, MissedCheckin, NoticeStatus, Permissions, ProjectRef, ShiftState,
+    TaskRef,
 };
 use crate::platform::Platform;
 
@@ -18,6 +19,8 @@ pub struct Tray {
     pub pause_used_today_s: i64,
     pub pause_daily_cap_s: i64,
     pub project: Option<ProjectRef>,
+    /// The current project's task (#268); none when it has none or none is picked.
+    pub task: Option<TaskRef>,
     pub projects: Vec<ProjectRef>,
     pub last_checkin: Option<LastCheckin>,
     pub missed_checkin: Option<MissedCheckin>,
@@ -51,6 +54,7 @@ pub fn agent_status(
         pause_used_today_s: tray.pause_used_today_s.max(0),
         pause_daily_cap_s: tray.pause_daily_cap_s.max(0),
         project: tray.project,
+        task: tray.task,
         projects: tray.projects,
         last_checkin: tray.last_checkin,
         missed_checkin: tray.missed_checkin,

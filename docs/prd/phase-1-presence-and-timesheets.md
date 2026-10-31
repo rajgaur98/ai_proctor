@@ -223,7 +223,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | PRJ-02 | P0 | Project selection is **optional**. Employee can pick at clock-in, switch any time from the tray or check-in card |
 | PRJ-03 | P0 | Time without a project is recorded as **Unassigned** |
 | PRJ-04 | P0 | Employee can **retroactively assign** unassigned (or wrongly assigned) time to projects while their timesheet is in draft |
-| PRJ-05 | P1 | Projects have **tasks** (name, billable default taken from the project, archived, order). Admins and managers add, rename and archive them; tasks are never deleted. Time can be tagged **project → task** from the dashboard: manual entries, the manager's project edit and the employee's re-assignment. The agent tray picks a project only (a task picker comes later), so clocked time has no task until someone tags it (#254) |
+| PRJ-05 | P1 | Projects have **tasks** (name, billable default taken from the project, archived, order). Admins and managers add, rename and archive them; tasks are never deleted. Time can be tagged **project → task** from the dashboard: manual entries, the manager's project edit and the employee's re-assignment, and from the agent tray: under the project, a task picker shows the project's active tasks (only when it has any). Clocking in or switching project starts with no task; picking a task applies from then on. A task the server doesn't know for that project is ignored, never a reason to lose the project switch (#254, #268) |
 
 ### 4.10 Timesheets (TS)
 
@@ -317,7 +317,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 
 | ID | Pri | Requirement |
 |---|---|---|
-| EMP-01 | P0 | Tray app shows: current status, clock in/out, break, pause (with remaining daily pause allowance), current project. The time of the next check-in is **never** shown (randomness must be preserved) |
+| EMP-01 | P0 | Tray app shows: current status, clock in/out, break, pause (with remaining daily pause allowance), current project (and its task, PRJ-05). The time of the next check-in is **never** shown (randomness must be preserved) |
 | EMP-02 | P0 | **My data** (web, employee view): own timeline, every check-in with its captures, misses with reasons, activity samples, timesheets and all manager edits with reasons |
 | EMP-03 | P0 | Employee can see **who viewed their captures** (viewer name and time) |
 | EMP-04 | P0 | Employee can download a copy of their own data (supports GDPR/DPDP access requests) |
