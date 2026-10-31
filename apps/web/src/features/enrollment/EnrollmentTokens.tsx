@@ -4,9 +4,11 @@
 // recorded in the audit log by the database.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { exportTime } from "../../lib/exportFile";
 import { DateTimeText } from "../notice/NoticeView";
 import {
   type CreatedToken,
@@ -36,9 +38,43 @@ export function EnrollmentTokens({ orgName }: { orgName: string }) {
             work email.
           </p>
         </div>
-        <Button variant="secondary" className="ml-auto" onClick={() => setCreating(true)}>
-          New enrollment token
-        </Button>
+        <div className="ml-auto flex gap-2">
+          <ExportButton
+            title="Enrollment tokens"
+            ready={!isPending && !error}
+            spec={{
+              page: "enrollment-tokens",
+              filters: {},
+              // The prefix only: the token itself is never stored.
+              table: () => ({
+                sheet: "Enrollment tokens",
+                header: [
+                  "Name",
+                  "Token prefix",
+                  "Created",
+                  "Created by",
+                  "Enrolled devices",
+                  "Last used",
+                  "Status",
+                  "Revoked",
+                ],
+                rows: tokens.map((t) => [
+                  t.label,
+                  t.prefix,
+                  exportTime(t.createdAt),
+                  t.createdBy ?? "",
+                  t.devices,
+                  exportTime(t.lastUsedAt),
+                  tokenStatus(t),
+                  exportTime(t.revokedAt),
+                ]),
+              }),
+            }}
+          />
+          <Button variant="secondary" onClick={() => setCreating(true)}>
+            New enrollment token
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-line bg-panel">

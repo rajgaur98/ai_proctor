@@ -214,9 +214,9 @@ describe("buildSegments", () => {
     expect(show(segments)).toEqual(["09:00-10:00 verified", "10:00-11:00 manual M"]);
   });
 
-  // #254 (PRJ-05): a task comes from a manual entry or a dashboard edit, never from the
-  // agent's project switches; an edit sets the task with the project.
-  it("carries the task of manual entries and edits, none from switches", () => {
+  // #254 (PRJ-05): a task comes from a manual entry or a dashboard edit; an edit sets the
+  // task with the project. A switch without a task (an older agent) carries none.
+  it("carries the task of manual entries and edits", () => {
     const segments = buildSegments(
       input({
         clockSessions: [{ start: t("09:00"), end: t("12:00"), projectId: "A" }],
@@ -241,6 +241,54 @@ describe("buildSegments", () => {
       ["manual", "M", "M2", 30],
       ["manual", null, null, 60],
     ]);
+  });
+
+  // #268 (PRJ-05): the tray's switches carry a task. A clock-in starts with none, a switch
+  // sets both (a task-only change repeats the project), a switch without a task clears it,
+  // an edit still wins, and a stray task without a project is dropped.
+  it("carries the task of the tray's switches", () => {
+    const segments = buildSegments(
+      input({
+        clockSessions: [
+          { start: t("09:00"), end: t("12:00"), projectId: "A" },
+          { start: t("13:00"), end: t("14:00"), projectId: "A" },
+        ],
+        projectSwitches: [
+          { at: t("09:30"), projectId: "A", taskId: "A1" },
+          { at: t("10:00"), projectId: "A", taskId: "A2" },
+          { at: t("10:30"), projectId: "B" },
+          { at: t("11:00"), projectId: "B", taskId: "B1" },
+          { at: t("11:30"), projectId: null, taskId: "stray" },
+        ],
+        projectEdits: [{ start: t("10:15"), end: t("10:30"), projectId: "C", taskId: "C1" }],
+      }),
+    );
+    expect(segments.map((s) => [show([s])[0], s.taskId])).toEqual([
+      ["09:00-09:30 verified A", null],
+      ["09:30-10:00 verified A", "A1"],
+      ["10:00-10:15 verified A", "A2"],
+      ["10:15-10:30 verified C", "C1"],
+      ["10:30-11:00 verified B", null],
+      ["11:00-11:30 verified B", "B1"],
+      ["11:30-12:00 verified", null],
+      // A new session starts on its own project with no task.
+      ["13:00-14:00 verified A", null],
+    ]);
+  });
+
+  it("orders same-instant switches by task too, so input order never matters", () => {
+    const switches = [
+      { at: t("10:00"), projectId: "A", taskId: "A2" },
+      { at: t("10:00"), projectId: "A", taskId: "A1" },
+    ];
+    const run = (projectSwitches: DayInput["projectSwitches"]) =>
+      buildSegments(
+        input({
+          clockSessions: [{ start: t("09:00"), end: t("11:00"), projectId: "A" }],
+          projectSwitches,
+        }),
+      );
+    expect(run(switches)).toEqual(run([...switches].reverse()));
   });
 
   it("stops open intervals at now", () => {
@@ -381,7 +429,12 @@ const arbitraryDay: fc.Arbitrary<DayInput> = fc.record({
     { maxLength: 6 },
   ),
   projectSwitches: fc.array(
-    fc.tuple(time, project).map(([a, p]) => ({ at: a, projectId: p })),
+    fc
+      .tuple(time, project, fc.constantFrom(null, "T", "U", "none"))
+      // "none": an older agent's switch, with no task_id at all.
+      .map(([a, p, task]) =>
+        task === "none" ? { at: a, projectId: p } : { at: a, projectId: p, taskId: task },
+      ),
     {
       maxLength: 4,
     },

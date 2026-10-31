@@ -19,9 +19,18 @@ export const ShiftState = z
   .enum(["off_shift", "working", "on_break", "paused"])
   .meta({ id: "ShiftState" });
 
-/** A project the person can log to (PRJ-02). */
+/** One of a project's active tasks, for the tray's task picker (#268, PRJ-05). */
+export const TaskRef = z.object({ id: z.string(), name: z.string() }).meta({ id: "TaskRef" });
+
+/** A project the person can log to (PRJ-02), with its active tasks in order (PRJ-05). */
 export const ProjectRef = z
-  .object({ id: z.string(), name: z.string(), client: z.string().nullable() })
+  .object({
+    id: z.string(),
+    name: z.string(),
+    client: z.string().nullable(),
+    /** Empty when the project has none: the tray then shows no task picker. */
+    tasks: z.array(TaskRef),
+  })
   .meta({ id: "ProjectRef" });
 
 export const CheckinOutcome = z.enum(["pass", "miss", "failed"]).meta({ id: "CheckinOutcome" });
@@ -82,6 +91,8 @@ export const AgentStatus = z
     pause_used_today_s: z.int().nonnegative(),
     pause_daily_cap_s: z.int().nonnegative(),
     project: ProjectRef.nullable(),
+    /** The task of `project` the time is logged to (#268); null: none. */
+    task: TaskRef.nullable(),
     projects: z.array(ProjectRef),
     last_checkin: LastCheckin.nullable(),
     missed_checkin: MissedCheckin.nullable(),
@@ -244,7 +255,10 @@ export const ipcCommands = {
     result: CommandResult,
   },
   pause_end: { args: z.object({}), result: CommandResult },
+  /** PRJ-02: a new project starts with no task. */
   switch_project: { args: z.object({ project_id: z.string().nullable() }), result: CommandResult },
+  /** #268 (PRJ-05): one of the current project's tasks, or null for none; same project. */
+  switch_task: { args: z.object({ task_id: z.string().nullable() }), result: CommandResult },
   /** CHK-23: a quick pick and/or a note on today's missed check-in. */
   set_miss_reason: {
     args: z.object({
@@ -317,6 +331,7 @@ export type CommandResult = z.infer<typeof CommandResult>;
 export type CardLook = z.infer<typeof CardLook>;
 export type CardChallenge = z.infer<typeof CardChallenge>;
 export type ProjectRef = z.infer<typeof ProjectRef>;
+export type TaskRef = z.infer<typeof TaskRef>;
 export type NoticeStatus = z.infer<typeof NoticeStatus>;
 export type NoticeBody = z.infer<typeof NoticeBody>;
 export type NoticeContent = z.infer<typeof NoticeContent>;

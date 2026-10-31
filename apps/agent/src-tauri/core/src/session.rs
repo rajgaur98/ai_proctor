@@ -55,6 +55,9 @@ pub struct SessionSnapshot {
     pub shift: ShiftPhase,
     pub clocked_in_at: Option<DateTime<Utc>>,
     pub project_id: Option<Uuid>,
+    /// The project's task (#268, PRJ-05); none at clock-in and after a project switch.
+    #[serde(default)]
+    pub task_id: Option<Uuid>,
     pub pause_until: Option<DateTime<Utc>>,
     /// When the current phase (working, break, pause) began.
     #[serde(default)]
@@ -125,6 +128,8 @@ pub enum TransitionError {
     NotPaused,
     #[error("not a preset: {0} min")]
     InvalidDuration(u32),
+    #[error("pick a project first")]
+    TaskWithoutProject,
     #[error("could not record the event: {0}")]
     Sink(String),
 }
@@ -251,6 +256,10 @@ impl Session {
         self.state.project_id
     }
 
+    pub fn task_id(&self) -> Option<Uuid> {
+        self.state.task_id
+    }
+
     pub fn set_policy(&mut self, policy: SessionPolicy) {
         self.policy = policy;
     }
@@ -368,10 +377,32 @@ impl Session {
         Ok(())
     }
 
+    /// PRJ-02: a new project, which starts with no task (the event leaves `task_id` out,
+    /// so a server older than tasks still takes it).
     pub fn switch_project(&mut self, project_id: Option<Uuid>) -> Result<(), TransitionError> {
         self.require_clocked_in()?;
         self.emit("project_switch", json!({ "project_id": project_id }))?;
         self.state.project_id = project_id;
+        self.state.task_id = None;
+        self.save();
+        Ok(())
+    }
+
+    /// #268 (PRJ-05): a task of the current project, or none. Sent as a `project_switch`
+    /// with the same project and the new `task_id`; the caller checks the task belongs to
+    /// the project (the server ignores one that doesn't).
+    pub fn switch_task(&mut self, task_id: Option<Uuid>) -> Result<(), TransitionError> {
+        self.require_clocked_in()?;
+        let project_id = self.state.project_id;
+        if task_id.is_some() && project_id.is_none() {
+            return Err(TransitionError::TaskWithoutProject);
+        }
+        let mut payload = json!({ "project_id": project_id });
+        if let Some(task) = task_id {
+            payload["task_id"] = json!(task);
+        }
+        self.emit("project_switch", payload)?;
+        self.state.task_id = task_id;
         self.save();
         Ok(())
     }
@@ -455,6 +486,8 @@ impl Session {
         self.enter(ShiftPhase::Working, now);
         self.state.clocked_in_at = Some(now);
         self.state.project_id = project_id;
+        // A clock-in carries no task (#268): one is picked once working.
+        self.state.task_id = None;
         self.save();
         Ok(())
     }
@@ -677,6 +710,69 @@ mod tests {
         r.session.clock_out().unwrap();
         assert_eq!(r.session.shift(), ShiftState::OffShift);
         assert_eq!(r.sink.last().2, json!({ "reason": "manual" }));
+    }
+
+    #[test]
+    fn a_task_change_resends_the_project_with_the_task() {
+        let mut r = rig(SessionPolicy::default());
+        let (project, other, task) = (Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        assert_eq!(
+            r.session.switch_task(Some(task)),
+            Err(TransitionError::NotClockedIn)
+        );
+        r.session.clock_in(Some(project)).unwrap();
+        assert_eq!(r.session.task_id(), None, "a clock-in has no task");
+
+        r.session.switch_task(Some(task)).unwrap();
+        assert_eq!(r.sink.last().0, "project_switch");
+        assert_eq!(
+            r.sink.last().2,
+            json!({ "project_id": project, "task_id": task })
+        );
+        assert_eq!(r.session.task_id(), Some(task));
+        assert_eq!(
+            r.store.load().unwrap().task_id,
+            Some(task),
+            "kept across a restart"
+        );
+
+        r.session.switch_task(None).unwrap();
+        assert_eq!(
+            r.sink.last().2,
+            json!({ "project_id": project }),
+            "no task: task_id left out, so an older server takes it"
+        );
+        assert_eq!(r.session.task_id(), None);
+
+        r.session.switch_task(Some(task)).unwrap();
+        r.session.switch_project(Some(other)).unwrap();
+        assert_eq!(r.sink.last().2, json!({ "project_id": other }));
+        assert_eq!(
+            r.session.task_id(),
+            None,
+            "a new project starts with no task"
+        );
+
+        r.session.switch_project(None).unwrap();
+        assert_eq!(
+            r.session.switch_task(Some(task)),
+            Err(TransitionError::TaskWithoutProject)
+        );
+        assert_eq!(
+            r.sink.last().2,
+            json!({ "project_id": null }),
+            "nothing sent"
+        );
+
+        r.session.switch_project(Some(project)).unwrap();
+        r.session.switch_task(Some(task)).unwrap();
+        r.session.clock_out().unwrap();
+        r.session.clock_in(Some(project)).unwrap();
+        assert_eq!(
+            r.session.task_id(),
+            None,
+            "the next shift starts with no task"
+        );
     }
 
     #[test]

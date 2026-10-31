@@ -72,7 +72,13 @@ const payloads = {
     reason: z.string().max(200).optional(),
   }),
   pause_end: z.strictObject({}),
-  project_switch: z.strictObject({ project_id: uuid.nullable() }),
+  project_switch: z.strictObject({
+    project_id: uuid.nullable(),
+    // #268 (PRJ-05): the project's task picked in the tray; left out (or null) means no
+    // task. Older agents never send it. The server keeps it only when it is a task of
+    // this project in the person's org (`segment_inputs`); anything else is ignored.
+    task_id: uuid.nullable().optional(),
+  }),
   checkin: z.strictObject({
     scheduled_at: timestamp,
     shown_at: timestamp.nullable().optional(),

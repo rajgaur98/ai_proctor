@@ -209,7 +209,9 @@ select is(((select r from inp) -> 'input' -> 'checkins'),
     jsonb_build_object('at', pg_temp.epoch('2026-03-16 11:30:00-07'), 'outcome', 'pass')),
   'segment_inputs: check-ins by shown time (else scheduled), not the previous shift''s');
 select is(((select r from inp) -> 'input' -> 'projectSwitches'),
-  jsonb_build_array(jsonb_build_object('at', pg_temp.epoch('2026-03-16 13:00:00-07'), 'projectId', null)),
+  -- taskId (#268): the switch's task when it is the project's, else null.
+  jsonb_build_array(jsonb_build_object('at', pg_temp.epoch('2026-03-16 13:00:00-07'), 'projectId', null,
+    'taskId', null)),
   'segment_inputs: project switches from the raw events');
 select is(((select r from inp) -> 'input' -> 'policy'),
   '{"breaksPaid": false, "pauseMaxS": 900, "pauseDailyMaxS": 3600}'::jsonb,

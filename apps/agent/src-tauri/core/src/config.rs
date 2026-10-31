@@ -69,6 +69,23 @@ pub struct ProjectConfig {
     pub id: uuid::Uuid,
     pub name: String,
     pub client: Option<String>,
+    /// The project's active tasks in their order (#268, PRJ-05), for the tray's task
+    /// picker. Empty when it has none or the server is older than tasks.
+    #[serde(default)]
+    pub tasks: Vec<TaskConfig>,
+}
+
+impl ProjectConfig {
+    /// Whether `task` is one of this project's tasks the tray may pick.
+    pub fn has_task(&self, task: uuid::Uuid) -> bool {
+        self.tasks.iter().any(|t| t.id == task)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct TaskConfig {
+    pub id: uuid::Uuid,
+    pub name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
