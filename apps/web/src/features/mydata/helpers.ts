@@ -127,6 +127,21 @@ export function missReasonLabel(kind: string | null): string | null {
   return missReasons.find((r) => r.kind === kind)?.label ?? kind;
 }
 
+/** The remark on a miss (#252): the server keeps up to 500 characters. */
+export const MISS_REMARK_MAX = 500;
+
+/**
+ * Why a miss reason can't be saved yet, or null when it can (#252, the tray's rule): a
+ * quick pick or a remark, and "Other" needs a remark. The server checks the same.
+ */
+export function missReasonProblem(kind: MissReasonKind | null, remark: string): string | null {
+  const text = remark.trim();
+  if (text.length > MISS_REMARK_MAX) return `Keep the remark to ${MISS_REMARK_MAX} characters.`;
+  if (kind === "other" && !text) return "Add a remark for Other.";
+  if (!kind && !text) return "Pick a reason or write a remark.";
+  return null;
+}
+
 export interface CaptureView {
   viewedAt: string;
   viewerId: string | null;

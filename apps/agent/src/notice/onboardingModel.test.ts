@@ -5,6 +5,7 @@ import {
   type CapturePhase,
   canContinue,
   captureFailed,
+  captureNext,
   captureProblems,
   captureWorked,
   footerButtons,
@@ -405,10 +406,20 @@ describe("test capture", () => {
   it("explains each webcam failure", () => {
     const problem = (webcam_error: TestCaptureResult["webcam_error"]) =>
       captureProblems(done({ ok: false, webcam: null, webcam_error }), "windows");
-    expect(problem("camera_busy")[0]).toContain("in use by another app");
-    expect(problem("no_camera")[0]).toBe("No camera was found.");
+    expect(problem("camera_busy")[0]).toBe(
+      "Another app is using your camera. Close it and retake.",
+    );
+    expect(problem("no_camera")[0]).toBe(
+      "No camera found. Plug one in or ask your admin. Check-ins will still record your screen; the webcam part will be marked missing until a camera is available.",
+    );
     expect(problem("permission_missing")[0]).toBe("The camera is off for AI Proctor.");
     expect(problem("failed")[0]).toContain("Retake");
+  });
+
+  it("doesn't promise screen recording to a webcam-only org with no camera", () => {
+    const phase = done({ ok: false, webcam: null, webcam_error: "no_camera" });
+    expect(captureProblems(phase, "windows", false)[0]).not.toContain("record your screen");
+    expect(captureProblems(phase, "windows", false)[0]).toContain("marked missing");
   });
 
   it("reports both failures", () => {
@@ -464,6 +475,62 @@ describe("footer buttons", () => {
     expect(footerButtons(3, ctx({ capture: { kind: "done", result: good } })).primary).toBe(
       "Looks good",
     );
+  });
+
+  describe("when the webcam part fails", () => {
+    const failed = (over: Partial<TestCaptureResult>): ButtonContext =>
+      ctx({ capture: { kind: "done", result: { ...good, ok: false, webcam: null, ...over } } });
+
+    it("no camera: lets the person finish without one", () => {
+      const c = failed({ webcam_error: "no_camera" });
+      expect(captureNext(c.capture)).toBe("finish_without_camera");
+      expect(footerButtons(3, c)).toEqual({
+        primary: "Finish without camera",
+        secondary: "Retake",
+      });
+      expect(captureProblems(c.capture, "windows")[0]).toContain("marked missing");
+    });
+
+    it("camera busy: leads with Retake", () => {
+      const c = failed({ webcam_error: "camera_busy" });
+      expect(captureNext(c.capture)).toBe("retake");
+      expect(footerButtons(3, c)).toEqual({
+        primary: "Retake",
+        secondary: "Finish without camera",
+      });
+      expect(captureProblems(c.capture, "windows")[0]).toContain("Close it and retake");
+    });
+
+    it("camera off for the app: back to the permissions", () => {
+      const c = failed({ webcam_error: "permission_missing" });
+      expect(captureNext(c.capture)).toBe("permissions");
+      expect(footerButtons(3, c).primary).toBe("Back to permissions");
+    });
+
+    it("a screen failure wins over a missing camera", () => {
+      const c = failed({
+        screens: [],
+        screen_error: "permission_missing",
+        webcam_error: "no_camera",
+      });
+      expect(captureNext(c.capture)).toBe("permissions");
+      expect(footerButtons(3, c).primary).toBe("Back to permissions");
+    });
+  });
+
+  it("screen permission missing goes back to the permissions", () => {
+    const capture: CapturePhase = {
+      kind: "done",
+      result: { ...good, ok: false, screens: [], screen_error: "permission_missing" },
+    };
+    expect(captureNext(capture)).toBe("permissions");
+    expect(footerButtons(3, ctx({ capture })).primary).toBe("Back to permissions");
+  });
+
+  it("a good capture, or one still running, says looks good", () => {
+    expect(captureNext({ kind: "done", result: good })).toBe("finish");
+    expect(captureNext({ kind: "capturing" })).toBe("finish");
+    expect(captureNext({ kind: "failed", message: "x" })).toBe("permissions");
   });
 
   it("only closes when the person is already clocked in", () => {

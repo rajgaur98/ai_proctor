@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { agentFor, clientFor } from "./agent";
-import { ERIN, erinToday, expectNoA11yViolations, rebuildSegments, timeAt } from "./helpers";
+import {
+  ERIN,
+  erinToday,
+  expectNoA11yViolations,
+  rebuildSegments,
+  reopenApprovedWeeks,
+  timeAt,
+} from "./helpers";
 
 const org = "00000000-0000-4000-8000-000000000001";
 // A 1×1 WebP.
@@ -72,6 +79,8 @@ async function seedErinDay(): Promise<{ missAt: string; passAt: string }> {
 test("an employee sees her day, check-ins and who viewed her captures; her own views stay out of it", async ({
   page,
 }) => {
+  // An approved week locks miss reasons (#252); earlier specs may have approved hers.
+  await reopenApprovedWeeks(ERIN);
   const { missAt, passAt } = await seedErinDay();
   await signIn(page, "erin@acme.test", /\/me$/);
 
@@ -86,14 +95,19 @@ test("an employee sees her day, check-ins and who viewed her captures; her own v
   await expect(dayCard.getByRole("img", { name: /^Your day:/ })).toBeVisible();
   await expect(dayCard.getByText(/worked so far/)).toBeVisible();
 
-  // A miss takes a reason (the #39 RPC).
+  // A miss takes a reason (the #39 RPC), from a dialog (#252).
   const misses = page.getByRole("region", { name: "Missed check-ins" });
   const miss = misses.getByRole("listitem").filter({ has: page.locator(timeAt(missAt)) });
   await expect(miss.getByText("Missed", { exact: true })).toBeVisible();
-  const meeting = miss.getByRole("button", { name: "Meeting" });
-  await meeting.click();
-  await expect(meeting).toHaveAttribute("aria-pressed", "true");
-  await expect(miss.getByText(/Reason: Meeting.* · visible to Max Manager/)).toBeVisible();
+  await expect(miss.getByText("No reason yet")).toBeVisible();
+  await miss.getByRole("button", { name: /^Add a reason for the / }).click();
+  const dialog = page.getByRole("dialog", { name: /^Reason for the / });
+  await dialog.getByRole("button", { name: "Meeting" }).click();
+  await dialog.getByRole("button", { name: "Save reason" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(miss.getByText("Reason: Meeting")).toBeVisible();
+  await expect(miss.getByText("Visible to Max Manager")).toBeVisible();
+  await expect(miss.getByRole("button", { name: /^Edit the reason for the / })).toBeVisible();
 
   // The passed check-in, with the manager's view next to it.
   const checkins = page.getByRole("region", { name: "Today's check-ins" });

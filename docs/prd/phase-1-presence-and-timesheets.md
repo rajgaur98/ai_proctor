@@ -147,7 +147,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | CHK-20 | P0 | **Pass:** record the event and trigger captures (see CAP). Show the employee a 2-second thumbnail of the captured webcam frame (if webcam enabled) |
 | CHK-21 | P0 | **Miss:** record the event **without any screenshot or webcam capture**. Store: scheduled, shown and expired timestamps; idle seconds at time of showing; device state (locked/asleep/on battery/display off). Status becomes Away |
 | CHK-22 | P0 | **Failed challenge:** treated as a miss for status and timesheet purposes, flagged separately in reports |
-| CHK-23 | P0 | Employee can add a **reason** to any missed check-in (free text + quick picks: Meeting, Phone call, Break, Away from desk, Other) from the tray app until their timesheet is submitted. Manager sees the reason next to the miss |
+| CHK-23 | P0 | Employee can add a **reason** to any missed check-in (quick picks: Meeting, Phone call, Break, Away from desk, Other, plus a free-text remark up to 500 characters; Other needs a remark) from the tray app or My data, until that week's timesheet is approved. Every change is audit-logged. Manager sees the reason and remark next to the miss in the day view and timesheet |
 | CHK-24 | P0 | Every check-in event stores `response_ms` (time from shown to click). A miss has no click, so its `response_ms` is empty; the shown and expiry times are stored instead (#103) |
 
 **Acceptance criteria**
@@ -222,6 +222,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | PRJ-02 | P0 | Project selection is **optional**. Employee can pick at clock-in, switch any time from the tray or check-in card |
 | PRJ-03 | P0 | Time without a project is recorded as **Unassigned** |
 | PRJ-04 | P0 | Employee can **retroactively assign** unassigned (or wrongly assigned) time to projects while their timesheet is in draft |
+| PRJ-05 | P1 | Projects have **tasks** (name, billable default taken from the project, archived, order). Admins and managers add, rename and archive them; tasks are never deleted. Time can be tagged **project → task** from the dashboard: manual entries, the manager's project edit and the employee's re-assignment. The agent tray picks a project only (a task picker comes later), so clocked time has no task until someone tags it (#254) |
 
 ### 4.10 Timesheets (TS)
 
@@ -261,6 +262,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-07 | P0 | Employee can request a **manual entry** (date, start, end, project, reason) for time not captured (offline work, client visit, whiteboard session) |
 | TS-08 | P0 | Manual entries are **pending** until the direct manager approves or rejects them. Pending entries are shown but not counted in totals |
 | TS-09 | P0 | Manual entries cannot overlap existing clocked-in time |
+| TS-24 | P1 | A manual entry can carry a task (PRJ-05) and a free-text **"work done" note** (up to 2,000 characters). The employee sets them when asking for the time and can change them while the week is a draft or returned (#254) |
 
 #### Weekly approval
 | ID | Pri | Requirement |
@@ -275,6 +277,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-17 | P0 | Reminders: employee is reminded to submit at end of week; manager is reminded **2 days** after submission; after a further 3 days, Admin receives an escalation notice (notify only) |
 | TS-18 | P0 | Approved timesheets are locked. Changes after approval require the manager to **reopen** (audit-logged, employee notified) |
 | TS-19 | P1 | Org setting: daily and weekly **overtime thresholds**; hours above threshold are highlighted (no pay calculation) |
+| TS-25 | P1 | A **"work done" note per person-day** (up to 2,000 characters). The employee writes it on their week while it is a draft or returned; the manager reads it while reviewing. Notes lock with the week on approval (TS-18). A manager's change on the employee's behalf needs a reason, is audit-logged and the employee is notified (TS-13); the employee's own notes are not audit-logged (#254) |
 
 #### Exports
 | ID | Pri | Requirement |
@@ -283,6 +286,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-21 | P0 | Export views: (a) per employee per day, (b) per project/client per employee, (c) segment-level detail |
 | TS-22 | P0 | Hours shown as **decimal to 2 places** (e.g. 7.43) plus an **H:MM** column. Columns include worked, flagged, excluded, break, manual, billable/non-billable, approval status, approver |
 | TS-23 | P0 | Unassigned time appears as its own row in project exports |
+| TS-26 | P1 | Exports carry tasks and notes: a **Task** column after Project in the per-project and segment views (one per-project row per task; billable is the task's flag), and a **Work done** column at the end of the per-day view (the day's note, then that day's entry notes), in CSV and XLSX (#254) |
 
 ### 4.11 Manager dashboard (DSH)
 
@@ -296,6 +300,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | DSH-06 | P0 | **Timesheets tab:** list of reports' timesheets by week and status; open, review flagged time, edit, approve or return |
 | DSH-07 | P0 | **Reports:** per employee and team for a date range: worked hours, flagged hours, check-ins shown/passed/missed/failed, response rate, median response time, break and pause totals, late clock-ins |
 | DSH-08 | P1 | Anomaly flags in reports (see ANT): suspected injected input, virtual camera, duplicate webcam frames, remote session |
+| DSH-09 | P1 | **Seat view** of the Team page, a toggle beside the list and remembered per viewer: everyone the viewer can see sits in a chair round an oval table (seven chairs on each long side, four round each end, about 22 a table; more people open more tables, and with every team shown each team has its own). Initials on each chair; green = Active, red = any other status (idle, away, on break, paused, in a meeting, offline, tamper, off shift), always with the exact status and since when as text (tooltip and accessible name), never colour alone. Hover or focus shows name, status, since and project; click or Enter opens the person's day; arrow keys move round a table; the chairs are a list for screen readers. Updates live from the same feed as DSH-01. Below laptop width the list shows instead |
 
 ### 4.12 Alerts (ALR)
 

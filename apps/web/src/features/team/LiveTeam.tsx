@@ -1,8 +1,10 @@
-// DSH-01/02 live grid, from the Claude Design TeamGrid screen.
+// DSH-01/02 live grid, from the Claude Design TeamGrid screen; DSH-09 seat view (#251).
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { type PresenceStatus, StatusChip, statusStyle } from "../../components/StatusChip";
+import { Button } from "../../components/ui/button";
+import { cn } from "../../lib/cn";
 import { initials } from "../../lib/nav";
 import { supabase } from "../../lib/supabase";
 import { formatTime, viewerZone } from "../../lib/time";
@@ -18,9 +20,29 @@ import {
   summarize,
   type TeamRow,
 } from "./grid";
+import { SeatMap } from "./SeatMap";
 import { useLivePresence } from "./useLivePresence";
 
 const queryKey = ["team_live"];
+
+type View = "list" | "seats";
+
+/** The viewer's last view; storage can be missing or blocked, so it falls back to the list. */
+function readView(key: string): View {
+  try {
+    return window.localStorage.getItem(key) === "seats" ? "seats" : "list";
+  } catch {
+    return "list";
+  }
+}
+
+function saveView(key: string, view: View) {
+  try {
+    window.localStorage.setItem(key, view);
+  } catch {
+    // Not remembered this time; the choice still applies.
+  }
+}
 
 function useNow(everyMs: number) {
   const [now, setNow] = useState(() => new Date());
@@ -39,6 +61,12 @@ export function LiveTeam() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("status");
   const [team, setTeam] = useState("");
+  const viewKey = `ai-proctor:team-view:${profile.id}`;
+  const [view, setView] = useState<View>(() => readView(viewKey));
+  const chooseView = (v: View) => {
+    setView(v);
+    saveView(viewKey, v);
+  };
   const teams = useQuery(teamsQuery).data ?? [];
 
   const { data, error, isPending, dataUpdatedAt } = useQuery({
@@ -64,7 +92,53 @@ export function LiveTeam() {
     () => sortRows(filterRows(onShift(rows), status, search), sort),
     [rows, status, search, sort],
   );
+  // Seats show everyone the viewer can see, off shift too (a red chair), in name order.
+  const seated = useMemo(() => filterRows(rows, status, search), [rows, status, search]);
   const zone = viewerZone();
+  const seats = view === "seats";
+
+  const list = (
+    <div className="overflow-hidden rounded-xl border border-line bg-panel">
+      {error ? (
+        <p role="alert" className="p-6 text-sm text-warnink">
+          Couldn't load the team: {error.message}
+        </p>
+      ) : isPending ? (
+        <p className="p-6 text-sm text-ink2">Loading…</p>
+      ) : visible.length === 0 ? (
+        <Empty filtered={onShift(data ?? []).length > 0} />
+      ) : (
+        <table className="w-full border-collapse text-[13.5px]">
+          <thead className="hidden bg-sunk text-left text-xs font-medium text-ink3 md:table-header-group">
+            <tr className="h-10 border-b border-line">
+              <th className="px-5 font-medium">Person</th>
+              <th className="font-medium">Status</th>
+              <th className="font-medium">Last check-in</th>
+              <th className="font-medium">Today</th>
+              <th className="font-medium">Project</th>
+              <th className="pr-5">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((r) => (
+              <Row
+                key={r.user_id}
+                row={r}
+                now={now}
+                project={(r.project_id && projectName.get(r.project_id)) || null}
+              />
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="px-5 py-3 text-xs text-ink3">
+        "Today" is check-ins passed out of check-ins shown. Captures you open are logged and visible
+        to the employee.
+      </p>
+    </div>
+  );
 
   return (
     <section className="flex flex-col gap-5">
@@ -95,6 +169,20 @@ export function LiveTeam() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <fieldset className="m-0 hidden gap-2 border-0 p-0 md:flex">
+          <legend className="sr-only">View</legend>
+          {(["list", "seats"] as const).map((v) => (
+            <Button
+              key={v}
+              variant="secondary"
+              className={cn("h-10", view === v && "border-acc bg-accsoft text-acctext")}
+              aria-pressed={view === v}
+              onClick={() => chooseView(v)}
+            >
+              {v === "list" ? "List" : "Seats"}
+            </Button>
+          ))}
+        </fieldset>
         <label className="flex h-10 items-center gap-2 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]">
           <span className="text-ink3">Status</span>
           <select
@@ -129,7 +217,13 @@ export function LiveTeam() {
             </select>
           </label>
         )}
-        <label className="flex h-10 items-center gap-2 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]">
+        {/* Seats keep name order so nobody moves; sorting is for the list. */}
+        <label
+          className={cn(
+            "flex h-10 items-center gap-2 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px]",
+            seats && "md:hidden",
+          )}
+        >
           <span className="text-ink3">Sort</span>
           <select
             value={sort}
@@ -151,46 +245,34 @@ export function LiveTeam() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-line bg-panel">
-        {error ? (
-          <p role="alert" className="p-6 text-sm text-warnink">
-            Couldn't load the team: {error.message}
-          </p>
-        ) : isPending ? (
-          <p className="p-6 text-sm text-ink2">Loading…</p>
-        ) : visible.length === 0 ? (
-          <Empty filtered={onShift(data ?? []).length > 0} />
-        ) : (
-          <table className="w-full border-collapse text-[13.5px]">
-            <thead className="hidden bg-sunk text-left text-xs font-medium text-ink3 md:table-header-group">
-              <tr className="h-10 border-b border-line">
-                <th className="px-5 font-medium">Person</th>
-                <th className="font-medium">Status</th>
-                <th className="font-medium">Last check-in</th>
-                <th className="font-medium">Today</th>
-                <th className="font-medium">Project</th>
-                <th className="pr-5">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((r) => (
-                <Row
-                  key={r.user_id}
-                  row={r}
-                  now={now}
-                  project={(r.project_id && projectName.get(r.project_id)) || null}
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
-        <p className="px-5 py-3 text-xs text-ink3">
-          "Today" is check-ins passed out of check-ins shown. Captures you open are logged and
-          visible to the employee.
-        </p>
-      </div>
+      {seats ? (
+        <>
+          {/* Phones keep the list (#251); the seats need a laptop-width screen. */}
+          <div className="md:hidden">{list}</div>
+          <div className="hidden overflow-hidden rounded-xl border border-line bg-panel md:block">
+            {error ? (
+              <p role="alert" className="p-6 text-sm text-warnink">
+                Couldn't load the team: {error.message}
+              </p>
+            ) : isPending ? (
+              <p className="p-6 text-sm text-ink2">Loading…</p>
+            ) : seated.length === 0 ? (
+              <Empty filtered={rows.length > 0} />
+            ) : (
+              <SeatMap
+                rows={seated}
+                teams={teams}
+                teamId={team}
+                zone={zone}
+                now={now}
+                projectName={projectName}
+              />
+            )}
+          </div>
+        </>
+      ) : (
+        list
+      )}
     </section>
   );
 }

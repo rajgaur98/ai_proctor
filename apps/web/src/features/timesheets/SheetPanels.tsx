@@ -1,7 +1,8 @@
 // Side panels of the timesheet page (#43): the week's manual entry requests with
 // the manager's decision (reusing #42's decide RPC), and the manager's edits with
 // their reasons, which the employee sees (TS-13), and the employee's own project
-// changes on a draft week (#139, PRJ-04).
+// changes on a draft week (#139, PRJ-04). #254: entries show their task and work note,
+// and the employee edits those on their own draft week (PRJ-05, TS-24).
 import { useMutation } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useId, useState } from "react";
@@ -10,6 +11,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Time } from "../../lib/time";
 import { decideEntry, type EntryStatus, type ManualEntry } from "../day/entryData";
+import { assignmentLabel } from "../projects/projectData";
 import { formatDuration } from "./summary";
 import type { SheetEdit } from "./timesheetData";
 
@@ -24,23 +26,30 @@ export function WeekEntries({
   zone,
   employeeName,
   projectName,
+  taskName,
   canDecide,
   canAdjust,
+  canEditDetails = false,
   onChanged,
   onAdd,
   onAdjust,
+  onEditDetails,
 }: {
   entries: ManualEntry[];
   zone: string;
   employeeName: string;
   projectName: (id: string | null) => string;
+  taskName: (id: string | null) => string | null;
   /** The viewer is the direct manager or delegate. */
   canDecide: boolean;
   /** …and the week isn't approved. */
   canAdjust: boolean;
+  /** The viewer is the employee and the week is a draft or returned. */
+  canEditDetails?: boolean;
   onChanged: () => void;
   onAdd: () => void;
   onAdjust: (e: ManualEntry) => void;
+  onEditDetails?: (e: ManualEntry) => void;
 }) {
   return (
     <section
@@ -67,11 +76,13 @@ export function WeekEntries({
               entry={e}
               zone={zone}
               employeeName={employeeName}
-              project={projectName(e.projectId)}
+              project={assignmentLabel(projectName(e.projectId), taskName(e.taskId))}
               canDecide={canDecide && e.status === "pending"}
               canAdjust={canAdjust && e.status !== "rejected"}
+              canEditDetails={canEditDetails && e.status !== "rejected"}
               onChanged={onChanged}
               onAdjust={() => onAdjust(e)}
+              onEditDetails={() => onEditDetails?.(e)}
             />
           ))}
         </ul>
@@ -87,8 +98,10 @@ function EntryCard({
   project,
   canDecide,
   canAdjust,
+  canEditDetails,
   onChanged,
   onAdjust,
+  onEditDetails,
 }: {
   entry: ManualEntry;
   zone: string;
@@ -96,8 +109,10 @@ function EntryCard({
   project: string;
   canDecide: boolean;
   canAdjust: boolean;
+  canEditDetails: boolean;
   onChanged: () => void;
   onAdjust: () => void;
+  onEditDetails: () => void;
 }) {
   const noteId = useId();
   const [note, setNote] = useState("");
@@ -124,6 +139,12 @@ function EntryCard({
       <p className="rounded-lg bg-sunk px-3 py-2.5 text-[13px] leading-[1.45] text-ink2">
         “{e.reason}” — {employeeName.split(" ")[0]}
       </p>
+      {e.note && (
+        <div className="flex flex-col gap-0.5 text-[13px]">
+          <span className="text-xs font-medium text-ink3">Work done</span>
+          <p className="whitespace-pre-line text-ink2">{e.note}</p>
+        </div>
+      )}
       {e.decisionNote && <p className="text-[12.5px] text-ink3">Note: {e.decisionNote}</p>}
       {canDecide && (
         <div className="flex flex-col gap-2">
@@ -157,6 +178,11 @@ function EntryCard({
           Adjust
         </Button>
       )}
+      {canEditDetails && (
+        <Button variant="secondary" className="h-9 self-start" onClick={onEditDetails}>
+          Edit task and note
+        </Button>
+      )}
       {decide.error && (
         <p role="alert" className="text-sm text-warnink">
           {decide.error.message}
@@ -180,6 +206,7 @@ export function EditsList({
   zone,
   editorName,
   projectName,
+  taskName = () => null,
   heading,
   viewerIsEmployee = false,
 }: {
@@ -187,6 +214,7 @@ export function EditsList({
   zone: string;
   editorName: (id: string | null) => string;
   projectName: (id: string | null) => string;
+  taskName?: (id: string | null) => string | null;
   heading: string;
   /** The viewer is the person the week is about: their own edits read "You …". */
   viewerIsEmployee?: boolean;
@@ -213,7 +241,7 @@ export function EditsList({
                   ? "You changed project"
                   : editTitle[e.kind]}
                 {(e.kind === "project" || e.kind === "employee_project") &&
-                  ` to ${projectName(e.projectId)}`}
+                  ` to ${assignmentLabel(projectName(e.projectId), taskName(e.taskId))}`}
               </span>
               <span className="font-mono text-[12.5px] text-ink2">
                 {DateTime.fromISO(e.startAt, { zone: "local" }).toFormat("ccc d")} ·{" "}

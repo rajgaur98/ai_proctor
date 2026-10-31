@@ -6,6 +6,7 @@ import { type OvertimeThresholds, overtimeFromPolicy } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { supabase } from "../../lib/supabase";
+import type { WeekMiss } from "./misses";
 import type { TimeSegment } from "./reassign";
 import type { BreakdownRow } from "./summary";
 import { weekDays, weekStartDay } from "./weeks";
@@ -47,6 +48,8 @@ export interface SheetEdit {
   startAt: string;
   endAt: string;
   projectId: string | null;
+  /** The task a project edit set (#254). */
+  taskId: string | null;
   reason: string | null;
   editorId: string | null;
   createdAt: string;
@@ -150,6 +153,7 @@ export const breakdownQuery = (userId: string, weekStart: string) =>
         day: r.day,
         type: r.type,
         projectId: r.project_id,
+        taskId: r.task_id,
         counted: r.counted,
         flagged: r.flagged,
         excluded: r.excluded,
@@ -157,6 +161,43 @@ export const breakdownQuery = (userId: string, weekStart: string) =>
       }));
     },
   });
+
+/** TS-25 (#254): the person's work note per day of the week, by local day. */
+export const dayNotesQuery = (userId: string, weekStart: string) =>
+  queryOptions({
+    queryKey: ["timesheet-day-notes", userId, weekStart],
+    queryFn: async (): Promise<Map<string, string>> => {
+      const days = weekDays(weekStart);
+      const { data, error } = await supabase
+        .from("timesheet_day_notes")
+        .select("day, note")
+        .eq("user_id", userId)
+        .gte("day", days[0] ?? weekStart)
+        .lte("day", days[6] ?? weekStart);
+      if (error) throw error;
+      return new Map(data.map((n) => [n.day, n.note]));
+    },
+  });
+
+/**
+ * Sets (or with an empty note clears) a person's note for a day. The employee writes their
+ * own on a draft or returned week; a manager's change needs a reason.
+ */
+export async function saveDayNote(
+  userId: string,
+  day: string,
+  note: string | null,
+  reason?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("save_day_note", {
+    p_user_id: userId,
+    p_day: day,
+    // Generated types don't mark function arguments nullable; null clears the note.
+    p_note: note as string,
+    ...(reason ? { p_reason: reason } : {}),
+  });
+  if (error) throw new Error(explain(error.message));
+}
 
 export const flaggedQuery = (userId: string, weekStart: string) =>
   queryOptions({
@@ -179,6 +220,34 @@ export const flaggedQuery = (userId: string, weekStart: string) =>
         excluded: r.excluded,
         excludedReason: r.excluded_reason,
         decision: r.decision === "keep" || r.decision === "exclude" ? r.decision : null,
+      }));
+    },
+  });
+
+/**
+ * The missed check-ins of a week with the employee's quick pick and remark (#252), read
+ * through row-level security (the employee, their manager and delegate, admins). The
+ * week's days are the employee-local ones, as for its segments.
+ */
+export const weekMissesQuery = (userId: string, weekStart: string, zone: string) =>
+  queryOptions({
+    queryKey: ["timesheet-misses", userId, weekStart, zone],
+    queryFn: async (): Promise<WeekMiss[]> => {
+      const from = DateTime.fromISO(weekStart, { zone });
+      const { data, error } = await supabase
+        .from("checkin_events")
+        .select("id, scheduled_at, shown_at, missed_reason_kind, missed_reason")
+        .eq("user_id", userId)
+        .eq("outcome", "miss")
+        .gte("scheduled_at", from.toUTC().toISO() ?? "")
+        .lt("scheduled_at", from.plus({ days: 7 }).toUTC().toISO() ?? "")
+        .order("scheduled_at");
+      if (error) throw error;
+      return data.map((c) => ({
+        id: c.id,
+        at: c.shown_at ?? c.scheduled_at,
+        kind: c.missed_reason_kind,
+        remark: c.missed_reason,
       }));
     },
   });
@@ -220,7 +289,7 @@ export const editsQuery = (timesheetId: string) =>
     queryFn: async (): Promise<SheetEdit[]> => {
       const { data, error } = await supabase
         .from("timesheet_edits")
-        .select("id, kind, start_at, end_at, project_id, reason, editor_id, created_at")
+        .select("id, kind, start_at, end_at, project_id, task_id, reason, editor_id, created_at")
         .eq("timesheet_id", timesheetId)
         .neq("kind", "keep")
         .order("seq");
@@ -231,6 +300,7 @@ export const editsQuery = (timesheetId: string) =>
         startAt: e.start_at,
         endAt: e.end_at,
         projectId: e.project_id,
+        taskId: e.task_id,
         reason: e.reason,
         editorId: e.editor_id,
         createdAt: e.created_at,
@@ -370,6 +440,8 @@ export interface SegmentEdit {
   endAt: string;
   /** For 'project': the new project; null is Unassigned. */
   projectId?: string | null;
+  /** For 'project': the project's task (#254); null or left out is none. */
+  taskId?: string | null;
   reason?: string;
 }
 
@@ -382,6 +454,7 @@ export async function editSegment(e: SegmentEdit): Promise<void> {
     // Generated types don't mark function arguments nullable.
     p_project_id: (e.projectId ?? null) as string,
     p_reason: (e.reason ?? null) as string,
+    p_task_id: (e.taskId ?? null) as string,
   });
   if (error) throw new Error(explain(error.message));
 }
@@ -391,6 +464,8 @@ export async function reassignMyTime(r: {
   startAt: string;
   endAt: string;
   projectId: string | null;
+  /** The project's task (#254); null or left out is none. */
+  taskId?: string | null;
   reason?: string;
 }): Promise<void> {
   const { error } = await supabase.rpc("reassign_my_time", {
@@ -399,6 +474,7 @@ export async function reassignMyTime(r: {
     // Generated types don't mark function arguments nullable.
     p_project_id: r.projectId as string,
     p_reason: (r.reason?.trim() || null) as string,
+    p_task_id: (r.taskId ?? null) as string,
   });
   if (error) throw new Error(explain(error.message));
 }
@@ -416,6 +492,7 @@ export async function adjustTime(
     p_project_id: r.project_id as string,
     p_reason: r.reason,
     p_entry_id: entryId as string,
+    p_task_id: (r.task_id ?? null) as string,
   });
   if (error) throw new Error(explain(error.message));
 }
@@ -453,6 +530,9 @@ const messages: Record<string, string> = {
   overlaps_clocked_time: "That overlaps time the person was clocked in.",
   overlaps_manual_entry: "That overlaps another manual entry.",
   day_locked: "That day is in an approved timesheet.",
+  task_not_allowed: "That task isn't available for this project.",
+  invalid_note: "A note can be at most 2,000 characters.",
+  invalid_day: "Choose a day.",
 };
 
 export function explain(code: string): string {

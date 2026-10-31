@@ -3,7 +3,9 @@
 // edits with reasons, then approves or returns it; the employee sees the same week
 // read-only with the manager's edits and reasons, and submits it. While the week is a
 // draft (or returned) the employee also tags Unassigned time and changes the project of
-// a day (#139, PRJ-04); the manager sees those as the employee's edits.
+// a day (#139, PRJ-04); the manager sees those as the employee's edits. #254: time shows
+// project and task (PRJ-05), and each day has a "work done" note (TS-25) that the employee
+// writes on a draft or returned week and the manager reads while reviewing.
 import { ReturnComment, TimesheetReason } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
@@ -12,11 +14,13 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { viewerZone } from "../../lib/time";
-import { dayEntriesQuery, type ManualEntry } from "../day/entryData";
-import { projectsQuery } from "../projects/projectData";
+import { dayEntriesQuery, type ManualEntry, updateEntryDetails } from "../day/entryData";
+import { assignmentLabel, projectsQuery, tasksQuery } from "../projects/projectData";
 import {
   AdjustDialog,
   type AdjustTarget,
+  DayNoteDialog,
+  EntryDetailsDialog,
   NoteDialog,
   ProjectDialog,
   ReassignDialog,
@@ -28,13 +32,14 @@ import { ProjectTime } from "./ProjectTime";
 import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
 import { EditsList, WeekEntries } from "./SheetPanels";
 import { lateDataSummary, SheetStatusChip } from "./SheetStatusChip";
-import { formatDuration, projectSplit, summarizeWeek } from "./summary";
+import { formatDuration, projectSplit, summarizeWeek, taskSplit } from "./summary";
 import {
   adjustTime,
   approveWeek,
   breakdownQuery,
   canDecideQuery,
   canReopenQuery,
+  dayNotesQuery,
   editSegment,
   editsQuery,
   type FlaggedSegment,
@@ -44,9 +49,11 @@ import {
   rebuildWeek,
   reopenWeek,
   returnWeek,
+  saveDayNote,
   segmentsQuery,
   submitWeek,
   timesheetQuery,
+  weekMissesQuery,
   weekStartQuery,
 } from "./timesheetData";
 import { addWeeks, weekDays, weekLabel, weekStartOf } from "./weeks";
@@ -76,6 +83,10 @@ export function TimesheetPage() {
   const projectRef = useRef<HTMLDialogElement>(null);
   const adjustRef = useRef<HTMLDialogElement>(null);
   const reassignRef = useRef<HTMLDialogElement>(null);
+  const dayNoteRef = useRef<HTMLDialogElement>(null);
+  const entryDetailsRef = useRef<HTMLDialogElement>(null);
+  const [dayNoteTarget, setDayNoteTarget] = useState<{ day: string; note: string } | null>(null);
+  const [entryDetailsTarget, setEntryDetailsTarget] = useState<ManualEntry | null>(null);
   const [projectTarget, setProjectTarget] = useState<FlaggedSegment | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
   const [reassignTarget, setReassignTarget] = useState<ReassignTarget | null>(null);
@@ -90,6 +101,12 @@ export function TimesheetPage() {
   useEffect(() => {
     if (reassignTarget && !reassignRef.current?.open) reassignRef.current?.showModal();
   }, [reassignTarget]);
+  useEffect(() => {
+    if (dayNoteTarget && !dayNoteRef.current?.open) dayNoteRef.current?.showModal();
+  }, [dayNoteTarget]);
+  useEffect(() => {
+    if (entryDetailsTarget && !entryDetailsRef.current?.open) entryDetailsRef.current?.showModal();
+  }, [entryDetailsTarget]);
 
   const person = useQuery({
     queryKey: ["timesheet-person", userId],
@@ -135,6 +152,11 @@ export function TimesheetPage() {
   const edits = useQuery({ ...editsQuery(sheet.data?.id ?? ""), enabled: !!sheet.data });
   const canDecideQ = useQuery(canDecideQuery(userId));
   const canReopenQ = useQuery(canReopenQuery(userId));
+  // The week's misses with the employee's reason, next to the flagged time (#252).
+  const misses = useQuery({
+    ...weekMissesQuery(userId, week, zone),
+    enabled: ready && canDecideQ.data === true,
+  });
   const weekFrom = week ? DateTime.fromISO(week, { zone }) : null;
   const entries = useQuery({
     ...dayEntriesQuery(
@@ -145,6 +167,8 @@ export function TimesheetPage() {
     enabled: ready,
   });
   const projects = useQuery(projectsQuery);
+  const tasks = useQuery(tasksQuery);
+  const dayNotes = useQuery({ ...dayNotesQuery(userId, week), enabled: ready });
   const editorIds = [...new Set((edits.data ?? []).map((e) => e.editorId).filter((id) => !!id))];
   const editors = useQuery({
     queryKey: ["timesheet-editors", editorIds],
@@ -168,6 +192,7 @@ export function TimesheetPage() {
         ["timesheet-segments", userId],
         ["timesheet-edits"],
         ["manual-entries", userId],
+        ["timesheet-day-notes", userId],
         ["timesheet-list"],
       ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     );
@@ -219,6 +244,10 @@ export function TimesheetPage() {
   color.set(null, "var(--line2)");
   const projectName = (id: string | null) =>
     id ? ((projects.data ?? []).find((p) => p.id === id)?.name ?? "Project") : "Unassigned";
+  const taskName = (id: string | null) =>
+    id ? ((tasks.data ?? []).find((t) => t.id === id)?.name ?? "Task") : null;
+  const assignment = (projectId: string | null, taskId: string | null) =>
+    assignmentLabel(projectName(projectId), taskName(taskId));
   const editorName = (id: string | null) =>
     id === userId
       ? isSelf
@@ -239,10 +268,15 @@ export function TimesheetPage() {
     ? "Ready to approve"
     : `Decide on ${blockers.join(" and ")} first`;
   const editable = canDecide && status !== undefined && status !== "approved";
-  const loadError = sheet.error ?? breakdown.error ?? flagged.error ?? entries.error;
+  const loadError =
+    sheet.error ?? breakdown.error ?? flagged.error ?? entries.error ?? dayNotes.error;
   const canSubmit = isSelf && (status === "draft" || status === "returned") && week <= today;
   const listPath = profile.role === "employee" ? myTimesheetPath : timesheetsPath;
   const canReassign = canReassignWeek(isSelf, status);
+  // TS-25: the employee writes notes while the week is theirs to change (the database
+  // checks again); everyone else reads them.
+  const canEditNotes = isSelf && (status === "draft" || status === "returned");
+  const notes = dayNotes.data ?? new Map<string, string>();
   const myProjects = allowedProjects(projects.data ?? [], profile.id);
 
   const openReassign = setReassignTarget;
@@ -381,7 +415,7 @@ export function TimesheetPage() {
       )}
 
       <div className="overflow-x-auto rounded-xl border border-line bg-panel">
-        <table className="w-full min-w-[760px] border-collapse text-[13.5px]">
+        <table className="w-full min-w-[960px] border-collapse text-[13.5px]">
           <thead className="bg-sunk text-left text-xs font-medium text-ink3">
             <tr className="h-10 border-b border-line">
               <th scope="col" className="px-5 font-medium">
@@ -399,8 +433,11 @@ export function TimesheetPage() {
               <th scope="col" className="font-medium">
                 Manual
               </th>
-              <th scope="col" className="pr-5 font-medium">
+              <th scope="col" className="font-medium">
                 Project split
+              </th>
+              <th scope="col" className="pr-5 pl-4 font-medium">
+                Work done
               </th>
             </tr>
           </thead>
@@ -408,6 +445,7 @@ export function TimesheetPage() {
             {summary.days.map((d) => {
               const parts = projectSplit(d.byProject);
               const total = parts.reduce((a, p) => a + p.seconds, 0);
+              const note = notes.get(d.day) ?? "";
               return (
                 <tr key={d.day} className="min-h-14 border-b border-line align-middle">
                   <th scope="row" className="px-5 py-3 text-left font-medium whitespace-nowrap">
@@ -430,7 +468,7 @@ export function TimesheetPage() {
                   <td className="text-[13px] text-ink2">
                     {d.manual > 0 ? formatDuration(d.manual) : "—"}
                   </td>
-                  <td className="py-2 pr-5">
+                  <td className="py-2">
                     {total > 0 && (
                       <div className="flex flex-col gap-1.5">
                         <div
@@ -449,8 +487,11 @@ export function TimesheetPage() {
                           ))}
                         </div>
                         <span className="text-xs text-ink2">
-                          {parts
-                            .map((p) => `${projectName(p.projectId)} ${formatDuration(p.seconds)}`)
+                          {taskSplit(d.byTask)
+                            .map(
+                              (p) =>
+                                `${assignment(p.projectId, p.taskId)} ${formatDuration(p.seconds)}`,
+                            )
                             .join(" · ")}
                         </span>
                         {canReassign && (
@@ -465,6 +506,25 @@ export function TimesheetPage() {
                         )}
                       </div>
                     )}
+                  </td>
+                  <td className="max-w-[280px] py-2 pr-5 pl-4">
+                    <div className="flex flex-col gap-1.5">
+                      {note ? (
+                        <p className="line-clamp-3 text-xs whitespace-pre-line text-ink2">{note}</p>
+                      ) : (
+                        !canEditNotes && <span className="text-xs text-ink3">—</span>
+                      )}
+                      {canEditNotes && d.day <= today && (
+                        <Button
+                          variant="secondary"
+                          className="h-8 self-start px-3 text-[12.5px]"
+                          aria-label={`${note ? "Edit" : "Add"} work note for ${d.label}`}
+                          onClick={() => setDayNoteTarget({ day: d.day, note })}
+                        >
+                          {note ? "Edit note" : "Add note"}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -485,8 +545,8 @@ export function TimesheetPage() {
               <td className={mono}>{formatDuration(summary.total.flagged)}</td>
               <td className={mono}>{formatDuration(summary.total.breakTime)}</td>
               <td className={mono}>{formatDuration(summary.total.manual)}</td>
-              <td className="py-3 pr-5">
-                <ul className="flex flex-wrap gap-x-3.5 gap-y-1 text-[12.5px] font-medium">
+              <td className="py-3" colSpan={2}>
+                <ul className="flex flex-wrap gap-x-3.5 gap-y-1 pr-5 text-[12.5px] font-medium">
                   {split.map((p) => (
                     <li key={p.projectId ?? "none"} className="flex items-center gap-1.5">
                       <span
@@ -512,6 +572,7 @@ export function TimesheetPage() {
             employeeName={name}
             zone={zone}
             segments={flaggedList}
+            misses={misses.data ?? []}
             projectName={projectName}
             editable={editable}
             onChanged={refresh}
@@ -534,6 +595,7 @@ export function TimesheetPage() {
               zone={zone}
               editorName={editorName}
               projectName={projectName}
+              taskName={taskName}
               viewerIsEmployee={isSelf}
             />
           </div>
@@ -544,8 +606,11 @@ export function TimesheetPage() {
             zone={zone}
             employeeName={name}
             projectName={projectName}
+            taskName={taskName}
             canDecide={canDecide && status !== "approved"}
             canAdjust={editable}
+            canEditDetails={canEditNotes}
+            onEditDetails={setEntryDetailsTarget}
             onChanged={refresh}
             onAdd={() => {
               const day = DateTime.fromISO(days.includes(today) ? today : (days[0] ?? week), {
@@ -556,10 +621,17 @@ export function TimesheetPage() {
                 start: day.set({ hour: 9 }).toISO() ?? "",
                 end: day.set({ hour: 10 }).toISO() ?? "",
                 projectId: null,
+                taskId: null,
               });
             }}
             onAdjust={(e: ManualEntry) =>
-              openAdjust({ entryId: e.id, start: e.startAt, end: e.endAt, projectId: e.projectId })
+              openAdjust({
+                entryId: e.id,
+                start: e.startAt,
+                end: e.endAt,
+                projectId: e.projectId,
+                taskId: e.taskId,
+              })
             }
           />
           {canDecide && (
@@ -569,6 +641,7 @@ export function TimesheetPage() {
               zone={zone}
               editorName={editorName}
               projectName={projectName}
+              taskName={taskName}
             />
           )}
           {canDecide && (
@@ -576,7 +649,8 @@ export function TimesheetPage() {
               <h2 className="text-sm font-semibold text-ink">What {first} will see</h2>
               <p>
                 Each exclusion with your reason, your decision on the manual entry, and any comment
-                you add when returning the week.
+                you add when returning the week. Their work notes are theirs to write; you read them
+                here.
               </p>
             </section>
           )}
@@ -603,11 +677,38 @@ export function TimesheetPage() {
         />
       )}
 
+      {canEditNotes && (
+        <>
+          <DayNoteDialog
+            dialogRef={dayNoteRef}
+            target={dayNoteTarget}
+            onClose={() => setDayNoteTarget(null)}
+            onSubmit={async (day, note) => {
+              await saveDayNote(userId, day, note);
+              await refresh();
+            }}
+          />
+          <EntryDetailsDialog
+            dialogRef={entryDetailsRef}
+            target={entryDetailsTarget}
+            tasks={tasks.data ?? []}
+            projectName={projectName}
+            zone={zone}
+            onClose={() => setEntryDetailsTarget(null)}
+            onSubmit={async (entry, taskId, note) => {
+              await updateEntryDetails(entry.id, taskId, note);
+              await refreshAfterRebuild();
+            }}
+          />
+        </>
+      )}
+
       {canReassign && (
         <ReassignDialog
           dialogRef={reassignRef}
           zone={zone}
           projects={myProjects}
+          tasks={tasks.data ?? []}
           target={reassignTarget}
           onClose={() => setReassignTarget(null)}
           onSubmit={async (r) => {
@@ -615,6 +716,7 @@ export function TimesheetPage() {
               startAt: r.startAt,
               endAt: r.endAt,
               projectId: r.projectId,
+              taskId: r.taskId,
               reason: r.note,
             });
             await refreshAfterRebuild();
@@ -640,10 +742,11 @@ export function TimesheetPage() {
           <ProjectDialog
             dialogRef={projectRef}
             projects={projects.data ?? []}
+            tasks={tasks.data ?? []}
             target={projectTarget}
             schema={TimesheetReason}
             onClose={() => setProjectTarget(null)}
-            onSubmit={async (projectId, reason) => {
+            onSubmit={async (projectId, taskId, reason) => {
               if (!projectTarget) return;
               await editSegment({
                 timesheetId: sheet.data.id,
@@ -651,6 +754,7 @@ export function TimesheetPage() {
                 startAt: projectTarget.startAt,
                 endAt: projectTarget.endAt,
                 projectId,
+                taskId,
                 reason,
               });
               await refreshAfterRebuild();
@@ -662,6 +766,7 @@ export function TimesheetPage() {
             days={days}
             target={adjustTarget}
             projects={projects.data ?? []}
+            tasks={tasks.data ?? []}
             schema={TimesheetReason}
             onClose={() => setAdjustTarget(null)}
             onSubmit={async (r, entryId) => {

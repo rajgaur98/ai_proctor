@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ManualEntryRequest } from "./manualEntries";
+import { ManualEntryRequest, WorkNote } from "./manualEntries";
 
 const base = {
   start_at: "2026-03-16T14:00:00-07:00",
@@ -27,5 +27,28 @@ describe("ManualEntryRequest", () => {
   it("needs a reason of up to 500 characters", () => {
     expect(ManualEntryRequest.safeParse({ ...base, reason: "   " }).success).toBe(false);
     expect(ManualEntryRequest.safeParse({ ...base, reason: "x".repeat(501) }).success).toBe(false);
+  });
+
+  // #254: a task of the project and a work note, both optional.
+  it("takes a task with a project and a work note of up to 2,000 characters", () => {
+    const task_id = "00000000-0000-4000-8000-0000000000d1";
+    expect(ManualEntryRequest.safeParse({ ...base, task_id, note: "Wireframes" }).success).toBe(
+      true,
+    );
+    expect(ManualEntryRequest.safeParse({ ...base, project_id: null, task_id }).success).toBe(
+      false,
+    );
+    expect(ManualEntryRequest.safeParse({ ...base, note: "x".repeat(2001) }).success).toBe(false);
+    const parsed = ManualEntryRequest.safeParse({ ...base, note: "  Wireframes  " });
+    expect(parsed.success && parsed.data.note).toBe("Wireframes");
+  });
+});
+
+describe("WorkNote", () => {
+  it("trims, turns empty into no note, and stops at 2,000 characters", () => {
+    expect(WorkNote.parse("  Sprint planning ")).toBe("Sprint planning");
+    expect(WorkNote.parse("   ")).toBeNull();
+    expect(WorkNote.safeParse("x".repeat(2000)).success).toBe(true);
+    expect(WorkNote.safeParse("x".repeat(2001)).success).toBe(false);
   });
 });
