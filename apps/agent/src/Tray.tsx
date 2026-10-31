@@ -1,7 +1,13 @@
-// Signed-in tray popover (#37, EMP-01): clock in/out, break, pause, project, the
-// missed check-in reason and permission warnings. Status and timesheets come from the
-// Rust core; this only displays them and sends commands.
-import type { AgentStatus, CommandResult, MissedCheckin, ProjectRef } from "@ai-proctor/contracts";
+// Signed-in tray popover (#37, EMP-01): clock in/out, break, pause, project and task
+// (#268), the missed check-in reason and permission warnings. Status and timesheets come
+// from the Rust core; this only displays them and sends commands.
+import type {
+  AgentStatus,
+  CommandResult,
+  MissedCheckin,
+  ProjectRef,
+  TaskRef,
+} from "@ai-proctor/contracts";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { invoke } from "./ipc";
 import {
@@ -27,6 +33,7 @@ import {
   projectLabel,
   secondsSince,
   secondsUntil,
+  taskChoices,
   trayView,
 } from "./trayModel";
 import "./tray.css";
@@ -168,6 +175,33 @@ function ProjectSelect({
         {projects.map((p) => (
           <option key={p.id} value={p.id}>
             {projectLabel(p)}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
+function TaskSelect({
+  id,
+  value,
+  tasks,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  value: string;
+  tasks: TaskRef[];
+  onChange: (taskId: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <span className="t-select">
+      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        <option value="">No task</option>
+        {tasks.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
           </option>
         ))}
       </select>
@@ -449,7 +483,7 @@ function Working({
   );
 }
 
-/** Project (with Switch) and the last check-in. */
+/** Project (with Switch), its task when it has tasks (#268), and the last check-in. */
 function InfoRows({ status }: { status: AgentStatus }) {
   const [switching, setSwitching] = useState(false);
   const change = useCommand();
@@ -504,6 +538,8 @@ function InfoRows({ status }: { status: AgentStatus }) {
           <InlineError message={change.error} />
         </div>
       )}
+      {/* #268 (PRJ-05): only when the current project has tasks. */}
+      {!switching && taskChoices(status).length > 0 && <TaskLine status={status} />}
       {last && (
         <div className="line">
           <span className="key">Last check-in</span>
@@ -512,6 +548,62 @@ function InfoRows({ status }: { status: AgentStatus }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** The current project's task, with Change: same project, new task (#268, PRJ-05). */
+function TaskLine({ status }: { status: AgentStatus }) {
+  const [changing, setChanging] = useState(false);
+  const change = useCommand();
+
+  async function changeTo(taskId: string) {
+    if (await change.run(() => invoke("switch_task", { task_id: taskId || null }))) {
+      setChanging(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="line">
+        {changing ? (
+          <>
+            <label className="key" htmlFor="switch-task">
+              Task
+            </label>
+            <TaskSelect
+              id="switch-task"
+              value={status.task?.id ?? ""}
+              tasks={taskChoices(status)}
+              onChange={changeTo}
+              disabled={change.busy}
+            />
+            <button
+              type="button"
+              className="btn btn-text"
+              onClick={() => {
+                setChanging(false);
+                change.reset();
+              }}
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="key">Task</span>
+            <span className="val">{status.task ? status.task.name : "No task"}</span>
+            <button type="button" className="btn btn-text" onClick={() => setChanging(true)}>
+              Change
+            </button>
+          </>
+        )}
+      </div>
+      {change.error && (
+        <div className="line">
+          <InlineError message={change.error} />
+        </div>
+      )}
+    </>
   );
 }
 

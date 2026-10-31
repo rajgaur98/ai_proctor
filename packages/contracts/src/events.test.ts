@@ -104,6 +104,20 @@ describe("AgentEvent", () => {
     expect(clockOut("logout")).toBe(false);
   });
 
+  it("accepts a project switch with or without a task (#268, PRJ-05)", () => {
+    const projectSwitch = (payload: object) =>
+      AgentEvent.safeParse({ ...base, type: "project_switch", payload }).success;
+    const project = "0192f0c4-7d2e-7b31-9a40-3f1c2b6d8e22";
+    const task = "0192f0c4-7d2e-7b31-9a40-3f1c2b6d8e33";
+    // An older agent sends the project only.
+    expect(projectSwitch({ project_id: project })).toBe(true);
+    expect(projectSwitch({ project_id: null })).toBe(true);
+    expect(projectSwitch({ project_id: project, task_id: task })).toBe(true);
+    expect(projectSwitch({ project_id: project, task_id: null })).toBe(true);
+    expect(projectSwitch({ project_id: project, task_id: "Design" })).toBe(false);
+    expect(projectSwitch({ task_id: task })).toBe(false);
+  });
+
   it("rejects a pause preset other than 5, 10 or 15 minutes (BRK-03)", () => {
     expect(() =>
       AgentEvent.parse({ ...base, type: "pause_start", payload: { planned_min: 7 } }),

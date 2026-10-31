@@ -16,6 +16,7 @@ const status: AgentStatus = {
   pause_used_today_s: 0,
   pause_daily_cap_s: 3600,
   project: null,
+  task: null,
   projects: [],
   last_checkin: null,
   missed_checkin: null,
@@ -35,10 +36,16 @@ const fullStatus: AgentStatus = {
   pause_planned_min: 15,
   worked_today_s: 18720,
   pause_used_today_s: 900,
-  project: { id: "p1", name: "Acme Redesign", client: "Acme" },
+  project: {
+    id: "p1",
+    name: "Acme Redesign",
+    client: "Acme",
+    tasks: [{ id: "t1", name: "Design" }],
+  },
+  task: { id: "t1", name: "Design" },
   projects: [
-    { id: "p1", name: "Acme Redesign", client: "Acme" },
-    { id: "p2", name: "Internal", client: null },
+    { id: "p1", name: "Acme Redesign", client: "Acme", tasks: [{ id: "t1", name: "Design" }] },
+    { id: "p2", name: "Internal", client: null, tasks: [] },
   ],
   last_checkin: { at: "2026-10-07T05:12:00Z", outcome: "pass" },
   missed_checkin: { id: "c1", at: "2026-10-07T08:33:00Z" },
@@ -65,6 +72,13 @@ describe("invoke", () => {
   it("rejects a status that is missing a new field", async () => {
     const { projects: _projects, ...partial } = fullStatus;
     await expect(invoke("get_status", {}, async () => partial)).rejects.toThrow();
+  });
+
+  it("rejects a project without its tasks list (#268)", async () => {
+    const projects = [{ id: "p2", name: "Internal", client: null }];
+    await expect(
+      invoke("get_status", {}, async () => ({ ...fullStatus, projects })),
+    ).rejects.toThrow();
   });
 
   it("rejects a reply that drifted from the contract", async () => {

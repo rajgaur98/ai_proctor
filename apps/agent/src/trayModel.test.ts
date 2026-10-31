@@ -16,6 +16,7 @@ import {
   projectLabel,
   secondsSince,
   secondsUntil,
+  taskChoices,
   trayView,
 } from "./trayModel";
 
@@ -33,6 +34,7 @@ const base: AgentStatus = {
   pause_used_today_s: 0,
   pause_daily_cap_s: 3600,
   project: null,
+  task: null,
   projects: [],
   last_checkin: null,
   missed_checkin: null,
@@ -216,8 +218,10 @@ describe("small helpers", () => {
     expect(checkinOutcomeText("failed")).toBe("failed");
   });
   it("prefixes the client when there is one", () => {
-    expect(projectLabel({ id: "p1", name: "Redesign", client: "Acme" })).toBe("Acme · Redesign");
-    expect(projectLabel({ id: "p2", name: "Internal", client: null })).toBe("Internal");
+    expect(projectLabel({ id: "p1", name: "Redesign", client: "Acme", tasks: [] })).toBe(
+      "Acme · Redesign",
+    );
+    expect(projectLabel({ id: "p2", name: "Internal", client: null, tasks: [] })).toBe("Internal");
   });
   it("turns blank text into null", () => {
     expect(blankToNull("")).toBeNull();
@@ -247,5 +251,20 @@ describe("noticePrompt", () => {
     const status = { ...base, notice: { version: 2, acknowledged: false, required: false } };
     expect(trayView(status).notice).toBe("review");
     expect(trayView(base).notice).toBeNull();
+  });
+});
+
+describe("taskChoices", () => {
+  const design = { id: "t1", name: "Design" };
+  const build = { id: "t2", name: "Build" };
+  it("offers the current project's tasks in order (#268)", () => {
+    const project = { id: "p1", name: "Redesign", client: null, tasks: [design, build] };
+    expect(taskChoices({ project })).toEqual([design, build]);
+  });
+  it("offers none without a project or when the project has no tasks", () => {
+    expect(taskChoices({ project: null })).toEqual([]);
+    expect(
+      taskChoices({ project: { id: "p2", name: "Internal", client: null, tasks: [] } }),
+    ).toEqual([]);
   });
 });

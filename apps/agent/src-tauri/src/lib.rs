@@ -19,11 +19,11 @@ use agent_core::auth::{AuthError, REDIRECT_URL};
 use agent_core::capture::{self, CapturePolicy};
 use agent_core::checkin::{deferred_payload, Card, CardPolicy, ClickResult, Finished};
 use agent_core::clock::{Clock, SystemClock};
-use agent_core::config::ProjectConfig;
+use agent_core::config::{ProjectConfig, TaskConfig};
 use agent_core::contracts::{
     AgentStatus, CardChallenge, CardClickResult, CardLook, CheckinOutcome, CommandResult,
     LastCheckin, MissedCheckin, NoticeContent, OnboardingPlatform, OnboardingState, PermissionKind,
-    Permissions, ProjectRef, ShiftState, TestCaptureResult,
+    Permissions, ProjectRef, ShiftState, TaskRef, TestCaptureResult,
 };
 use agent_core::enrollment::Refusal;
 use agent_core::frame_hash::{self, FrameHistory};
@@ -340,11 +340,19 @@ impl AgentState {
         let snap = session.snapshot();
         let today = session.today();
         let iso = |t: chrono::DateTime<chrono::Utc>| t.to_rfc3339();
+        let task_ref = |t: &TaskConfig| TaskRef {
+            id: t.id.to_string(),
+            name: t.name.clone(),
+        };
         let project_ref = |p: &ProjectConfig| ProjectRef {
             id: p.id.to_string(),
             name: p.name.clone(),
             client: p.client.clone(),
+            tasks: p.tasks.iter().map(task_ref).collect(),
         };
+        let current = snap
+            .project_id
+            .and_then(|id| projects.iter().find(|p| p.id == id));
         let today_date = self.clock.now().date_naive();
         let tray = agent_core::status::Tray {
             account_email: email,
@@ -355,10 +363,12 @@ impl AgentState {
             worked_today_s: today.worked_s,
             pause_used_today_s: today.pause_s,
             pause_daily_cap_s: *self.pause_daily_cap_s.lock().unwrap(),
-            project: snap
-                .project_id
-                .and_then(|id| projects.iter().find(|p| p.id == id))
-                .map(project_ref),
+            project: current.map(project_ref),
+            // #268: shown only while it is still one of the project's tasks.
+            task: current
+                .zip(snap.task_id)
+                .and_then(|(p, id)| p.tasks.iter().find(|t| t.id == id))
+                .map(task_ref),
             projects: projects.iter().map(project_ref).collect(),
             last_checkin: self
                 .last_checkin
@@ -1212,6 +1222,29 @@ impl AgentState {
     ) -> Result<(), String> {
         self.act_checked(what, f).map_err(|error| error.to_string())
     }
+
+    /// #268 (PRJ-05): the tray's task picker. The task must be one of the current
+    /// project's tasks in the config; none clears it. The project stays as it is.
+    fn switch_task(&self, task_id: Option<&str>) -> Result<(), String> {
+        let unknown = || "That task isn't available.".to_owned();
+        let task = task_id
+            .map(|t| uuid::Uuid::parse_str(t).map_err(|_| unknown()))
+            .transpose()?;
+        if let Some(task) = task {
+            let project = self.session.lock().unwrap().project_id();
+            let allowed = project.is_some_and(|id| {
+                self.projects
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p.id == id && p.has_task(task))
+            });
+            if !allowed {
+                return Err(unknown());
+            }
+        }
+        self.try_act("switch task", |s| s.switch_task(task))
+    }
 }
 
 /// Used when the outbox is unavailable: every transition fails, so nothing is
@@ -1411,6 +1444,17 @@ fn pause_start(app: AppHandle, minutes: i64, reason: Option<String>) -> CommandR
 #[tauri::command(rename_all = "snake_case")]
 fn pause_end(app: AppHandle) -> CommandResult {
     tray_act(&app, "resume", |s| s.end_pause())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn switch_task(app: AppHandle, task_id: Option<String>) -> CommandResult {
+    let state = app.state::<AgentState>();
+    let result = state.switch_task(task_id.as_deref());
+    let _ = app.emit_to(POPOVER, EVENT_STATUS_CHANGED, state.status());
+    CommandResult {
+        ok: result.is_ok(),
+        error: result.err(),
+    }
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -1760,6 +1804,7 @@ pub fn run() {
             pause_start,
             pause_end,
             switch_project,
+            switch_task,
             set_miss_reason,
             open_link,
             get_notice,
@@ -3583,6 +3628,104 @@ mod tests {
         );
         let json = serde_json::to_string(&w.state.status()).unwrap();
         assert!(!json.contains("next"), "never the next check-in time");
+    }
+
+    #[test]
+    fn the_tray_task_picker_switches_the_task_of_the_current_project() {
+        let w = working();
+        let config: agent_core::config::AgentConfig = serde_json::from_value(serde_json::json!({
+            "policy": {},
+            "policy_version": 2,
+            "timezone": "UTC",
+            "shifts": [],
+            "projects": [
+                { "id": "0190f5b0-0000-7000-8000-0000000000f1", "name": "Website revamp", "client": null,
+                  "tasks": [
+                    { "id": "0190f5b0-0000-7000-8000-0000000001a1", "name": "Design", "sort_order": 0 },
+                    { "id": "0190f5b0-0000-7000-8000-0000000001a2", "name": "Build", "sort_order": 1 }
+                  ] },
+                // An older server: no tasks key.
+                { "id": "0190f5b0-0000-7000-8000-0000000000f2", "name": "Internal", "client": null }
+            ]
+        }))
+        .unwrap();
+        w.state.apply_config(&config);
+        let (revamp, internal) = (
+            "0190f5b0-0000-7000-8000-0000000000f1",
+            "0190f5b0-0000-7000-8000-0000000000f2",
+        );
+        let (design, build) = (
+            "0190f5b0-0000-7000-8000-0000000001a1",
+            "0190f5b0-0000-7000-8000-0000000001a2",
+        );
+        let status = w.state.status();
+        assert_eq!(
+            status
+                .projects
+                .iter()
+                .map(|p| p.tasks.iter().map(|t| t.name.as_str()).collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
+            vec![vec!["Design", "Build"], vec![]],
+            "the tray gets each project's tasks in order"
+        );
+        assert!(
+            w.state.switch_task(Some(design)).is_err(),
+            "no project, no task"
+        );
+
+        w.state.act("switch", |s| {
+            s.switch_project(Some(uuid::Uuid::parse_str(revamp).unwrap()))
+        });
+        assert_eq!(w.state.status().task, None);
+        w.state.switch_task(Some(design)).unwrap();
+        assert_eq!(
+            w.state.status().task.map(|t| t.name),
+            Some("Design".to_owned())
+        );
+        w.state.switch_task(Some(build)).unwrap();
+        assert_eq!(
+            w.events("project_switch").last(),
+            Some(&serde_json::json!({ "project_id": revamp, "task_id": build })),
+            "the same project with the new task"
+        );
+        assert_eq!(
+            w.state
+                .switch_task(Some("0190f5b0-0000-7000-8000-0000000001ff")),
+            Err("That task isn't available.".to_owned()),
+            "a task that isn't the project's"
+        );
+        assert!(w.state.switch_task(Some("Design")).is_err(), "not a uuid");
+        assert_eq!(
+            w.state.status().task.map(|t| t.name),
+            Some("Build".to_owned()),
+            "a refused task changes nothing"
+        );
+
+        w.state.switch_task(None).unwrap();
+        assert_eq!(
+            w.events("project_switch").last(),
+            Some(&serde_json::json!({ "project_id": revamp }))
+        );
+        assert_eq!(w.state.status().task, None);
+
+        w.state.switch_task(Some(design)).unwrap();
+        w.state.act("switch", |s| {
+            s.switch_project(Some(uuid::Uuid::parse_str(internal).unwrap()))
+        });
+        assert_eq!(
+            w.state.status().task,
+            None,
+            "a new project starts with no task"
+        );
+        assert!(
+            w.state.switch_task(Some(design)).is_err(),
+            "another project's task is refused"
+        );
+        assert_eq!(
+            w.events("project_switch").len(),
+            6,
+            "refused tasks send nothing"
+        );
     }
 
     #[test]
