@@ -21,6 +21,7 @@ import { CHART_PEOPLE, ReportCharts } from "./ReportCharts";
 import { columnTitle, ReportTable, useReportTable } from "./ReportTable";
 import { type DateRange, presetLabel, presetOf, presetRange, presets, rangeProblem } from "./range";
 import { reportQuery } from "./reportData";
+import { TaskReport } from "./TaskReport";
 
 const NO_ROWS: ReportRow[] = [];
 const fieldClass = "h-10 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px] text-ink";
@@ -34,11 +35,13 @@ export function Reports() {
   // The team filter (DSH-07, #202): the teams the viewer can read.
   const [teamId, setTeamId] = useState("");
   const teams = useQuery(teamsQuery);
+  // By person (the default) or by project and task (#269).
+  const [groupBy, setGroupBy] = useState<"person" | "task">("person");
 
   const problem = rangeProblem(range);
   const report = useQuery({
     ...reportQuery(range.from, range.to, teamId),
-    enabled: startDay.isSuccess && problem === null,
+    enabled: startDay.isSuccess && problem === null && groupBy === "person",
   });
   const rows = report.data?.rows;
   const totals = useMemo(
@@ -109,12 +112,26 @@ export function Reports() {
             ))}
           </select>
         </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="report-group">Group by</Label>
+          <select
+            id="report-group"
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value === "task" ? "task" : "person")}
+            className={fieldClass}
+          >
+            <option value="person">Person</option>
+            <option value="task">Project and task</option>
+          </select>
+        </div>
       </div>
 
       {problem ? (
         <p role="alert" className="text-sm text-warnink">
           {problem}
         </p>
+      ) : groupBy === "task" ? (
+        <TaskReport from={range.from} to={range.to} teamId={teamId} />
       ) : report.error ? (
         <p role="alert" className="text-sm text-warnink">
           Couldn't load the report: {report.error.message}

@@ -1,19 +1,59 @@
 // Add, rename and archive a project's tasks (#254, PRJ-05). A new task is billable when
 // the project is; its flag can be changed per task. Tasks are archived, never deleted, so
-// time already logged keeps its task.
+// time already logged keeps its task. Owners and admins put the active tasks in order with
+// Move up / Move down (#269); the pickers list them that way.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useRouteContext } from "@tanstack/react-router";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { type Project, saveTask, type Task, tasksQuery } from "./projectData";
+import { type Project, reorderTasks, saveTask, type Task, tasksQuery } from "./projectData";
+import { moveId, withOrder } from "./taskOrder";
+
+type Direction = "up" | "down";
 
 export function TasksDialog({ project, onClose }: { project: Project; onClose: () => void }) {
   const id = useId();
+  const { profile } = useRouteContext({ from: "/_app" });
+  const canReorder = profile.role === "owner" || profile.role === "admin";
   const { data, error, isPending } = useQuery(tasksQuery);
   // Active tasks first, each group in the project's order.
   const tasks = (data ?? [])
     .filter((t) => t.projectId === project.id)
     .sort((a, b) => Number(a.archived) - Number(b.archived));
+  const active = tasks.filter((t) => !t.archived);
+  const reorder = useReorder(project.id);
+  // After a move, focus goes back to the moved task's button (or its other one at an end).
+  const list = useRef<HTMLUListElement>(null);
+  const [focusNext, setFocusNext] = useState<{ id: string; dir: Direction; at: number } | null>(
+    null,
+  );
+  const [moved, setMoved] = useState("");
+  const order = active.map((t) => t.id).join();
+
+  // Once the list shows the move (moving a row can take focus off its button).
+  useEffect(() => {
+    if (!focusNext || order.split(",").indexOf(focusNext.id) !== focusNext.at) return;
+    const button = (dir: Direction) =>
+      list.current?.querySelector<HTMLButtonElement>(`[data-move="${focusNext.id}:${dir}"]`);
+    const same = button(focusNext.dir);
+    (same && !same.disabled ? same : button(focusNext.dir === "up" ? "down" : "up"))?.focus();
+    setFocusNext(null);
+  }, [focusNext, order]);
+
+  const move = (task: Task, dir: Direction) => {
+    const ids = moveId(
+      active.map((t) => t.id),
+      task.id,
+      dir === "up" ? -1 : 1,
+    );
+    if (!ids) return;
+    // The whole list goes to the database: the active tasks, then the archived ones.
+    reorder.mutate([...ids, ...tasks.filter((t) => t.archived).map((t) => t.id)]);
+    const at = ids.indexOf(task.id);
+    setFocusNext({ id: task.id, dir, at });
+    setMoved(`Moved ${task.name} ${dir}, to ${at + 1} of ${ids.length}.`);
+  };
 
   return (
     <dialog
@@ -43,11 +83,31 @@ export function TasksDialog({ project, onClose }: { project: Project; onClose: (
         ) : tasks.length === 0 ? (
           <p className="text-sm text-ink2">No tasks yet.</p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul ref={list} className="flex flex-col gap-3">
             {tasks.map((t) => (
-              <TaskRow key={t.id} task={t} />
+              <TaskRow
+                key={t.id}
+                task={t}
+                order={
+                  canReorder && !t.archived
+                    ? {
+                        first: active[0]?.id === t.id,
+                        last: active.at(-1)?.id === t.id,
+                        onMove: (dir) => move(t, dir),
+                      }
+                    : undefined
+                }
+              />
             ))}
           </ul>
+        )}
+        <p aria-live="polite" className="sr-only">
+          {moved}
+        </p>
+        {reorder.error && (
+          <p role="alert" className="text-sm text-warnink">
+            {reorder.error.message}
+          </p>
         )}
         <AddTask project={project} />
         <div className="flex">
@@ -71,7 +131,43 @@ function useSaveTask(onDone?: () => void) {
   });
 }
 
-function TaskRow({ task }: { task: Task }) {
+/**
+ * Saves a project's task order, showing it at once and putting it back if it fails. Moves
+ * may follow each other before the first is saved: each sends the whole list as shown, and
+ * the tasks are read again only once the last one is done.
+ */
+function useReorder(projectId: string) {
+  const queryClient = useQueryClient();
+  const mutationKey = ["reorder-tasks", projectId];
+  return useMutation({
+    mutationKey,
+    mutationFn: (ids: string[]) => reorderTasks(projectId, ids),
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: tasksQuery.queryKey });
+      const before = queryClient.getQueryData(tasksQuery.queryKey);
+      if (before) {
+        queryClient.setQueryData(tasksQuery.queryKey, withOrder(before, projectId, ids));
+      }
+      return { before };
+    },
+    onError: (_error, _ids, context) => {
+      if (context?.before) queryClient.setQueryData(tasksQuery.queryKey, context.before);
+    },
+    onSettled: () => {
+      if (queryClient.isMutating({ mutationKey }) === 1) {
+        return queryClient.invalidateQueries({ queryKey: tasksQuery.queryKey });
+      }
+    },
+  });
+}
+
+interface RowOrder {
+  first: boolean;
+  last: boolean;
+  onMove: (dir: Direction) => void;
+}
+
+function TaskRow({ task, order }: { task: Task; order?: RowOrder | undefined }) {
   const [name, setName] = useState(task.name);
   const save = useSaveTask();
   const base = { id: task.id, projectId: task.projectId, name: task.name, archived: task.archived };
@@ -85,6 +181,24 @@ function TaskRow({ task }: { task: Task }) {
           save.mutate({ ...base, name });
         }}
       >
+        {order && (
+          <div className="flex shrink-0 gap-1">
+            {(["up", "down"] as const).map((dir) => (
+              <Button
+                key={dir}
+                data-move={`${task.id}:${dir}`}
+                type="button"
+                variant="secondary"
+                className="w-11 px-0"
+                aria-label={`Move ${task.name} ${dir}`}
+                disabled={dir === "up" ? order.first : order.last}
+                onClick={() => order.onMove(dir)}
+              >
+                <span aria-hidden="true">{dir === "up" ? "↑" : "↓"}</span>
+              </Button>
+            ))}
+          </div>
+        )}
         <Input
           aria-label={`Name of ${task.name}`}
           required

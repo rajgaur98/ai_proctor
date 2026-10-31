@@ -3,6 +3,7 @@
 import { type DbReport, fromDbReportRow, type ReportRow } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
+import type { TaskSeconds } from "./taskGroups";
 
 export interface Report {
   rows: ReportRow[];
@@ -38,5 +39,28 @@ export const reportQuery = (from: string, to: string, teamId: string) =>
           report.team_median_response_ms === null ? null : Number(report.team_median_response_ms),
         lateGraceMin: Number(report.late_grace_min),
       };
+    },
+  });
+
+/** Worked and flagged seconds per person, project and task, for grouping by task (#269). */
+export const taskReportQuery = (from: string, to: string, teamId: string) =>
+  queryOptions({
+    queryKey: ["report-tasks", from, to, teamId],
+    retry: false,
+    queryFn: async (): Promise<TaskSeconds[]> => {
+      const { data, error } = await supabase.rpc("report_task_rows", {
+        p_from: from,
+        p_to: to,
+        ...(teamId ? { p_team_id: teamId } : {}),
+      });
+      if (error) throw new Error(messages[error.message] ?? error.message);
+      // Generated types don't mark returned columns nullable; project and task may be null.
+      return data.map((r) => ({
+        userId: r.user_id,
+        projectId: (r.project_id as string | null) ?? null,
+        taskId: (r.task_id as string | null) ?? null,
+        workedS: Number(r.worked_s),
+        flaggedS: Number(r.flagged_s),
+      }));
     },
   });

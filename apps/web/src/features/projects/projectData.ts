@@ -113,6 +113,15 @@ export async function saveTask(t: {
   return data;
 }
 
+/** Puts a project's tasks in the order of `taskIds`: all of them, archived ones too (#269). */
+export async function reorderTasks(projectId: string, taskIds: string[]) {
+  const { error } = await supabase.rpc("reorder_tasks", {
+    p_project_id: projectId,
+    p_task_ids: taskIds,
+  });
+  if (error) throw new Error(explain(error.message));
+}
+
 export async function saveClient(id: string | null, name: string, archived: boolean) {
   // Generated types don't mark function arguments nullable; a new client has no id.
   const { error } = await supabase.rpc("save_client", {
@@ -156,6 +165,8 @@ const messages: Record<string, string> = {
   project_not_found: "That project no longer exists.",
   client_not_found: "That client no longer exists.",
   task_not_found: "That task no longer exists.",
+  admin_only: "Only owners and admins can change the order of tasks.",
+  task_list_changed: "The tasks changed while you were ordering them. Try again.",
 };
 
 export function explain(code: string): string {
