@@ -16,12 +16,14 @@ import { CaptureViewer } from "../day/CaptureViewer";
 import { missReason, noFace, outcomeLabel } from "../day/checkinText";
 import { Marker } from "../day/DayTimeline";
 import { rebuildDay } from "../day/dayData";
+import { removedText } from "../day/removedText";
 import { TopApps } from "../day/TopApps";
 import { barSpan, deferralLabel, localDay, ticks } from "../day/timeline";
 import { shiftsQuery } from "../people/ShiftEditor";
 import { projectsQuery } from "../projects/projectData";
 import { timesheetQuery, weekStartQuery } from "../timesheets/timesheetData";
 import { weekStartOf } from "../timesheets/weeks";
+import { DeletePartsDialog } from "./DeleteParts";
 import { exportMyData } from "./exportData";
 import {
   appLabel,
@@ -36,6 +38,7 @@ import {
   workedSeconds,
 } from "./helpers";
 import { MissReasonEdit } from "./MissReasonDialog";
+import { partOptions } from "./partOptions";
 import {
   activityQuery,
   appsAtCheckinsQuery,
@@ -131,6 +134,10 @@ export function MyData() {
             Everything AI Proctor has collected about you. Only you,{" "}
             {managerName ? `${managerName} (your manager) and ` : ""}workspace admins can see it.
             Images are deleted after {retention.data ?? 30} days.
+          </p>
+          <p className="mt-1 text-[13.5px] leading-normal text-ink2">
+            You can delete the captures, apps or sites of any of your check-ins below. To have
+            everything about you deleted, ask a workspace admin for a data deletion request.
           </p>
         </div>
         <div className="ml-auto flex flex-col items-end gap-2">
@@ -486,11 +493,22 @@ function CheckinRow({
   viewed: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const files = filesOf(c.objectKeys);
   const hasCaptures = c.outcome === "pass" && c.objectKeys.length > 0;
   const expired = imagesExpired(c.scheduledAt, retentionDays, now);
   const time = DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone: viewer }).toFormat("HH:mm");
   const seen = viewed.startsWith("Viewed");
+  // #253: what the person removed, and what is left to remove.
+  const screenGone = c.removed.screen !== null;
+  const webcamGone = c.removed.webcam !== null;
+  const filesLeft = (files.screens > 0 && !screenGone) || (files.webcam && !webcamGone);
+  const removedNote = removedText(c.removed, "you", viewer);
+  const options = partOptions(
+    c,
+    expired,
+    DateTime.fromISO(c.respondedAt ?? c.scheduledAt, { zone: viewer }).toFormat("HH:mm"),
+  );
 
   return (
     <li className="border-b border-line last:border-0">
@@ -506,7 +524,12 @@ function CheckinRow({
                 : outcomeLabel[c.outcome]}
           </span>
         </div>
-        {hasCaptures ? (
+        {hasCaptures && !filesLeft ? (
+          <span className="flex gap-1.5">
+            <Thumb label="removed" wide present={false} gone={files.screens > 0} />
+            <Thumb label="removed" present={false} gone={files.webcam} />
+          </span>
+        ) : hasCaptures ? (
           <button
             type="button"
             aria-expanded={open}
@@ -523,9 +546,14 @@ function CheckinRow({
                     : "screenshot"
               }
               wide
-              present={files.screens > 0}
+              present={files.screens > 0 && !screenGone}
+              gone={files.screens > 0 && screenGone}
             />
-            <Thumb label={expired ? "deleted" : "webcam"} present={files.webcam} />
+            <Thumb
+              label={expired ? "deleted" : "webcam"}
+              present={files.webcam && !webcamGone}
+              gone={files.webcam && webcamGone}
+            />
           </button>
         ) : (
           <span className="text-[12.5px] text-ink3">
@@ -540,9 +568,22 @@ function CheckinRow({
           </span>
         )}
         <div className="flex min-w-[140px] flex-col gap-0.5 text-[12.5px] text-ink2">
-          <span className="font-medium text-ink">{app ?? "App not recorded"}</span>
+          <span className="font-medium text-ink">
+            {c.removed.apps !== null ? "Apps removed" : (app ?? "App not recorded")}
+          </span>
           <span>{project}</span>
         </div>
+        {removedNote && <span className="text-[12.5px] text-ink2">{removedNote}</span>}
+        {options.length > 0 && (
+          <Button
+            variant="secondary"
+            className="h-9"
+            aria-label={`Delete from the ${time} check-in`}
+            onClick={() => setDeleting(true)}
+          >
+            Delete…
+          </Button>
+        )}
         {hasCaptures && (
           <span
             className={`ml-auto text-[12.5px] ${
@@ -555,8 +596,16 @@ function CheckinRow({
       </div>
       {open && (
         <div className="border-t border-line bg-sunk px-5 py-4">
-          <CaptureViewer checkinId={c.id} zone={zone} />
+          <CaptureViewer checkinId={c.id} zone={zone} keys={c.objectKeys} removed={c.removed} />
         </div>
+      )}
+      {deleting && (
+        <DeletePartsDialog
+          checkinId={c.id}
+          time={time}
+          options={options}
+          onClose={() => setDeleting(false)}
+        />
       )}
     </li>
   );
@@ -567,10 +616,13 @@ function Thumb({
   label,
   wide = false,
   present,
+  gone = false,
 }: {
   label: string;
   wide?: boolean;
   present: boolean;
+  /** Removed by the person (#253). */
+  gone?: boolean;
 }) {
   return (
     <span
@@ -586,7 +638,7 @@ function Thumb({
           : undefined
       }
     >
-      {present ? label : "none"}
+      {present ? label : gone ? "removed" : "none"}
     </span>
   );
 }
