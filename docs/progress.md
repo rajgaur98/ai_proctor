@@ -49,6 +49,9 @@ Read this first after a restart or a context compaction. Update it with every PR
   16. Anti-cheat extras (#63, PR #229 checklist): real trackpad clicks are not flagged synthetic (check first); OBS virtual camera, still frame, Screen Sharing, VM; card variation.
   17. MDM enrollment (#86, PR #230 checklist): managed-preference token enrolls at sign-in; user-level value ignored; revoke stops new devices.
   18. Face presence (#64, PR #233 checklist): facing the camera vs covered; off for an Illinois work location.
+  19. Onboarding without a camera (#250, PR #258): on the Windows VM with no camera, "Finish without camera" reaches Done; on the Mac, with Photo Booth holding the camera, Retake leads.
+  20. Miss remark in the tray (#252, PR #260): let a card expire; the Remark box has a counter; Other needs a remark; Cmd+Enter saves; My data shows it.
+  21. Tray task picker (#268, PR #273): on a project with tasks, pick a task, clear it, switch project (resets), archive a task (the tray drops it); the timesheet splits time by task after about 5 minutes.
   - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals, #174 HDR / UWP / stale calls / toasts (PR #214), #63 VM/RDP/virtual camera (PR #229), #86 registry token (PR #230), #64 FaceDetector (PR #233). Each PR has its checklist.
 
 ## Build order
