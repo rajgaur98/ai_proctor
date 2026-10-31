@@ -18,7 +18,7 @@ import { noticeFooter } from "./noticeModel";
 import {
   type CapturePhase,
   canContinue,
-  captureFailed,
+  captureNext,
   footerButtons,
   type Step,
   stepFooter,
@@ -201,7 +201,7 @@ export function OnboardingWindow() {
   const acknowledged = notice?.acknowledged === true;
   const buttons = footerButtons(step, { acknowledged, capture, working });
 
-  /** "Looks good": remembered on this device, then the last step. */
+  /** "Looks good" (or "Finish without camera"): remembered on this device, then the last step. */
   async function finish() {
     if (await run(() => invoke("finish_onboarding", {}))) goTo(4);
   }
@@ -223,8 +223,16 @@ export function OnboardingWindow() {
         else finish();
         break;
       case 3:
-        if (captureFailed(capture)) goTo(2);
-        else finish();
+        switch (captureNext(capture)) {
+          case "permissions":
+            goTo(2);
+            break;
+          case "retake":
+            takeCapture();
+            break;
+          default:
+            finish();
+        }
         break;
       case 4:
         if (working) close();
@@ -239,7 +247,9 @@ export function OnboardingWindow() {
         goTo(1);
         break;
       case 3:
-        takeCapture();
+        // With the camera busy, Retake is the primary and finishing is the way out.
+        if (captureNext(capture) === "retake") finish();
+        else takeCapture();
         break;
       case 4:
         close();

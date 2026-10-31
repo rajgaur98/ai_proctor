@@ -256,15 +256,28 @@ export type CapturePhase =
   | { kind: "done"; result: TestCaptureResult }
   | { kind: "failed"; message: string };
 
-const webcamProblems: Record<TestCaptureFailure, string> = {
-  permission_missing: "The camera is off for AI Proctor.",
-  camera_busy: "The camera is in use by another app. Close it and retake.",
-  no_camera: "No camera was found.",
-  failed: "The webcam frame didn't work. Retake it.",
-};
+/** What a webcam failure says; `screenshots` is whether check-ins also capture the screen. */
+function webcamProblem(error: TestCaptureFailure, screenshots: boolean): string {
+  switch (error) {
+    case "permission_missing":
+      return "The camera is off for AI Proctor.";
+    case "camera_busy":
+      return "Another app is using your camera. Close it and retake.";
+    case "no_camera":
+      return screenshots
+        ? "No camera found. Plug one in or ask your admin. Check-ins will still record your screen; the webcam part will be marked missing until a camera is available."
+        : "No camera found. Plug one in or ask your admin. Check-ins will still go through; the webcam part will be marked missing until a camera is available.";
+    case "failed":
+      return "The webcam frame didn't work. Retake it.";
+  }
+}
 
 /** What went wrong, in plain words; empty when the capture worked. */
-export function captureProblems(phase: CapturePhase, platform: OnboardingPlatform): string[] {
+export function captureProblems(
+  phase: CapturePhase,
+  platform: OnboardingPlatform,
+  screenshots = true,
+): string[] {
   if (phase.kind === "failed") return [`The test capture didn't run: ${phase.message}`];
   if (phase.kind !== "done") return [];
   const { result } = phase;
@@ -278,7 +291,7 @@ export function captureProblems(phase: CapturePhase, platform: OnboardingPlatfor
         : "The screenshot didn't work. Retake it.",
     );
   }
-  if (result.webcam_error) problems.push(webcamProblems[result.webcam_error]);
+  if (result.webcam_error) problems.push(webcamProblem(result.webcam_error, screenshots));
   return problems;
 }
 
@@ -290,6 +303,29 @@ export function captureFailed(phase: CapturePhase): boolean {
 /** "Looks good" needs a capture that worked; a failed one goes back to the permissions. */
 export function captureWorked(phase: CapturePhase): boolean {
   return phase.kind === "done" && phase.result.ok;
+}
+
+/**
+ * What the test step offers next (AGT-03, CAP-05):
+ * - `finish`: the capture worked (or hasn't come back yet): "Looks good".
+ * - `permissions`: the screen failed, the camera is off for the app, or the capture couldn't
+ *   run: only the permissions step can fix that.
+ * - `finish_without_camera`: the screen is fine but there is no camera to find. Plugging one
+ *   in is out of the app's hands, so the person may finish; check-ins mark the webcam missing.
+ * - `retake`: another app holds the camera. Closing it and retaking fixes it, so Retake leads
+ *   (finishing without it stays available).
+ */
+export type CaptureNext = "finish" | "permissions" | "finish_without_camera" | "retake";
+
+export function captureNext(phase: CapturePhase): CaptureNext {
+  if (phase.kind === "failed") return "permissions";
+  if (phase.kind !== "done" || phase.result.ok) return "finish";
+  const { screen_error, webcam_error } = phase.result;
+  // A screen problem keeps the old way out, whatever the camera says.
+  if (screen_error) return "permissions";
+  if (webcam_error === "no_camera") return "finish_without_camera";
+  if (webcam_error === "camera_busy") return "retake";
+  return "permissions";
 }
 
 /** Caption under the screenshot preview. */
@@ -312,6 +348,19 @@ export interface ButtonContext {
   working: boolean;
 }
 
+function testStepButtons(next: CaptureNext): Buttons {
+  switch (next) {
+    case "permissions":
+      return { primary: "Back to permissions", secondary: "Retake" };
+    case "finish_without_camera":
+      return { primary: "Finish without camera", secondary: "Retake" };
+    case "retake":
+      return { primary: "Retake", secondary: "Finish without camera" };
+    case "finish":
+      return { primary: "Looks good", secondary: "Retake" };
+  }
+}
+
 /** The footer buttons, as labelled in the design; step 3's primary follows the capture. */
 export function footerButtons(step: Step, ctx: ButtonContext): Buttons {
   switch (step) {
@@ -320,10 +369,7 @@ export function footerButtons(step: Step, ctx: ButtonContext): Buttons {
     case 2:
       return { primary: "Continue", secondary: "Back" };
     case 3:
-      return {
-        primary: captureFailed(ctx.capture) ? "Back to permissions" : "Looks good",
-        secondary: "Retake",
-      };
+      return testStepButtons(captureNext(ctx.capture));
     case 4:
       return ctx.working
         ? { primary: "Close", secondary: null }
