@@ -63,6 +63,8 @@ const EDITS: Record<string, string> = {
   include: "put time back into",
   project: "changed the project on time in",
   adjust: "adjusted time in",
+  // #254 (TS-24/25): a work note or an entry's task, changed on the employee's behalf.
+  note: "changed a work note in",
 };
 
 /** One short line for the notification. */

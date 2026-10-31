@@ -17,6 +17,15 @@ export interface Project {
   memberIds: string[];
 }
 
+/** A task under a project (#254, PRJ-05). */
+export interface Task {
+  id: string;
+  projectId: string;
+  name: string;
+  billable: boolean;
+  archived: boolean;
+}
+
 export const clientsQuery = queryOptions({
   queryKey: ["clients"],
   queryFn: async (): Promise<Client[]> => {
@@ -48,6 +57,61 @@ export const projectsQuery = queryOptions({
     }));
   },
 });
+
+/** Every task in the org, in each project's order. */
+export const tasksQuery = queryOptions({
+  queryKey: ["project-tasks"],
+  queryFn: async (): Promise<Task[]> => {
+    const { data, error } = await supabase
+      .from("project_tasks")
+      .select("id, project_id, name, billable, archived")
+      .order("sort_order")
+      .order("name");
+    if (error) throw error;
+    return data.map((t) => ({
+      id: t.id,
+      projectId: t.project_id,
+      name: t.name,
+      billable: t.billable,
+      archived: t.archived,
+    }));
+  },
+});
+
+/**
+ * The tasks someone may pick for time on `projectId`: its active ones, plus `keep` (the
+ * task the time already has, even if archived since).
+ */
+export function tasksFor(tasks: Task[], projectId: string | null, keep?: string | null): Task[] {
+  if (!projectId) return [];
+  return tasks.filter((t) => t.projectId === projectId && (!t.archived || t.id === keep));
+}
+
+/** "Website revamp › Design", or just the project when there's no task. */
+export function assignmentLabel(project: string, taskName: string | null | undefined): string {
+  return taskName ? `${project} › ${taskName}` : project;
+}
+
+/** Creates (null id) or updates a task. A new task's billable flag defaults to the project's. */
+export async function saveTask(t: {
+  id: string | null;
+  projectId: string;
+  name: string;
+  billable?: boolean;
+  archived: boolean;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc("save_task", {
+    // Generated types don't mark function arguments nullable; a new task has no id.
+    p_id: t.id as string,
+    p_project_id: t.projectId,
+    p_name: t.name,
+    p_archived: t.archived,
+    // Left out: the project's flag (new) or the task's current one (update).
+    ...(t.billable === undefined ? {} : { p_billable: t.billable }),
+  });
+  if (error) throw new Error(explain(error.message));
+  return data;
+}
 
 export async function saveClient(id: string | null, name: string, archived: boolean) {
   // Generated types don't mark function arguments nullable; a new client has no id.
@@ -91,6 +155,7 @@ const messages: Record<string, string> = {
   user_not_visible: "You can only assign people you can see.",
   project_not_found: "That project no longer exists.",
   client_not_found: "That client no longer exists.",
+  task_not_found: "That task no longer exists.",
 };
 
 export function explain(code: string): string {
