@@ -155,6 +155,33 @@ Physical checks deferred to pilot readiness:
 
 Apple Developer Program ($99/yr) · Windows code signing (e.g. Azure Trusted Signing) · Supabase Pro project · Cloudflare (Pages + R2, also PR previews for #27) · Google Cloud + Microsoft Entra OAuth apps (#27, #16) · Resend · Sentry · Better Stack. Not needed before M6; everything earlier runs locally.
 
+## Launch compliance (India + US)
+
+Not legal or tax advice: a CA and a privacy lawyer confirm each item. Selling to US customers from an Indian company; no US entity for the pilot.
+
+Now:
+- [ ] Check the day-job employment contract (IP assignment, moonlighting); get a written NOC if needed.
+- [ ] Incorporate: Pvt Ltd (SPICe+; DSC + DIN per director) or LLP. Pvt Ltd if raising money.
+- [ ] D-U-N-S number for the company (free, 1–2 weeks), then the Apple Developer Program as an organisation (Developer ID + notarization, AGT-01).
+- [ ] GST registration + LUT every year (exports billed at 0%); bank account; keep FIRA / e-BRC for each foreign payment. Ask the CA whether SOFTEX applies to the agent.
+
+Before the pilot:
+- [ ] Privacy lawyer reviews the notice templates, DPIA template and region presets (PRD §5.2). Ask whether on-device face presence detection is a biometric identifier under Texas CUBI, Washington and Colorado law, not only Illinois BIPA (CAP-07 only covers Illinois).
+- [ ] Contracts: Terms of Service / MSA, order form, DPA (processor terms: DPDP + CPRA service-provider clauses), subprocessor list (Supabase, Cloudflare, Resend, Sentry, Better Stack), privacy policy (site + app).
+- [ ] Windows code signing (NFR-SEC-06): Azure Trusted Signing is likely limited to US / Canada / EU / UK organisations; plan for an OV certificate with a cloud or hardware key (~$200–400/yr).
+- [ ] W-8BEN-E ready for US customers (India–US treaty, no withholding).
+- [ ] CERT-In 2022 directions: incident report within 6 hours, NTP-synced clocks, logs kept 180 days. Write the incident runbook.
+- [ ] Cyber liability + E&O insurance (US contracts often ask for $1–2M).
+- [ ] Third-party licence notices bundled in the app (cargo + npm dependencies).
+
+Later:
+- [ ] DPDP Rules: most duties apply from about May 2027 (notice, grievance contact, breach reporting to the Board and to people, erasure). EMP-04 / ADM-05 cover access and deletion.
+- [ ] SOC 2 Type I, then Type II, when US buyers ask; until then a security questionnaire, pentest report and written policies.
+- [ ] Trademark search, then India (Class 9 + 42) and USPTO. "AI Proctor" may be too descriptive and clash with exam-proctoring products.
+- [ ] US sales tax on SaaS once past state thresholds (often $100k or 200 sales), or use a merchant of record (e.g. Paddle).
+- [ ] Delaware C-Corp only if raising from US investors (EIN, registered agent, franchise tax, Form 5472; ODI filings in India). Decide before raising: moving the company later is costly.
+- [ ] DPIIT Startup India recognition (optional); Shops & Establishments and Professional Tax once there's an office or staff.
+
 ## Known mismatches (docs win)
 
 - Dashboard folder: `docs/tech-stack.md` says `apps/web`; issue #8 says `apps/dashboard`. Use `apps/web`.
