@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useMemo, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Time, viewerZone } from "../../lib/time";
 import { CaptureViewer } from "../day/CaptureViewer";
@@ -23,6 +24,7 @@ import { shiftsQuery } from "../people/ShiftEditor";
 import { projectsQuery } from "../projects/projectData";
 import { timesheetQuery, weekStartQuery } from "../timesheets/timesheetData";
 import { weekStartOf } from "../timesheets/weeks";
+import { capturesTable } from "./capturesExport";
 import { DeletePartsDialog } from "./DeleteParts";
 import { exportMyData } from "./exportData";
 import {
@@ -317,6 +319,26 @@ export function MyData() {
               <span className="ml-auto text-[12.5px] text-ink3">
                 {others.length} shown · captures are taken only when you pass
               </span>
+              {/* #255: the captures as metadata (never the images) and who viewed them. */}
+              <ExportButton
+                title="Captures"
+                className="h-9"
+                ready={checkins.isSuccess && views.isSuccess && !!projects.data && !apps.isLoading}
+                spec={{
+                  page: "my-captures",
+                  filters: { date },
+                  table: () =>
+                    capturesTable(
+                      others,
+                      (id) => appLabel(apps.data?.get(id) ?? []),
+                      projectName,
+                      views.data ?? [],
+                      retention.data ?? 30,
+                      Date.now(),
+                      viewer,
+                    ),
+                }}
+              />
             </div>
             {others.length === 0 ? (
               <p className="px-5 py-4 text-sm text-ink2">
