@@ -47,6 +47,43 @@ export interface ExistingShift {
   timezone: string;
 }
 
+export interface ExistingTask {
+  /** Its project's name and client (null: none). */
+  project: string;
+  client: string | null;
+  name: string;
+  archived: boolean;
+}
+
+/** A manual time entry already there, for a time-entry import (#282). */
+export interface ExistingTimeEntry {
+  /** The person's email, lower case. */
+  email: string;
+  /** ISO instants. */
+  start_at: string;
+  end_at: string;
+  status: "pending" | "approved" | "rejected";
+  project: string | null;
+  client: string | null;
+  task: string | null;
+  note: string | null;
+  reason: string;
+}
+
+/**
+ * What a time-entry import is checked against, for the people and dates in the file:
+ * their manual entries (any status), clocked time and approved (locked) weeks.
+ */
+export interface TimeContext {
+  entries: ExistingTimeEntry[];
+  /** Clock sessions; an open one has end_at null and runs to now. */
+  clocked: { email: string; start_at: string; end_at: string | null }[];
+  /** Approved weeks: the week starting `period_start` ("YYYY-MM-DD") is locked. */
+  locked: { email: string; period_start: string }[];
+  /** Milliseconds; "now" for the in-the-future check (tests fix it). Default: Date.now(). */
+  now?: number;
+}
+
 /** What a new person gets when their row leaves a cell empty (the invite dialog's values). */
 export interface PeopleDefaults {
   role: "admin" | "manager" | "employee";
@@ -64,6 +101,10 @@ export interface ImportContext {
   clients: ExistingClient[];
   projects: ExistingProject[];
   shifts: ExistingShift[];
+  /** Tasks of projects (time-entry imports). */
+  tasks?: ExistingTask[];
+  /** Time-entry imports: what's already there for the file's people and dates. */
+  time?: TimeContext;
   /** People imports only. Without it, new people need every column filled. */
   defaults?: PeopleDefaults;
 }
@@ -79,7 +120,7 @@ export type RowStatus = "create" | "update" | "unchanged" | "error";
 export interface PreviewRow {
   /** The row number a spreadsheet shows (the header is row 1). */
   row: number;
-  /** What the row is matched on: an email, a name, or client / project. */
+  /** What the row is matched on: an email, a name, client / project, or email and times. */
   key: string;
   status: RowStatus;
   errors: FieldError[];

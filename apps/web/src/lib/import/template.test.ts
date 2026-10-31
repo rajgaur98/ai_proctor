@@ -20,6 +20,22 @@ const examplePeople = ["jane.doe@example.com", "sam.lee@example.com", "manager@e
   }),
 );
 const withExamples: ImportContext = { ...ctx, people: [...ctx.people, ...examplePeople] };
+// The time-entry example logs Jane's time to a project and task of these names.
+const withTimeExamples: ImportContext = {
+  ...withExamples,
+  projects: [
+    ...ctx.projects,
+    {
+      name: "Website redesign",
+      client: null,
+      billable: true,
+      archived: false,
+      members: ["jane.doe@example.com"],
+    },
+  ],
+  tasks: [{ project: "Website redesign", client: null, name: "Design", archived: false }],
+  time: { entries: [], clocked: [], locked: [] },
+};
 
 describe("import templates", () => {
   it("are a header row and one example row", () => {
@@ -34,7 +50,14 @@ describe("import templates", () => {
   });
 
   it("import cleanly as they are", () => {
-    const kinds: ImportKind[] = ["people", "teams", "clients", "projects", "shifts"];
+    const kinds: ImportKind[] = [
+      "people",
+      "teams",
+      "clients",
+      "projects",
+      "shifts",
+      "time_entries",
+    ];
     for (const kind of kinds) {
       // The people template's example is a new person; the others refer to existing ones.
       const context =
@@ -43,7 +66,9 @@ describe("import templates", () => {
               ...withExamples,
               people: withExamples.people.filter((p) => p.email !== "jane.doe@example.com"),
             }
-          : withExamples;
+          : kind === "time_entries"
+            ? withTimeExamples
+            : withExamples;
       const p = previewImport(kind, importTemplate(kind), context);
       expect(p.fileErrors, kind).toEqual([]);
       expect(p.ignoredColumns, kind).toEqual([]);

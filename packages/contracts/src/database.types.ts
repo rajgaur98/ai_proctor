@@ -2901,6 +2901,10 @@ export type Database = {
         }[];
       };
       import_apply: { Args: { p_new_users?: Json; p_payload: Json }; Returns: Json };
+      import_time_entries_context: {
+        Args: { p_emails: string[]; p_from: string; p_to: string };
+        Returns: Json;
+      };
       list_enrollment_tokens: {
         Args: Record<PropertyKey, never>;
         Returns: {

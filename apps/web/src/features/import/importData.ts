@@ -1,15 +1,17 @@
 // Imports (#256): what already exists, for the preview, and the apply step. People go
 // through the import-people Edge Function (it makes the Auth users and sends the invite
 // emails after the import commits); every other kind calls import_apply directly. Both
-// apply all or nothing; the database checks everything again.
+// apply all or nothing; the database checks everything again. Time entries (#282) also
+// need the file's people's entries, clocked time and approved weeks around its dates:
+// importTimeContextQuery, once the file is read.
 import type { ImportPayload, Json } from "@ai-proctor/contracts";
 import { queryOptions } from "@tanstack/react-query";
-import type { ImportContext, UserRole } from "../../lib/import";
+import type { ImportContext, TimeContext, UserRole } from "../../lib/import";
 import { supabase } from "../../lib/supabase";
 import { ImportError, rowsOf } from "./importErrors";
 
 /** Everything the preview compares against, minus the importer and the defaults. */
-export type ImportData = Omit<ImportContext, "me" | "defaults"> & {
+export type ImportData = Omit<ImportContext, "me" | "defaults" | "time"> & {
   /** Ids, for the defaults: the importer's own row. */
   byId: Map<string, ImportContext["people"][number]>;
 };
@@ -17,7 +19,7 @@ export type ImportData = Omit<ImportContext, "me" | "defaults"> & {
 export const importContextQuery = queryOptions({
   queryKey: ["import-context"],
   queryFn: async (): Promise<ImportData> => {
-    const [users, teams, clients, projects, members, shifts] = await Promise.all([
+    const [users, teams, clients, projects, members, shifts, tasks] = await Promise.all([
       supabase
         .from("users")
         .select(
@@ -28,11 +30,15 @@ export const importContextQuery = queryOptions({
       supabase.from("projects").select("id, name, client_id, billable, archived"),
       supabase.from("project_members").select("project_id, user_id"),
       supabase.from("shifts").select("user_id, days, start_time, end_time, timezone"),
+      supabase.from("project_tasks").select("project_id, name, archived"),
     ]);
-    for (const r of [users, teams, clients, projects, members, shifts]) if (r.error) throw r.error;
+    for (const r of [users, teams, clients, projects, members, shifts, tasks]) {
+      if (r.error) throw r.error;
+    }
     const emailOf = new Map((users.data ?? []).map((u) => [u.id, u.email.toLowerCase()]));
     const teamOf = new Map((teams.data ?? []).map((t) => [t.id, t.name]));
     const clientOf = new Map((clients.data ?? []).map((c) => [c.id, c.name]));
+    const projectOf = new Map((projects.data ?? []).map((p) => [p.id, p]));
     const people = (users.data ?? []).map((u) => ({
       id: u.id,
       person: {
@@ -75,9 +81,43 @@ export const importContextQuery = queryOptions({
             ]
           : [];
       }),
+      tasks: (tasks.data ?? []).flatMap((t) => {
+        const p = projectOf.get(t.project_id);
+        return p
+          ? [
+              {
+                project: p.name,
+                client: p.client_id ? (clientOf.get(p.client_id) ?? null) : null,
+                name: t.name,
+                archived: t.archived,
+              },
+            ]
+          : [];
+      }),
     };
   },
 });
+
+/** A time-entry file's people and dates (timeEntriesScope). */
+export interface TimeScope {
+  emails: string[];
+  from: string;
+  to: string;
+}
+
+export const importTimeContextQuery = (scope: TimeScope) =>
+  queryOptions({
+    queryKey: ["import-time-context", scope],
+    queryFn: async (): Promise<TimeContext> => {
+      const { data, error } = await supabase.rpc("import_time_entries_context", {
+        p_emails: scope.emails,
+        p_from: scope.from,
+        p_to: scope.to,
+      });
+      if (error) throw error;
+      return data as unknown as TimeContext;
+    },
+  });
 
 export interface ApplyResult {
   created: number;
