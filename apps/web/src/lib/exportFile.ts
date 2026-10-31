@@ -40,7 +40,8 @@ export function activeFilters(filters: ExportFilters): ExportFilters {
 export function exportTime(iso: string | null, zone?: string): string {
   if (!iso) return "";
   const t = DateTime.fromISO(iso, zone ? { zone } : {});
-  return t.isValid ? (t.toISO({ suppressMilliseconds: true }) ?? iso) : iso;
+  // Database times carry microseconds; the file keeps whole seconds (cut, not rounded).
+  return t.isValid ? (t.startOf("second").toISO({ suppressMilliseconds: true }) ?? iso) : iso;
 }
 
 /** Whole seconds as decimal hours (2 places, the timesheet export's rounding), as a number. */

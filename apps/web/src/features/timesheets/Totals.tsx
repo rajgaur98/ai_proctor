@@ -5,6 +5,9 @@
 // them by the page, which knows whether it is one person's week or many.
 import type { ClientTotal, WorkTotals } from "@ai-proctor/core";
 import type { ReactNode } from "react";
+import { ExportButton } from "../../components/ExportButton";
+import type { ExportFilters } from "../../lib/exportFile";
+import { totalsTable } from "./sheetExport";
 import { formatDuration } from "./summary";
 
 interface Names {
@@ -103,6 +106,7 @@ export function TotalsPanel({
   names,
   overtime,
   loading,
+  exportAs,
 }: {
   id: string;
   title: string;
@@ -112,6 +116,8 @@ export function TotalsPanel({
   /** The overtime note shown next to the totals, or nothing. */
   overtime?: ReactNode;
   loading?: boolean;
+  /** #255: an Export of these totals, recorded as `page` with the view's filters. */
+  exportAs?: { page: string; filters: ExportFilters };
 }) {
   return (
     <section
@@ -123,6 +129,14 @@ export function TotalsPanel({
           {title}
         </h2>
         {description && <span className="text-[12.5px] text-ink2">{description}</span>}
+        {exportAs && (
+          <ExportButton
+            title={title}
+            className="ml-auto h-9"
+            ready={!loading}
+            spec={{ ...exportAs, table: () => totalsTable(totals, names) }}
+          />
+        )}
       </div>
       {loading ? (
         <p className="px-5 py-4 text-[13px] text-ink2">Loading…</p>

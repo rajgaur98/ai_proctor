@@ -597,6 +597,7 @@ export function TimesheetPage() {
         names={totalsNames(clients.data ?? [], projects.data ?? [], tasks.data ?? [])}
         overtime={<OvertimeChips items={overtimeItems} />}
         loading={breakdown.isPending || projects.isPending || tasks.isPending || clients.isPending}
+        exportAs={{ page: "timesheet-totals", filters: { person: name, week } }}
       />
       <OvertimeNote overtime={overtime} />
       <WeekDayList
@@ -607,6 +608,7 @@ export function TimesheetPage() {
         enabled={fresh}
         canEdit={canEditNotes}
         onChanged={refreshAfterRebuild}
+        personName={name}
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">

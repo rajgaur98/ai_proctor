@@ -73,6 +73,10 @@ describe("helpers", () => {
       "2026-03-09T08:30:00-04:00",
     );
     expect(exportTime(null)).toBe("");
+    // To the second, as database times with fractions are.
+    expect(exportTime("2026-11-01T01:49:13.134567+00:00", "Asia/Kolkata")).toBe(
+      "2026-11-01T07:19:13+05:30",
+    );
   });
 });
 

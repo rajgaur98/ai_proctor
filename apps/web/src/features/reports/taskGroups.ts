@@ -1,6 +1,7 @@
 // Reports by task (#269, DSH-10): `report_task_rows` gives worked and flagged seconds per
 // person, project and task; this groups them by project, then task, for the table. Seconds
 // are added up as they come and rounded only for display (formatDuration).
+import { type ExportTable, exportHours as hours } from "../../lib/exportFile";
 
 /** One person's seconds on one project and task (null project: Unassigned; null task: none). */
 export interface TaskSeconds {
@@ -120,4 +121,25 @@ function add(into: Sum, r: TaskSeconds) {
 
 function done(s: Sum) {
   return { workedS: s.workedS, flaggedS: s.flaggedS, people: s.people.size };
+}
+
+export const TASK_REPORT_HEADER = ["Project", "Task", "Worked (h)", "Flagged (h)", "People"];
+
+/**
+ * The task report's table as a file (#255 part 2): each project's row (Task empty), then
+ * its tasks in order, then the Total row, as the page shows them. Hours are decimals from
+ * the raw seconds.
+ */
+export function taskReportTable(report: TaskReport): ExportTable {
+  return {
+    sheet: "Report by task",
+    header: TASK_REPORT_HEADER,
+    rows: [
+      ...report.projects.flatMap((p) => [
+        [p.name, "", hours(p.workedS), hours(p.flaggedS), p.people],
+        ...p.tasks.map((t) => [p.name, t.name, hours(t.workedS), hours(t.flaggedS), t.people]),
+      ]),
+      ["Total", "", hours(report.total.workedS), hours(report.total.flaggedS), report.total.people],
+    ],
+  };
 }

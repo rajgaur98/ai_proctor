@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { groupByTask, NO_TASK, type TaskSeconds, UNASSIGNED } from "./taskGroups";
+import {
+  groupByTask,
+  NO_TASK,
+  TASK_REPORT_HEADER,
+  type TaskSeconds,
+  taskReportTable,
+  UNASSIGNED,
+} from "./taskGroups";
 
 const projects = [
   { id: "web", name: "Website revamp" },
@@ -69,6 +76,33 @@ describe("groupByTask", () => {
     expect(groupByTask([], projects, ordered)).toEqual({
       projects: [],
       total: { workedS: 0, flaggedS: 0, people: 0 },
+    });
+  });
+});
+
+describe("taskReportTable", () => {
+  it("has each project, its tasks in order, then the total, in decimal hours", () => {
+    const report = groupByTask(
+      [
+        row("erin", "web", "build", 1800, 60),
+        row("lucas", "web", "design", 3600),
+        row("erin", "web", null, 900),
+        row("erin", null, null, 600, 300),
+      ],
+      projects,
+      ordered,
+    );
+    expect(taskReportTable(report)).toEqual({
+      sheet: "Report by task",
+      header: TASK_REPORT_HEADER,
+      rows: [
+        ["Website revamp", "", 1.75, 0.02, 2],
+        ["Website revamp", "Design", 1, 0, 1],
+        ["Website revamp", "Build", 0.5, 0.02, 1],
+        ["Website revamp", NO_TASK, 0.25, 0, 1],
+        [UNASSIGNED, "", 0.17, 0.08, 1],
+        ["Total", "", 1.92, 0.1, 2],
+      ],
     });
   });
 });
