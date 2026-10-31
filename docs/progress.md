@@ -2,27 +2,32 @@
 
 Living status file. Update it in the same PR as the work.
 
-_Last updated: 31 Oct 2026. M0–M2 built and merged; M3–M5 next._
+_Last updated: 1 Nov 2026. M0–M2 built and merged; M3–M5 next._
 
 ## Now / Next
 
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (31 Oct):** Raj's 31 Oct requests.
-  - Merged: #250 onboarding without a camera (PR #258), #251 seat map (PR #259).
-  - In progress: #256 imports (phase A on `256-imports`; phase B, the RPC and the Settings → Import page, running), #266 timesheet totals and #268 tray task picker (both stacked on PR #261).
-  - Since 22 Oct: #242/#243 macOS 26 Screen Recording prompt, #168 assistive-input exemption, #244 onboarding restart offer, #246 manual Windows installer workflow; Cloudflare R2 buckets and the Pages project created; Windows VM (UTM) running for device checks.
-- **Open PRs:**
-  - #260: #252 miss remarks
-  - #261: #254 part 1, tasks and work notes
-  - #270: #253 employees delete their own check-in parts
-  - #271: #255 part 1, exports
-  The migrations in these PRs use different versions and redefine different functions; merge one at a time, merging main in first.
+- **Now (1 Nov):** Raj's 31 Oct requests are on main, apart from the parts below.
+  - Merged:
+    - #250 onboarding without a camera (#258)
+    - #251 seat map (#259)
+    - #252 miss remarks (#260)
+    - #253 employees delete parts of their own check-ins (#270)
+    - #254 part 1: tasks and work notes (#261)
+    - #255 part 1: exports on list pages (#271)
+    - #256 imports: people, teams, clients, projects, shifts (#276)
+    - #263 day list (#278)
+    - #266 timesheet totals (#277)
+    - #268 tray task picker (#273)
+    - #269 task reorder and reports by task (#275)
+    - #274 fix: back-to-back manual entries kept no project (#279)
+  - In progress: #255 part 2 (exports on the live grid, day view, captures metadata, timesheet views, task report); #282 importing manual time entries.
+  - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
+- **Open PRs:** none yet for #255 part 2 and #282.
 - **Next:**
-  - In progress, stacked on #261: #263 day list editing, #269 task reorder and reports by task.
-  - #255 part 2: exports on the live grid, day view, captures metadata and the timesheet views (after #260, #261 and #270).
-  - #267 after #262 and #263.
+  - #254 parts 2, 5, 6 and 8 (#262, #264, #265, #267) wait on the weekly-grid question in "Blocked on Raj".
   - Then the hosted Supabase project (staging) for Pages previews and backups.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
@@ -44,6 +49,9 @@ Read this first after a restart or a context compaction. Update it with every PR
   16. Anti-cheat extras (#63, PR #229 checklist): real trackpad clicks are not flagged synthetic (check first); OBS virtual camera, still frame, Screen Sharing, VM; card variation.
   17. MDM enrollment (#86, PR #230 checklist): managed-preference token enrolls at sign-in; user-level value ignored; revoke stops new devices.
   18. Face presence (#64, PR #233 checklist): facing the camera vs covered; off for an Illinois work location.
+  19. Onboarding without a camera (#250, PR #258): on the Windows VM with no camera, "Finish without camera" reaches Done; on the Mac, with Photo Booth holding the camera, Retake leads.
+  20. Miss remark in the tray (#252, PR #260): let a card expire; the Remark box has a counter; Other needs a remark; Cmd+Enter saves; My data shows it.
+  21. Tray task picker (#268, PR #273): on a project with tasks, pick a task, clear it, switch project (resets), archive a task (the tray drops it); the timesheet splits time by task after about 5 minutes.
   - Windows (no machine yet): #158 task + restart, #165 camera privacy, #166 injected clicks, #167 capture and signals, #174 HDR / UWP / stale calls / toasts (PR #214), #63 VM/RDP/virtual camera (PR #229), #86 registry token (PR #230), #64 FaceDetector (PR #233). Each PR has its checklist.
 
 ## Build order
