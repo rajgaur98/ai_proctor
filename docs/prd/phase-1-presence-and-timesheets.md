@@ -300,6 +300,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | DSH-06 | P0 | **Timesheets tab:** list of reports' timesheets by week and status; open, review flagged time, edit, approve or return |
 | DSH-07 | P0 | **Reports:** per employee and team for a date range: worked hours, flagged hours, check-ins shown/passed/missed/failed, response rate, median response time, break and pause totals, late clock-ins |
 | DSH-08 | P1 | Anomaly flags in reports (see ANT): suspected injected input, virtual camera, duplicate webcam frames, remote session |
+| DSH-09 | P1 | **Seat view** of the Team page, a toggle beside the list and remembered per viewer: everyone the viewer can see sits in a chair round an oval table (seven chairs on each long side, four round each end, about 22 a table; more people open more tables, and with every team shown each team has its own). Initials on each chair; green = Active, red = any other status (idle, away, on break, paused, in a meeting, offline, tamper, off shift), always with the exact status and since when as text (tooltip and accessible name), never colour alone. Hover or focus shows name, status, since and project; click or Enter opens the person's day; arrow keys move round a table; the chairs are a list for screen readers. Updates live from the same feed as DSH-01. Below laptop width the list shows instead |
 
 ### 4.12 Alerts (ALR)
 
