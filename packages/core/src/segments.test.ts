@@ -243,6 +243,60 @@ describe("buildSegments", () => {
     ]);
   });
 
+  // #274: back-to-back entries are one stretch of manual time, but each part keeps its
+  // own entry's project and task (they used to come out Unassigned).
+  it("keeps each back-to-back manual entry's project and task", () => {
+    const segments = buildSegments(
+      input({
+        manualEntries: [
+          { start: t("10:00"), end: t("11:00"), projectId: "A", taskId: "A1" },
+          { start: t("11:00"), end: t("11:30"), projectId: "B", taskId: "B1" },
+          { start: t("11:30"), end: t("11:45"), projectId: "A", taskId: "A1" },
+        ],
+      }),
+    );
+    expect(segments.map((s) => [s.type, s.projectId, s.taskId, (s.end - s.start) / 60])).toEqual([
+      ["manual", "A", "A1", 60],
+      ["manual", "B", "B1", 30],
+      ["manual", "A", "A1", 15],
+    ]);
+  });
+
+  it("merges back-to-back manual entries on the same project and task into one segment", () => {
+    const segments = buildSegments(
+      input({
+        manualEntries: [
+          { start: t("10:00"), end: t("11:00"), projectId: "A", taskId: "A1" },
+          { start: t("11:00"), end: t("11:30"), projectId: "A", taskId: "A1" },
+          { start: t("11:30"), end: t("12:00"), projectId: "A", taskId: "A2" },
+        ],
+      }),
+    );
+    expect(segments.map((s) => [s.type, s.projectId, s.taskId, (s.end - s.start) / 60])).toEqual([
+      ["manual", "A", "A1", 90],
+      ["manual", "A", "A2", 30],
+    ]);
+  });
+
+  // TS-09: overlapping entries still count each second once. The overlapped part goes to
+  // the earlier-starting entry; an edit over manual time still wins.
+  it("counts overlapping manual entries once and lets edits win", () => {
+    const segments = buildSegments(
+      input({
+        manualEntries: [
+          { start: t("11:00"), end: t("13:00"), projectId: "B", taskId: null },
+          { start: t("10:00"), end: t("12:00"), projectId: "A", taskId: "A1" },
+        ],
+        projectEdits: [{ start: t("12:30"), end: t("13:00"), projectId: "C", taskId: "C1" }],
+      }),
+    );
+    expect(segments.map((s) => [s.type, s.projectId, s.taskId, (s.end - s.start) / 60])).toEqual([
+      ["manual", "A", "A1", 120],
+      ["manual", "B", null, 30],
+      ["manual", "C", "C1", 30],
+    ]);
+  });
+
   // #268 (PRJ-05): the tray's switches carry a task. A clock-in starts with none, a switch
   // sets both (a task-only change repeats the project), a switch without a task clears it,
   // an edit still wins, and a stray task without a project is dropped.
@@ -527,6 +581,57 @@ describe("properties", () => {
           manualEntries: shuffled(d.manualEntries),
         };
         expect(buildSegments(reordered)).toEqual(once);
+      }),
+    );
+  });
+
+  // #274: every manual second keeps the project and task of an entry that covers it, also
+  // when entries touch end to end or overlap. Runs of up to four entries, each starting
+  // where the last ended, or with a gap or an overlap.
+  const manualRun = fc
+    .tuple(
+      time,
+      fc.array(
+        fc.tuple(
+          fc.oneof(fc.constant(0), fc.integer({ min: -H, max: H })),
+          fc.integer({ min: 1, max: 2 * H }),
+          project,
+          fc.constantFrom(null, "T", "U"),
+        ),
+        { minLength: 1, maxLength: 4 },
+      ),
+    )
+    .map(([start, parts]) => {
+      let at = start;
+      return parts.map(([gap, length, p, task]) => {
+        const entry = { start: at + gap, end: at + gap + length, projectId: p, taskId: task };
+        at = entry.end;
+        return entry;
+      });
+    });
+
+  it("every manual second keeps the project and task of an entry covering it", () => {
+    fc.assert(
+      fc.property(arbitraryDay, manualRun, (d, manualEntries) => {
+        const segments = buildSegments({ ...d, manualEntries });
+        const edges = manualEntries.flatMap((e) => [e.start, e.end]);
+        for (const s of segments.filter((x) => x.type === "manual")) {
+          // Between entry edges, one piece is wholly inside or outside each entry.
+          const points = [s.start, ...edges.filter((x) => x > s.start && x < s.end), s.end].sort(
+            (a, b) => a - b,
+          );
+          for (let i = 1; i < points.length; i++) {
+            const piece = { start: points[i - 1] as number, end: points[i] as number };
+            const keeps = manualEntries.some(
+              (e) =>
+                e.start <= piece.start &&
+                piece.end <= e.end &&
+                e.projectId === s.projectId &&
+                (e.projectId === null ? null : e.taskId) === s.taskId,
+            );
+            expect(keeps).toBe(true);
+          }
+        }
       }),
     );
   });

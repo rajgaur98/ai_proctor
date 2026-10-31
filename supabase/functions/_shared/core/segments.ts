@@ -142,9 +142,15 @@ export function buildSegments(input: DayInput): Segment[] {
       byProject(a.projectId, b.projectId) ||
       byProject(a.taskId ?? null, b.taskId ?? null),
   );
+  // Manual time is also cut at every entry's start and end, so each piece lies wholly
+  // inside or outside each entry and keeps its own entry's project and task, even where
+  // entries touch end to end (#274). Where entries overlap, the first covering one in
+  // the order above wins, so input order never matters.
+  const manualCuts = new Set(cuts);
+  for (const e of entries) manualCuts.add(e.start).add(e.end);
   for (const m of manual) {
-    const entry = entries.find((e) => e.start <= m.start && m.end <= e.end);
-    for (const span of cutAt(m, cuts)) {
+    for (const span of cutAt(m, manualCuts)) {
+      const entry = entries.find((e) => e.start <= span.start && span.end <= e.end);
       const assignment = editAt(input, span.start) ?? {
         projectId: entry?.projectId ?? null,
         taskId: entry?.taskId ?? null,
