@@ -188,9 +188,10 @@ export async function removeTeam(id: string) {
 
 /** Runs axe (WCAG 2 A/AA, 2.1 AA) on the page and fails on any violation. */
 export async function expectNoA11yViolations(page: Page) {
-  // A button still fading between its enabled and disabled styles fails color-contrast
-  // for a frame, so let running transitions finish before axe measures (not endless
-  // ones like a spinner, which never finish).
+  // An element mid-animation can fail color-contrast for a frame, so let running
+  // animations finish before axe measures (not endless ones like a spinner, which never
+  // finish). This can't catch one that starts while axe runs, e.g. a control enabled when
+  // its data arrives, so controls switch state without a fade (#285, the Button).
   await page.evaluate(() =>
     Promise.all(
       document
