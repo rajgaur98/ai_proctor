@@ -3,6 +3,7 @@ import {
   markerLabel,
   minutesText,
   missReason,
+  missReasonLine,
   noFace,
   screenState,
   secondsText,
@@ -28,6 +29,18 @@ describe("markerLabel", () => {
         "UTC",
       ),
     ).toBe("Deferred check-in at 14:00 (screen shared)");
+  });
+
+  it("adds the employee's reason and remark to a miss (#252)", () => {
+    expect(
+      markerLabel({ ...c, missedReasonKind: "phone_call", missedReason: "Client call" }, "UTC"),
+    ).toBe("Missed check-in at 14:03 (Phone call: “Client call”)");
+    expect(markerLabel({ ...c, missedReasonKind: "break", missedReason: null }, "UTC")).toBe(
+      "Missed check-in at 14:03 (Break)",
+    );
+    expect(markerLabel({ ...c, missedReasonKind: null, missedReason: " " }, "UTC")).toBe(
+      "Missed check-in at 14:03",
+    );
   });
 
   it("adds a no-face hint to a pass whose frame showed none (CAP-07)", () => {
@@ -63,6 +76,15 @@ describe("text", () => {
       note: "Client call",
     });
     expect(missReason(null, "  ")).toEqual({ kind: null, note: null });
+  });
+
+  it("puts a miss's reason on one short line", () => {
+    expect(missReasonLine("meeting", null)).toBe("Meeting");
+    expect(missReasonLine(null, "Ran\n late")).toBe("“Ran late”");
+    expect(missReasonLine("other", "Fire drill")).toBe("Other: “Fire drill”");
+    expect(missReasonLine(null, null)).toBe("No reason given");
+    const long = missReasonLine("other", "x".repeat(200));
+    expect(long).toBe(`Other: “${"x".repeat(59)}…”`);
   });
 
   it("names the screen state", () => {

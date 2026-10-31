@@ -63,6 +63,7 @@ import {
   segmentsQuery,
   submitWeek,
   timesheetQuery,
+  weekMissesQuery,
   weekStartQuery,
 } from "./timesheetData";
 import { addWeeks, weekDays, weekLabel, weekStartOf } from "./weeks";
@@ -161,6 +162,11 @@ export function TimesheetPage() {
   const edits = useQuery({ ...editsQuery(sheet.data?.id ?? ""), enabled: !!sheet.data });
   const canDecideQ = useQuery(canDecideQuery(userId));
   const canReopenQ = useQuery(canReopenQuery(userId));
+  // The week's misses with the employee's reason, next to the flagged time (#252).
+  const misses = useQuery({
+    ...weekMissesQuery(userId, week, zone),
+    enabled: ready && canDecideQ.data === true,
+  });
   const weekFrom = week ? DateTime.fromISO(week, { zone }) : null;
   const entries = useQuery({
     ...dayEntriesQuery(
@@ -600,6 +606,7 @@ export function TimesheetPage() {
             employeeName={name}
             zone={zone}
             segments={flaggedList}
+            misses={misses.data ?? []}
             projectName={projectName}
             editable={editable}
             onChanged={refresh}

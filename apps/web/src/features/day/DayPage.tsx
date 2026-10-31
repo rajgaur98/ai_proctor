@@ -15,7 +15,7 @@ import { projectsQuery } from "../projects/projectData";
 import { canDecideQuery, weekStartQuery } from "../timesheets/timesheetData";
 import { weekStartOf } from "../timesheets/weeks";
 import { CheckinDetails } from "./CheckinDetails";
-import { deferralText, noFace, outcomeWord } from "./checkinText";
+import { deferralText, missReasonLine, noFace, outcomeWord } from "./checkinText";
 import { DayTimeline, Marker, StatsRow } from "./DayTimeline";
 import {
   dayCheckinsQuery,
@@ -322,8 +322,9 @@ export function DayPage() {
                     <span className="font-medium">{outcomeWord[c.outcome]}</span>
                     {flaggedCheckins.has(c.id) && <NeedsReviewBadge />}
                     {noFace(c) && <NoFaceBadge />}
-                    <span className="ml-auto text-[12.5px] text-ink3">
+                    <span className="ml-auto min-w-0 truncate text-[12.5px] text-ink3">
                       {c.outcome === "deferred" && deferralText(c.deferralReason)}
+                      {c.outcome === "miss" && missReasonLine(c.missedReasonKind, c.missedReason)}
                       {c.outcome === "pass" &&
                         c.responseMs !== null &&
                         `in ${Math.round(c.responseMs / 1000)} s`}
