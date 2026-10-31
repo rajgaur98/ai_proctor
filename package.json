@@ -26,7 +26,8 @@
     "it:export-my-data": "bash scripts/it-export-my-data.sh",
     "it:export-timesheet": "bash scripts/it-export-timesheet.sh",
     "it:import-people": "bash scripts/it-import-people.sh",
-    "it:user-data": "bash scripts/it-user-data.sh"
+    "it:user-data": "bash scripts/it-user-data.sh",
+    "it:checkin-parts": "bash scripts/it-checkin-parts.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
