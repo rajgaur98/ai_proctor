@@ -3017,6 +3017,7 @@ export type Database = {
         Returns: Record<string, unknown>;
       };
       reopen_timesheet: { Args: { p_id: string; p_reason: string }; Returns: undefined };
+      reorder_tasks: { Args: { p_project_id: string; p_task_ids: string[] }; Returns: undefined };
       replace_day_segments: {
         Args: { p_day: string; p_loaded_at?: string; p_segments: Json; p_user_id: string };
         Returns: number;
@@ -3030,6 +3031,22 @@ export type Database = {
           p_user_ids?: string[];
         };
         Returns: Json;
+      };
+      report_task_rows: {
+        Args: {
+          p_from: string;
+          p_manager_id?: string;
+          p_team_id?: string;
+          p_to: string;
+          p_user_ids?: string[];
+        };
+        Returns: {
+          flagged_s: number;
+          project_id: string;
+          task_id: string;
+          user_id: string;
+          worked_s: number;
+        }[];
       };
       request_manual_entry: {
         Args: {
