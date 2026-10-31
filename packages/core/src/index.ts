@@ -1,4 +1,5 @@
 export * from "./csv.ts";
+export * from "./csvRead.ts";
 export * from "./digest.ts";
 export * from "./exportRows.ts";
 export * from "./overtime.ts";
