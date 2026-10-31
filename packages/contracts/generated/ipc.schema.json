@@ -23,6 +23,19 @@
       "type": "string",
       "enum": ["off_shift", "working", "on_break", "paused"]
     },
+    "TaskRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "name"],
+      "additionalProperties": false
+    },
     "ProjectRef": {
       "type": "object",
       "properties": {
@@ -34,9 +47,15 @@
         },
         "client": {
           "type": ["string", "null"]
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TaskRef"
+          }
         }
       },
-      "required": ["id", "name", "client"],
+      "required": ["id", "name", "client", "tasks"],
       "additionalProperties": false
     },
     "CheckinOutcome": {
@@ -197,6 +216,16 @@
             }
           ]
         },
+        "task": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TaskRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "projects": {
           "type": "array",
           "items": {
@@ -251,6 +280,7 @@
         "pause_used_today_s",
         "pause_daily_cap_s",
         "project",
+        "task",
         "projects",
         "last_checkin",
         "missed_checkin",

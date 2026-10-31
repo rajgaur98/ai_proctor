@@ -6,9 +6,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useRef } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { DelegateForm } from "./DelegateForm";
-import { DelegationRows } from "./DelegationRows";
+import { DelegationRows, delegationTable } from "./DelegationRows";
 import { delegationsQuery, endDelegation } from "./delegationData";
 
 export function Delegation() {
@@ -32,11 +33,13 @@ export function Delegation() {
         <h2 id="delegation-title" className="text-sm font-semibold">
           Delegation
         </h2>
-        <Button
-          variant="secondary"
+        <ExportButton
+          title="Delegations"
           className="ml-auto h-9"
-          onClick={() => dialogRef.current?.showModal()}
-        >
+          ready={!delegations.isPending && !delegations.error}
+          spec={{ page: "delegations", filters: {}, table: () => delegationTable(rows) }}
+        />
+        <Button variant="secondary" className="h-9" onClick={() => dialogRef.current?.showModal()}>
           Set a delegate
         </Button>
       </div>

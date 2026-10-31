@@ -4,7 +4,9 @@ import type { Enums } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
+import { yesNo } from "../../lib/exportFile";
 import { initials } from "../../lib/nav";
 import { ManagerDelegation } from "../delegation/ManagerDelegation";
 import { EnrollmentTokens } from "../enrollment/EnrollmentTokens";
@@ -53,9 +55,46 @@ export function People() {
             {profile.orgName} · {members.filter((m) => m.active).length} active
           </p>
         </div>
-        <Button className="ml-auto" onClick={() => inviteRef.current?.showModal()}>
-          Invite people
-        </Button>
+        <div className="ml-auto flex gap-2">
+          <ExportButton
+            title="People"
+            ready={!isPending && !error}
+            spec={{
+              page: "people",
+              filters: { search: search.trim() },
+              table: () => ({
+                sheet: "People",
+                header: [
+                  "Name",
+                  "Email",
+                  "Role",
+                  "Manager",
+                  "Team",
+                  "Country",
+                  "State",
+                  "Time zone",
+                  "Status",
+                  "Approval required",
+                  "Assistive input",
+                ],
+                rows: visible.map((m) => [
+                  m.fullName,
+                  m.email,
+                  roleLabel[m.role],
+                  m.managerId ? (byId.get(m.managerId)?.fullName ?? "") : "",
+                  (m.teamId && teamName.get(m.teamId)) || "",
+                  m.country,
+                  m.state ?? "",
+                  m.timezone,
+                  m.active ? "Active" : "Deactivated",
+                  yesNo(m.approvalRequired),
+                  yesNo(m.assistiveInput),
+                ]),
+              }),
+            }}
+          />
+          <Button onClick={() => inviteRef.current?.showModal()}>Invite people</Button>
+        </div>
       </div>
 
       <input

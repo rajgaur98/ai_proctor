@@ -8,10 +8,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useMemo, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { cn } from "../../lib/cn";
+import { exportHours } from "../../lib/exportFile";
 import { teamsQuery } from "../teams/teamData";
 import { formatDuration } from "../timesheets/summary";
 import { weekStartQuery } from "../timesheets/timesheetData";
@@ -53,9 +55,58 @@ export function Reports() {
 
   return (
     <section className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-[-0.025em]">Reports</h1>
-        <p className="mt-1 text-[13.5px] text-ink2">{profile.orgName}</p>
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-[-0.025em]">Reports</h1>
+          <p className="mt-1 text-[13.5px] text-ink2">{profile.orgName}</p>
+        </div>
+        <ExportButton
+          title="Report"
+          className="ml-auto"
+          ready={!!rows && problem === null}
+          spec={{
+            page: "report",
+            filters: {
+              from: range.from,
+              to: range.to,
+              team: teamId ? (teams.data?.find((t) => t.id === teamId)?.name ?? teamId) : "",
+            },
+            // Everyone, in the table's order; hours as decimals from the same seconds.
+            table: () => ({
+              sheet: "Report",
+              header: [
+                "Person",
+                "Worked (h)",
+                "Flagged (h)",
+                "Check-ins shown",
+                "Passed",
+                "Missed",
+                "Failed",
+                "Response rate (%)",
+                "Median response (s)",
+                "Breaks (h)",
+                "Pauses (h)",
+                "Late clock-ins",
+                "Needs review",
+              ],
+              rows: sortedRows.map((r) => [
+                r.fullName,
+                exportHours(r.workedS),
+                exportHours(r.flaggedS),
+                r.checkinsShown,
+                r.checkinsPassed,
+                r.checkinsMissed,
+                r.checkinsFailed,
+                r.responseRate === null ? null : Math.round(r.responseRate * 1000) / 10,
+                r.medianResponseMs === null ? null : Math.round(r.medianResponseMs / 100) / 10,
+                exportHours(r.breakS),
+                exportHours(r.pauseS),
+                r.lateClockIns,
+                r.needsReview,
+              ]),
+            }),
+          }}
+        />
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

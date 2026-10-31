@@ -7,11 +7,19 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { useId, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
+import { exportTime } from "../../lib/exportFile";
 import { Time } from "../../lib/time";
 import { membersQuery } from "../people/members";
-import { type Alert, alertPageQuery, markAlertsRead, markMatchingAlertsRead } from "./alertData";
+import {
+  type Alert,
+  alertPageQuery,
+  markAlertsRead,
+  markMatchingAlertsRead,
+  matchingAlerts,
+} from "./alertData";
 import { type AlertFilters, filtersActive, NO_FILTERS, type ReadFilter } from "./alertFilters";
 import {
   ALERT_KINDS,
@@ -75,6 +83,33 @@ export function AlertsPage() {
         >
           {active ? "Mark all matching read" : "Mark all read"}
         </Button>
+        <ExportButton
+          title="Alerts"
+          ready={!error}
+          spec={{
+            page: "alerts",
+            filters: {
+              kind: filters.kind ? KIND_LABELS[filters.kind] : "",
+              employee: filters.userId
+                ? (people.data?.find((m) => m.id === filters.userId)?.fullName ?? filters.userId)
+                : "",
+              from: filters.from,
+              to: filters.to,
+              status: filters.read === "all" ? "" : filters.read === "read" ? "Read" : "Unread",
+            },
+            table: async () => ({
+              sheet: "Alerts",
+              header: ["Triggered", "Employee", "Kind", "Alert", "Status"],
+              rows: (await matchingAlerts(profile.id, filters)).map((a) => [
+                exportTime(a.triggeredAt),
+                a.employeeName,
+                KIND_LABELS[a.kind],
+                alertText(a.kind, a.details),
+                a.read ? "Read" : "Unread",
+              ]),
+            }),
+          }}
+        />
       </div>
 
       <form

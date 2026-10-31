@@ -6,6 +6,7 @@ import type {
   MissedCheckin,
   ProjectRef,
   ShiftState,
+  TaskRef,
 } from "@ai-proctor/contracts";
 
 export interface PermissionIssue {
@@ -228,6 +229,14 @@ export function checkinOutcomeText(outcome: CheckinOutcome): string {
 /** "Client · Project" when the project has a client. */
 export function projectLabel(project: ProjectRef): string {
   return project.client ? `${project.client} · ${project.name}` : project.name;
+}
+
+/**
+ * The tasks the tray offers under the current project (#268, PRJ-05): its active tasks in
+ * order. Empty (no task picker) without a project or when the project has none.
+ */
+export function taskChoices(status: Pick<AgentStatus, "project">): TaskRef[] {
+  return status.project?.tasks ?? [];
 }
 
 /** Empty or whitespace-only text becomes null for the optional fields in the contract. */
