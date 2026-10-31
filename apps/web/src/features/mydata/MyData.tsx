@@ -13,7 +13,7 @@ import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Time, viewerZone } from "../../lib/time";
 import { CaptureViewer } from "../day/CaptureViewer";
-import { noFace, outcomeLabel } from "../day/checkinText";
+import { missReason, noFace, outcomeLabel } from "../day/checkinText";
 import { Marker } from "../day/DayTimeline";
 import { rebuildDay } from "../day/dayData";
 import { removedText } from "../day/removedText";
@@ -21,6 +21,8 @@ import { TopApps } from "../day/TopApps";
 import { barSpan, deferralLabel, localDay, ticks } from "../day/timeline";
 import { shiftsQuery } from "../people/ShiftEditor";
 import { projectsQuery } from "../projects/projectData";
+import { timesheetQuery, weekStartQuery } from "../timesheets/timesheetData";
+import { weekStartOf } from "../timesheets/weeks";
 import { DeletePartsDialog } from "./DeleteParts";
 import { exportMyData } from "./exportData";
 import {
@@ -28,16 +30,14 @@ import {
   asTimelineSegments,
   filesOf,
   imagesExpired,
-  type MissReasonKind,
   minutesText,
-  missReasonLabel,
-  missReasons,
   placeSegments,
   segmentStyle,
   typeTotals,
   viewedBy,
   workedSeconds,
 } from "./helpers";
+import { MissReasonEdit } from "./MissReasonDialog";
 import { partOptions } from "./partOptions";
 import {
   activityQuery,
@@ -48,7 +48,6 @@ import {
   myManagerQuery,
   retentionQuery,
   segmentsQuery,
-  setMissReason,
 } from "./queries";
 import { SidePanels } from "./SidePanels";
 
@@ -103,6 +102,10 @@ export function MyData() {
   const apps = useQuery(appsAtCheckinsQuery(profile.id, checkins.data ?? []));
   const activity = useQuery({ ...activityQuery(profile.id, from, to), refetchInterval: live });
   const projects = useQuery(projectsQuery);
+  // The day's timesheet week: a miss's reason can change until the week is approved (#252).
+  const startDay = useQuery(weekStartQuery);
+  const week = startDay.data ? weekStartOf(date, startDay.data) : "";
+  const sheet = useQuery({ ...timesheetQuery(profile.id, week), enabled: week !== "" });
 
   const go = (d: string) => navigate({ to: "/me", search: { date: d } });
   const shift = (days: number) => go(DateTime.fromISO(date).plus({ days }).toISODate() ?? date);
@@ -278,7 +281,7 @@ export function MyData() {
                 Missed check-ins
               </h2>
               <span className="text-[12.5px] text-ink2">
-                Add a reason so your timesheet is clear.
+                Add a reason and a remark so your timesheet is clear.
               </span>
             </div>
             {checkins.error ? (
@@ -292,7 +295,15 @@ export function MyData() {
             ) : (
               <ul>
                 {misses.map((c) => (
-                  <MissRow key={c.id} c={c} zone={zone} manager={managerName} userId={profile.id} />
+                  <MissRow
+                    key={c.id}
+                    c={c}
+                    zone={zone}
+                    viewer={viewer}
+                    manager={managerName}
+                    userId={profile.id}
+                    locked={sheet.data ? sheet.data.status === "approved" : null}
+                  />
                 ))}
               </ul>
             )}
@@ -398,66 +409,66 @@ export function MyData() {
 function MissRow({
   c,
   zone,
+  viewer,
   manager,
   userId,
+  locked,
 }: {
   c: MyCheckin;
   zone: string;
+  viewer: string;
   manager: string | null;
   userId: string;
+  /** The week is approved (or not known yet): the reason can't change. */
+  locked: boolean | null;
 }) {
   const queryClient = useQueryClient();
-  const pick = useMutation({
-    mutationFn: (kind: MissReasonKind) => setMissReason(c.id, kind, c.missedReason),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-data", "checkins", userId] }),
-  });
-  const chosen = missReasonLabel(c.missedReasonKind);
-  const reason = [chosen, c.missedReason].filter(Boolean).join(": ");
+  const { kind, note } = missReason(c.missedReasonKind, c.missedReason);
+  const at = c.shownAt ?? c.scheduledAt;
   const detail = [
     c.idleSAtShow === null ? null : `Idle ${minutesText(c.idleSAtShow)} when shown`,
     c.deviceState ? `Device ${c.deviceState}` : null,
   ].filter(Boolean);
 
   return (
-    <li className="flex flex-col gap-3 border-b border-line px-5 py-4 last:border-0">
+    <li className="flex flex-col gap-2.5 border-b border-line px-5 py-4 last:border-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Marker outcome="miss" />
-        <Time iso={c.shownAt ?? c.scheduledAt} employeeZone={zone} />
+        <Time iso={at} employeeZone={zone} />
         <span className="text-[13.5px] font-medium">Missed</span>
         {detail.length > 0 && <span className="text-[12.5px] text-ink2">{detail.join(" · ")}</span>}
-        <span className="ml-auto text-[12.5px] font-medium text-ink2">
-          {reason
-            ? `Reason: ${reason}${manager ? ` · visible to ${manager}` : ""}`
-            : "No reason yet"}
-        </span>
       </div>
-      <fieldset className="m-0 flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0">
-        <legend className="sr-only">Add a reason</legend>
-        <span aria-hidden className="mr-1 text-[12.5px] text-ink3">
-          Add reason
-        </span>
-        {missReasons.map((r) => (
-          <button
-            key={r.kind}
-            type="button"
-            aria-pressed={c.missedReasonKind === r.kind}
-            disabled={pick.isPending}
-            onClick={() => pick.mutate(r.kind)}
-            className={`h-11 rounded-[9px] px-3.5 text-[13.5px] font-medium text-ink disabled:opacity-45 ${
-              c.missedReasonKind === r.kind
-                ? "border-[1.5px] border-acc bg-accsoft"
-                : "border border-line2 bg-panel"
-            }`}
-          >
-            {r.label}
-          </button>
-        ))}
-      </fieldset>
-      {pick.error && (
-        <p role="alert" className="text-sm text-warnink">
-          {pick.error.message}
-        </p>
-      )}
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          {kind || note ? (
+            <>
+              {kind && <span className="text-[13px] font-medium">Reason: {kind}</span>}
+              {note && (
+                <span className="text-[13px] break-words whitespace-pre-line text-ink2">
+                  Remark: “{note}”
+                </span>
+              )}
+              {manager && <span className="text-xs text-ink3">Visible to {manager}</span>}
+            </>
+          ) : (
+            <span className="text-[13px] text-ink2">No reason yet</span>
+          )}
+        </div>
+        {locked === false && (
+          <MissReasonEdit
+            checkinId={c.id}
+            time={DateTime.fromISO(at, { zone: viewer }).toFormat("HH:mm")}
+            kind={c.missedReasonKind}
+            remark={c.missedReason}
+            onSaved={() =>
+              queryClient.invalidateQueries({ queryKey: ["my-data", "checkins", userId] })
+            }
+          />
+        )}
+        {locked === true && (
+          <span className="text-[12.5px] text-ink3">Week approved, the reason is final</span>
+        )}
+      </div>
     </li>
   );
 }

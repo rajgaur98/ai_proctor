@@ -715,7 +715,7 @@ pub trait Platform: Send + Sync {
       <table>
         <thead><tr><th>Function</th><th>Who</th><th>Checks and effect</th></tr></thead>
         <tbody>
-          <tr><td><code>add_miss_reason</code></td><td>Employee</td><td>Own check-in, week not yet submitted</td></tr>
+          <tr><td><code>set_miss_reason</code></td><td>Employee</td><td>Own missed check-in, any day of a week not yet approved; quick pick and/or remark (up to 500), "other" needs a remark; audit-logged (<code>checkin.miss_reason_set</code>: picks and remark length, not the remark)</td></tr>
           <tr><td><code>assign_project</code></td><td>Employee</td><td>Own segments in a draft week; marks the day dirty</td></tr>
           <tr><td><code>request_manual_entry</code></td><td>Employee</td><td>No overlap with clocked time; created as pending</td></tr>
           <tr><td><code>submit_timesheet</code></td><td>Employee</td><td>Status draft or returned; manager assigned</td></tr>
