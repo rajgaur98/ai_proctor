@@ -2900,6 +2900,7 @@ export type Database = {
           viewer_role: string;
         }[];
       };
+      import_apply: { Args: { p_new_users?: Json; p_payload: Json }; Returns: Json };
       list_enrollment_tokens: {
         Args: Record<PropertyKey, never>;
         Returns: {
