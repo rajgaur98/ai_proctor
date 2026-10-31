@@ -132,16 +132,17 @@ select is(
     'user_id', :erin::uuid, 'employee', 'Erin Employee', 'email', 'erin@acme.test',
     'timezone', 'America/Los_Angeles', 'day', '2026-03-16',
     'start_local', '2026-03-16 09:00:00', 'end_local', '2026-03-16 11:00:00', 'type', 'verified',
-    'project_id', :revamp::uuid, 'project', 'Website revamp', 'client_id', :northwind::uuid, 'client', 'Northwind',
+    'project_id', :revamp::uuid, 'project', 'Website revamp', 'task_id', null, 'task', null,
+    'client_id', :northwind::uuid, 'client', 'Northwind',
     'billable', true, 'counted', true, 'flagged', false, 'excluded', false, 'seconds', 7200,
-    'status', 'approved', 'approver', 'Max Manager')::text,
+    'status', 'approved', 'approver', 'Max Manager', 'note', null)::text,
   'a row: person, local day and times, project, client, billable, flags, raw seconds, status, approver');
 select is(
   (select r - 'user_id' - 'employee' - 'email' - 'timezone' - 'day' - 'start_local' - 'end_local' - 'type'
-          - 'counted' - 'flagged' - 'excluded' - 'seconds' - 'status' - 'approver'
+          - 'counted' - 'flagged' - 'excluded' - 'seconds' - 'status' - 'approver' - 'note'
    from jsonb_array_elements(pg_temp.rows('2026-03-16', '2026-03-22', 'segments', array[:erin]::uuid[])) r
    where r ->> 'project_id' is null),
-  '{"project": null, "client": null, "client_id": null, "project_id": null, "billable": false}'::jsonb,
+  '{"project": null, "client": null, "client_id": null, "project_id": null, "task_id": null, "task": null, "billable": false}'::jsonb,
   'unassigned time has no project or client and is not billable');
 select is(
   (select (r ->> 'billable')::boolean from jsonb_array_elements(pg_temp.rows('2026-03-16', '2026-03-22', 'segments', array[:erin]::uuid[])) r

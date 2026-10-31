@@ -223,7 +223,8 @@ select pg_temp.act_as_postgres();
 select is(pg_temp.dirty(:erin), '2026-03-16', 'project: marks the day dirty so the next rebuild applies it');
 select is(public.segment_inputs(:erin, '2026-03-16') -> 'input' -> 'projectEdits',
   jsonb_build_array(jsonb_build_object('start', pg_temp.epoch('2026-03-16 09:00:00-07'),
-    'end', pg_temp.epoch('2026-03-16 11:00:00-07'), 'projectId', '00000000-0000-4000-8000-0000000000f2')),
+    'end', pg_temp.epoch('2026-03-16 11:00:00-07'), 'projectId', '00000000-0000-4000-8000-0000000000f2',
+    'taskId', null)),
   'segment_inputs: the edit reaches buildSegments as projectEdits');
 select is(public.segment_inputs(:erin, '2026-03-17') -> 'input' -> 'projectEdits', '[]'::jsonb,
   'segment_inputs: only the edits that touch the day');

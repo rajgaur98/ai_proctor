@@ -87,7 +87,9 @@ test("a manager exports the week as CSV from the Timesheets tab, and it is audit
   expect(file.suggestedFilename()).toBe(`timesheet-project-${from}_${to}.csv`);
   const text = await readFile((await file.path()) ?? "", "utf8");
   const lines = text.replace(/^﻿/, "").split("\r\n");
-  expect(lines[0]).toContain("Employee,Email,Client,Project,Billable,Worked (h),Worked (H:MM)");
+  expect(lines[0]).toContain(
+    "Employee,Email,Client,Project,Task,Billable,Worked (h),Worked (H:MM)",
+  );
   expect(lines[0]).toMatch(/Status,Approver$/);
   // Header, the people's rows, then the Total row; nothing after the last CRLF.
   expect(lines.at(-1)).toBe("");
@@ -125,11 +127,12 @@ test("a manager downloads the same view as XLSX; it is a workbook and the format
   expect(readZip(bytes).map((e) => e.name)).toEqual(XLSX_PARTS);
   const [sheet] = readXlsx(bytes);
   expect(sheet?.name).toBe("Per project");
-  expect(sheet?.rows[0]?.slice(0, 7).map((c) => c.value)).toEqual([
+  expect(sheet?.rows[0]?.slice(0, 8).map((c) => c.value)).toEqual([
     "Employee",
     "Email",
     "Client",
     "Project",
+    "Task",
     "Billable",
     "Worked (h)",
     "Worked (H:MM)",
