@@ -164,7 +164,8 @@ select pg_temp.act_as_postgres();
 select is(pg_temp.dirty(:erin), '2026-03-16', 'approve: marks the entry''s day dirty');
 select is(public.segment_inputs(:erin, '2026-03-16') -> 'input' -> 'manualEntries',
   jsonb_build_array(jsonb_build_object('start', pg_temp.epoch('2026-03-16 14:00:00-07'),
-    'end', pg_temp.epoch('2026-03-16 15:00:00-07'), 'projectId', '00000000-0000-4000-8000-0000000000f1')),
+    'end', pg_temp.epoch('2026-03-16 15:00:00-07'), 'projectId', '00000000-0000-4000-8000-0000000000f1',
+    'taskId', null)),
   'segment_inputs: only the approved entry, in DayInput shape');
 
 -- Reject, and re-check on approve --------------------------------------------------------

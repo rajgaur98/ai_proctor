@@ -285,7 +285,8 @@ assert.deepEqual(daily.header.slice(0, 5), [
   "Worked (h)",
   "Worked (H:MM)",
 ]);
-assert.deepEqual(daily.header.slice(-2), ["Status", "Approver"]);
+// #254 (TS-25): the per-day view ends with Work done.
+assert.deepEqual(daily.header.slice(-3), ["Status", "Approver", "Work done"]);
 for (const name of ["Flagged", "Excluded", "Break", "Manual", "Billable", "Non-billable"]) {
   assert.ok(daily.col(`${name} (h)`) > 0 && daily.col(`${name} (H:MM)`) > 0, `${name} columns`);
 }
@@ -303,6 +304,12 @@ console.log("ok  daily view: a row per employee and day, status and approver");
 
 const project = await exportCsv(manager, "project", range(RANGE));
 assert.equal(project.status, 200, project.text);
+// #254 (PRJ-05): Task comes between Project and Billable.
+assert.deepEqual(project.header.slice(project.col("Project"), project.col("Billable") + 1), [
+  "Project",
+  "Task",
+  "Billable",
+]);
 const projectRows = project.rows.map(
   (r) => `${r.Employee}|${r.Client}|${r.Project}|${r.Billable}|${r.Status}`,
 );

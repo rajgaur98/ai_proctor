@@ -10,6 +10,11 @@
 // excluded, excluded is excluded, break is any break), and only the finished sums are
 // formatted, so row sums and totals always agree (TS-05/06). Billable plus non-billable
 // is worked; time without a project (Unassigned, PRJ-03) is non-billable.
+//
+// #254: time can carry a task of its project (PRJ-05); the per-project and segment views
+// get a Task column after Project, and a row per task. The per-day view ends with a "Work
+// done" column (TS-25): the person's note for the day, then the notes of the day's manual
+// entries.
 
 import { toCsv } from "./csv.ts";
 import { isOver, NO_OVERTIME, type OvertimeThresholds, weekOf } from "./overtime.ts";
@@ -35,7 +40,11 @@ export interface ExportSegment {
   type: string;
   projectId: string | null;
   project: string | null;
+  /** The project's task (#254); none when left out. */
+  taskId?: string | null;
+  task?: string | null;
   client: string | null;
+  /** The task's billable flag when there is one, else the project's. */
   billable: boolean;
   counted: boolean;
   flagged: boolean;
@@ -44,6 +53,15 @@ export interface ExportSegment {
   /** Status of the timesheet for the segment's week; draft when it hasn't been opened. */
   status: string;
   approver: string | null;
+  /** A manual segment: the work note of its entry (TS-24). */
+  note?: string | null;
+}
+
+/** The person's work note for a day (TS-25). */
+export interface DayNote {
+  userId: string;
+  day: string;
+  note: string;
 }
 
 /** A row as `timesheet_export_rows` returns it. */
@@ -58,6 +76,8 @@ export interface DbExportRow {
   type: string;
   project_id: string | null;
   project: string | null;
+  task_id?: string | null;
+  task?: string | null;
   client: string | null;
   billable: boolean;
   counted: boolean;
@@ -66,6 +86,18 @@ export interface DbExportRow {
   seconds: number;
   status: string;
   approver: string | null;
+  note?: string | null;
+}
+
+/** A day note as `timesheet_export_rows` returns it (`day_notes`). */
+export interface DbDayNote {
+  user_id: string;
+  day: string;
+  note: string;
+}
+
+export function fromDbDayNote(n: DbDayNote): DayNote {
+  return { userId: n.user_id, day: n.day, note: n.note };
 }
 
 export function fromDbRow(r: DbExportRow): ExportSegment {
@@ -80,6 +112,8 @@ export function fromDbRow(r: DbExportRow): ExportSegment {
     type: r.type,
     projectId: r.project_id,
     project: r.project,
+    taskId: r.task_id ?? null,
+    task: r.task ?? null,
     client: r.client,
     billable: r.billable,
     counted: r.counted,
@@ -88,6 +122,7 @@ export function fromDbRow(r: DbExportRow): ExportSegment {
     seconds: Number(r.seconds),
     status: r.status,
     approver: r.approver,
+    note: r.note ?? null,
   };
 }
 
@@ -156,7 +191,7 @@ const DURATION_COLUMNS: [keyof Durations, string][] = [
 
 const LEADING: Record<ExportView, string[]> = {
   daily: ["Employee", "Email", "Date"],
-  project: ["Employee", "Email", "Client", "Project", "Billable"],
+  project: ["Employee", "Email", "Client", "Project", "Task", "Billable"],
   segments: [
     "Employee",
     "Email",
@@ -167,8 +202,16 @@ const LEADING: Record<ExportView, string[]> = {
     "Type",
     "Client",
     "Project",
+    "Task",
     "Billable",
   ],
+};
+
+/** Free-text columns after Approver. */
+const TRAILING: Record<ExportView, string[]> = {
+  daily: ["Work done"],
+  project: [],
+  segments: [],
 };
 
 export interface ExportRow {
@@ -177,6 +220,8 @@ export interface ExportRow {
   seconds: Durations;
   status: string;
   approver: string;
+  /** The view's trailing cells (TRAILING), e.g. the per-day Work done. */
+  trailing: string[];
 }
 
 export interface ExportTable {
@@ -201,12 +246,13 @@ function labelsFor(view: ExportView, s: ExportSegment): string[] {
   const assigned = s.projectId !== null;
   const client = assigned ? (s.client ?? "") : "";
   const project = assigned ? (s.project ?? "") : UNASSIGNED;
+  const task = assigned && s.taskId ? (s.task ?? "") : "";
   const billable = yesNo(assigned && s.billable);
   switch (view) {
     case "daily":
       return [...person, s.day];
     case "project":
-      return [...person, client, project, billable];
+      return [...person, client, project, task, billable];
     case "segments":
       return [
         ...person,
@@ -217,18 +263,23 @@ function labelsFor(view: ExportView, s: ExportSegment): string[] {
         s.type,
         client,
         project,
+        task,
         billable,
       ];
   }
+}
+
+function dayKey(userId: string, day: string): string {
+  return `${userId}\u0000${day}`;
 }
 
 /** The group a segment belongs to in a view; one row per group (segments: per segment). */
 function groupKey(view: ExportView, s: ExportSegment, index: number): string {
   switch (view) {
     case "daily":
-      return `${s.userId}\u0000${s.day}`;
+      return dayKey(s.userId, s.day);
     case "project":
-      return `${s.userId}\u0000${s.projectId ?? ""}`;
+      return `${s.userId}\u0000${s.projectId ?? ""}\u0000${s.projectId ? (s.taskId ?? "") : ""}`;
     case "segments":
       return String(index);
   }
@@ -239,7 +290,7 @@ function sortKey(view: ExportView, s: ExportSegment): string[] {
     case "daily":
       return [s.employee, s.userId, s.day];
     case "project":
-      // Unassigned last within the person.
+      // Unassigned last within the person; within a project, time without a task first.
       return [
         s.employee,
         s.userId,
@@ -247,6 +298,9 @@ function sortKey(view: ExportView, s: ExportSegment): string[] {
         s.projectId === null ? "" : (s.client ?? ""),
         s.project ?? "",
         s.projectId ?? "",
+        s.projectId && s.taskId ? "1" : "0",
+        s.projectId && s.taskId ? (s.task ?? "") : "",
+        s.projectId && s.taskId ? s.taskId : "",
       ];
     case "segments":
       return [s.employee, s.userId, s.day, s.startLocal, s.endLocal, s.type];
@@ -261,23 +315,57 @@ function compareKeys(a: string[], b: string[]): number {
   return 0;
 }
 
-export function buildExport(view: ExportView, segments: ExportSegment[]): ExportTable {
+/**
+ * TS-24/25: what a person wrote about a day's work: the day's note, then the notes of the
+ * day's manual entries in time order, each once, one per line.
+ */
+export function workDone(dayNote: string | null | undefined, segments: ExportSegment[]): string {
+  const notes: string[] = [];
+  const add = (n: string | null | undefined) => {
+    const text = n?.trim();
+    if (text && !notes.includes(text)) notes.push(text);
+  };
+  add(dayNote);
+  const ordered = [...segments].sort((a, b) => cmp(a.startLocal, b.startLocal));
+  for (const s of ordered) if (s.type === "manual") add(s.note);
+  return notes.join("\n");
+}
+
+export function buildExport(
+  view: ExportView,
+  segments: ExportSegment[],
+  dayNotes: DayNote[] = [],
+): ExportTable {
   const sorted = [...segments].sort((a, b) => compareKeys(sortKey(view, a), sortKey(view, b)));
   const groups = new Map<
     string,
-    { first: ExportSegment; seconds: Durations; statuses: Set<string>; approvers: Set<string> }
+    {
+      first: ExportSegment;
+      members: ExportSegment[];
+      seconds: Durations;
+      statuses: Set<string>;
+      approvers: Set<string>;
+    }
   >();
   sorted.forEach((s, i) => {
     const key = groupKey(view, s, i);
     let g = groups.get(key);
     if (!g) {
-      g = { first: s, seconds: emptyDurations(), statuses: new Set(), approvers: new Set() };
+      g = {
+        first: s,
+        members: [],
+        seconds: emptyDurations(),
+        statuses: new Set(),
+        approvers: new Set(),
+      };
       groups.set(key, g);
     }
+    g.members.push(s);
     addSegment(g.seconds, s);
     g.statuses.add(s.status);
     if (s.approver) g.approvers.add(s.approver);
   });
+  const notes = new Map(dayNotes.map((n) => [dayKey(n.userId, n.day), n.note]));
   const rows = [...groups.values()].map(
     (g): ExportRow => ({
       labels: labelsFor(view, g.first),
@@ -285,6 +373,10 @@ export function buildExport(view: ExportView, segments: ExportSegment[]): Export
       // A project row can span weeks in different states.
       status: g.statuses.size === 1 ? ([...g.statuses][0] ?? "") : "Mixed",
       approver: [...g.approvers].sort(cmp).join("; "),
+      trailing:
+        view === "daily"
+          ? [workDone(notes.get(dayKey(g.first.userId, g.first.day)), g.members)]
+          : [],
     }),
   );
   return { view, rows, total: sumSegments(segments) };
@@ -301,6 +393,7 @@ export function exportHeader(view: ExportView): string[] {
     ...DURATION_COLUMNS.flatMap(([, label]) => [`${label} (h)`, `${label} (H:MM)`]),
     "Status",
     "Approver",
+    ...TRAILING[view],
   ];
 }
 
@@ -313,13 +406,25 @@ export function formatTable(table: ExportTable): string[][] {
     ...durationCells(r.seconds),
     r.status,
     r.approver,
+    ...r.trailing,
   ]);
-  const total = ["Total", ...leading.slice(1).map(() => ""), ...durationCells(table.total), "", ""];
+  const total = [
+    "Total",
+    ...leading.slice(1).map(() => ""),
+    ...durationCells(table.total),
+    "",
+    "",
+    ...TRAILING[table.view].map(() => ""),
+  ];
   return [header, ...lines, total];
 }
 
-export function exportCsv(view: ExportView, segments: ExportSegment[]): string {
-  return toCsv(formatTable(buildExport(view, segments)));
+export function exportCsv(
+  view: ExportView,
+  segments: ExportSegment[],
+  dayNotes: DayNote[] = [],
+): string {
+  return toCsv(formatTable(buildExport(view, segments, dayNotes)));
 }
 
 /** The download's name: timesheet-daily-2026-03-16_2026-03-22.csv (or .xlsx). */
@@ -347,6 +452,8 @@ export interface XlsxExportOptions {
   overtime?: OvertimeThresholds;
   /** The org's week_start (monday..sunday), for the weekly totals. */
   weekStart?: string | null;
+  /** TS-25: the people's day notes, for the per-day Work done column. */
+  dayNotes?: DayNote[];
 }
 
 /** Decimal hours as a number cell: the CSV's rounded value ("7.43" -> 7.43). */
@@ -439,7 +546,7 @@ export function exportXlsx(
   options: XlsxExportOptions = {},
 ): Uint8Array {
   const overtime = options.overtime ?? NO_OVERTIME;
-  const table = buildExport(view, segments);
+  const table = buildExport(view, segments, options.dayNotes ?? []);
   const leading = LEADING[view];
   const bold = { bold: true };
   const rows: XlsxCell[][] = [
@@ -453,6 +560,7 @@ export function exportXlsx(
       ),
       r.status,
       r.approver,
+      ...r.trailing,
     ]),
     [
       { value: "Total", style: bold },
@@ -460,6 +568,7 @@ export function exportXlsx(
       ...durationXlsxCells(table.total, bold),
       "",
       "",
+      ...TRAILING[view].map(() => ""),
     ],
   ];
   const sheets: XlsxSheet[] = [

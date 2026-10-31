@@ -139,11 +139,18 @@ describe("views", () => {
 
   it("project: Unassigned is its own row, last for the person", () => {
     const lines = formatTable(buildExport("project", segs));
-    expect(lines[0]?.slice(0, 5)).toEqual(["Employee", "Email", "Client", "Project", "Billable"]);
-    expect(lines.slice(1, -1).map((l) => [l[0], l[2], l[3], l[4], l[5]])).toEqual([
-      ["Erin Employee", "Acme", "Website revamp", "Yes", "3.00"],
-      ["Erin Employee", "", "Unassigned", "No", "0.50"],
-      ["Lucas Martin", "", "Retainer", "No", "0.25"],
+    expect(lines[0]?.slice(0, 6)).toEqual([
+      "Employee",
+      "Email",
+      "Client",
+      "Project",
+      "Task",
+      "Billable",
+    ]);
+    expect(lines.slice(1, -1).map((l) => [l[0], l[2], l[3], l[4], l[5], l[6]])).toEqual([
+      ["Erin Employee", "Acme", "Website revamp", "", "Yes", "3.00"],
+      ["Erin Employee", "", "Unassigned", "", "No", "0.50"],
+      ["Lucas Martin", "", "Retainer", "", "No", "0.25"],
     ]);
   });
 
@@ -160,7 +167,7 @@ describe("views", () => {
   it("segments: one row per segment with local times", () => {
     const lines = formatTable(buildExport("segments", segs));
     expect(lines).toHaveLength(segs.length + 2);
-    expect(lines[0]?.slice(0, 10)).toEqual([
+    expect(lines[0]?.slice(0, 11)).toEqual([
       "Employee",
       "Email",
       "Date",
@@ -170,9 +177,10 @@ describe("views", () => {
       "Type",
       "Client",
       "Project",
+      "Task",
       "Billable",
     ]);
-    expect(lines[1]?.slice(0, 10)).toEqual([
+    expect(lines[1]?.slice(0, 11)).toEqual([
       "Erin Employee",
       "erin@acme.test",
       "2026-03-16",
@@ -182,14 +190,64 @@ describe("views", () => {
       "verified",
       "Acme",
       "Website revamp",
+      "",
       "Yes",
     ]);
   });
 
-  it("ends with Status and Approver columns", () => {
-    const lines = formatTable(buildExport("daily", segs));
-    expect(lines[0]?.slice(-2)).toEqual(["Status", "Approver"]);
-    expect(lines.at(-2)?.slice(-2)).toEqual(["approved", "Max Manager"]);
+  it("ends with Status and Approver columns, then Work done in the per-day view", () => {
+    const daily = formatTable(buildExport("daily", segs));
+    expect(daily[0]?.slice(-3)).toEqual(["Status", "Approver", "Work done"]);
+    expect(daily.at(-2)?.slice(-3)).toEqual(["approved", "Max Manager", ""]);
+    for (const view of ["project", "segments"] as const) {
+      const lines = formatTable(buildExport(view, segs));
+      expect(lines[0]?.slice(-2)).toEqual(["Status", "Approver"]);
+    }
+  });
+
+  // #254 (PRJ-05): a row per task within the project, the task's billable flag; time
+  // without a task first.
+  it("project: a row per task, time without a task first", () => {
+    const tasked = [
+      seg({ taskId: "t2", task: "Testing", billable: false, seconds: 600 }),
+      seg({ taskId: "t1", task: "Design", seconds: 1200 }),
+      seg({ seconds: 1800 }),
+      seg({ taskId: "t1", task: "Design", day: "2026-03-17", seconds: 300 }),
+      // A task without a project never shows: the time is Unassigned.
+      seg({ projectId: null, project: null, client: null, taskId: "stray", task: "Stray" }),
+    ];
+    const lines = formatTable(buildExport("project", tasked));
+    expect(lines.slice(1, -1).map((l) => [l[3], l[4], l[5], l[6]])).toEqual([
+      ["Website revamp", "", "Yes", "0.50"],
+      ["Website revamp", "Design", "Yes", "0.42"],
+      ["Website revamp", "Testing", "No", "0.17"],
+      ["Unassigned", "", "No", "1.00"],
+    ]);
+    const segments = formatTable(buildExport("segments", tasked));
+    expect(segments[1]?.[9]).toBe("Testing");
+  });
+
+  // TS-24/25: the day note, then each manual entry's note once, in time order.
+  it("daily: Work done is the day note, then the day's entry notes", () => {
+    const noted = [
+      seg({ type: "manual", startLocal: "2026-03-16 14:00:00", note: "Client call" }),
+      seg({ type: "manual", startLocal: "2026-03-16 11:00:00", note: "Wrote the spec" }),
+      seg({ type: "manual", startLocal: "2026-03-16 15:00:00", note: "Client call" }),
+      seg({ startLocal: "2026-03-16 09:00:00", note: "ignored: not manual" }),
+      seg({ day: "2026-03-17", startLocal: "2026-03-17 09:00:00" }),
+    ];
+    const notes = [
+      { userId: "u1", day: "2026-03-16", note: "Sprint planning" },
+      { userId: "u2", day: "2026-03-16", note: "Someone else's" },
+    ];
+    const lines = formatTable(buildExport("daily", noted, notes));
+    expect(lines.slice(1, -1).map((l) => l.at(-1))).toEqual([
+      "Sprint planning\nWrote the spec\nClient call",
+      "",
+    ]);
+    expect(lines.at(-1)?.at(-1)).toBe("");
+    const csv = exportCsv("daily", noted, notes);
+    expect(csv).toContain('"Sprint planning\nWrote the spec\nClient call"');
   });
 
   it("the total is summed from raw seconds, never from rounded rows", () => {
@@ -328,7 +386,8 @@ describe("export properties", () => {
         const lines = formatTable(buildExport(view, segs));
         const total = sumSegments(segs);
         const last = lines.at(-1) ?? [];
-        const worked = last.length - 2 - 14;
+        const trailing = view === "daily" ? 1 : 0;
+        const worked = last.length - 2 - trailing - 14;
         expect(last[worked]).toBe(decimalHours(total.worked));
         expect(last[worked + 1]).toBe(clockHours(total.worked));
         // Every line has the header's width.
@@ -375,6 +434,16 @@ describe("export properties", () => {
         });
       }),
       { numRuns: 60 },
+    );
+  });
+
+  it("XLSX per-day Work done carries the day notes like the CSV", () => {
+    const noted = [seg({ type: "manual", note: "Wrote the spec" })];
+    const notes = [{ userId: "u1", day: "2026-03-16", note: "Sprint planning" }];
+    const csv = formatTable(buildExport("daily", noted, notes));
+    const sheet = readXlsx(exportXlsx("daily", noted, { dayNotes: notes }))[0];
+    expect(sheet?.rows[1]?.[csv[0]?.length ? csv[0].length - 1 : 0]?.value).toBe(
+      "Sprint planning\nWrote the spec",
     );
   });
 

@@ -1245,11 +1245,13 @@ export type Database = {
           decision_note: string | null;
           end_at: string;
           id: string;
+          note: string | null;
           org_id: string;
           project_id: string | null;
           reason: string;
           start_at: string;
           status: string;
+          task_id: string | null;
           user_id: string;
         };
         ComputedFields: never;
@@ -1260,11 +1262,13 @@ export type Database = {
           decision_note?: string | null;
           end_at: string;
           id?: string;
+          note?: string | null;
           org_id: string;
           project_id?: string | null;
           reason: string;
           start_at: string;
           status?: string;
+          task_id?: string | null;
           user_id: string;
         };
         Update: {
@@ -1274,11 +1278,13 @@ export type Database = {
           decision_note?: string | null;
           end_at?: string;
           id?: string;
+          note?: string | null;
           org_id?: string;
           project_id?: string | null;
           reason?: string;
           start_at?: string;
           status?: string;
+          task_id?: string | null;
           user_id?: string;
         };
         Relationships: [
@@ -1308,6 +1314,13 @@ export type Database = {
             columns: ["project_id"];
             isOneToOne: false;
             referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manual_entries_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "project_tasks";
             referencedColumns: ["id"];
           },
           {
@@ -1746,6 +1759,55 @@ export type Database = {
           },
         ];
       };
+      project_tasks: {
+        Row: {
+          archived: boolean;
+          billable: boolean;
+          created_at: string;
+          id: string;
+          name: string;
+          org_id: string;
+          project_id: string;
+          sort_order: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived?: boolean;
+          billable: boolean;
+          created_at?: string;
+          id?: string;
+          name: string;
+          org_id: string;
+          project_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          archived?: boolean;
+          billable?: boolean;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          org_id?: string;
+          project_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_tasks_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "project_tasks_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       projects: {
         Row: {
           archived: boolean;
@@ -2061,6 +2123,7 @@ export type Database = {
           project_id: string | null;
           source: string;
           start_at: string;
+          task_id: string | null;
           type: string;
           user_id: string;
         };
@@ -2078,6 +2141,7 @@ export type Database = {
           project_id?: string | null;
           source?: string;
           start_at: string;
+          task_id?: string | null;
           type: string;
           user_id: string;
         };
@@ -2094,6 +2158,7 @@ export type Database = {
           project_id?: string | null;
           source?: string;
           start_at?: string;
+          task_id?: string | null;
           type?: string;
           user_id?: string;
         };
@@ -2120,6 +2185,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "time_segments_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "project_tasks";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "time_segments_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
@@ -2128,6 +2200,80 @@ export type Database = {
           },
           {
             foreignKeyName: "time_segments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      timesheet_day_notes: {
+        Row: {
+          day: string;
+          note: string;
+          org_id: string;
+          timesheet_id: string;
+          updated_at: string;
+          updated_by: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          day: string;
+          note: string;
+          org_id: string;
+          timesheet_id: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id: string;
+        };
+        Update: {
+          day?: string;
+          note?: string;
+          org_id?: string;
+          timesheet_id?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_day_notes_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_day_notes_timesheet_id_fkey";
+            columns: ["timesheet_id"];
+            isOneToOne: false;
+            referencedRelation: "timesheets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_day_notes_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_day_notes_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_day_notes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_day_notes_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
@@ -2148,6 +2294,7 @@ export type Database = {
           reason: string | null;
           seq: number;
           start_at: string;
+          task_id: string | null;
           timesheet_id: string;
           user_id: string;
         };
@@ -2164,6 +2311,7 @@ export type Database = {
           reason?: string | null;
           seq?: never;
           start_at: string;
+          task_id?: string | null;
           timesheet_id: string;
           user_id: string;
         };
@@ -2179,6 +2327,7 @@ export type Database = {
           reason?: string | null;
           seq?: never;
           start_at?: string;
+          task_id?: string | null;
           timesheet_id?: string;
           user_id?: string;
         };
@@ -2209,6 +2358,13 @@ export type Database = {
             columns: ["project_id"];
             isOneToOne: false;
             referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_edits_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "project_tasks";
             referencedColumns: ["id"];
           },
           {
@@ -2565,6 +2721,7 @@ export type Database = {
           p_project_id: string;
           p_reason: string;
           p_start_at: string;
+          p_task_id?: string;
           p_timesheet_id: string;
         };
         Returns: string;
@@ -2660,6 +2817,7 @@ export type Database = {
           p_project_id?: string;
           p_reason?: string;
           p_start_at: string;
+          p_task_id?: string;
           p_timesheet_id: string;
         };
         Returns: string;
@@ -2825,7 +2983,13 @@ export type Database = {
       policy_settings: { Args: Record<PropertyKey, never>; Returns: Json };
       publish_notice: { Args: { p_body: Json }; Returns: number };
       reassign_my_time: {
-        Args: { p_end: string; p_project_id: string; p_reason?: string; p_start: string };
+        Args: {
+          p_end: string;
+          p_project_id: string;
+          p_reason?: string;
+          p_start: string;
+          p_task_id?: string;
+        };
         Returns: string;
       };
       record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
@@ -2863,7 +3027,14 @@ export type Database = {
         Returns: Json;
       };
       request_manual_entry: {
-        Args: { p_end_at: string; p_project_id: string; p_reason: string; p_start_at: string };
+        Args: {
+          p_end_at: string;
+          p_note?: string;
+          p_project_id: string;
+          p_reason: string;
+          p_start_at: string;
+          p_task_id?: string;
+        };
         Returns: string;
       };
       retention_expired_captures: {
@@ -2882,6 +3053,10 @@ export type Database = {
         Args: { p_archived?: boolean; p_id: string; p_name: string };
         Returns: string;
       };
+      save_day_note: {
+        Args: { p_day: string; p_note: string; p_reason?: string; p_user_id: string };
+        Returns: undefined;
+      };
       save_project: {
         Args: {
           p_archived?: boolean;
@@ -2889,6 +3064,16 @@ export type Database = {
           p_client_id?: string;
           p_id: string;
           p_name: string;
+        };
+        Returns: string;
+      };
+      save_task: {
+        Args: {
+          p_archived?: boolean;
+          p_billable?: boolean;
+          p_id: string;
+          p_name: string;
+          p_project_id: string;
         };
         Returns: string;
       };
@@ -2965,6 +3150,7 @@ export type Database = {
           flagged: boolean;
           project_id: string;
           seconds: number;
+          task_id: string;
           type: string;
         }[];
       };
@@ -3012,6 +3198,10 @@ export type Database = {
           app_name: string;
           seconds: number;
         }[];
+      };
+      update_manual_entry_details: {
+        Args: { p_id: string; p_note: string; p_reason?: string; p_task_id: string };
+        Returns: undefined;
       };
       update_member: {
         Args: {

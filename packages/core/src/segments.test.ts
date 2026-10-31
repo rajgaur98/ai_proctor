@@ -214,6 +214,35 @@ describe("buildSegments", () => {
     expect(show(segments)).toEqual(["09:00-10:00 verified", "10:00-11:00 manual M"]);
   });
 
+  // #254 (PRJ-05): a task comes from a manual entry or a dashboard edit, never from the
+  // agent's project switches; an edit sets the task with the project.
+  it("carries the task of manual entries and edits, none from switches", () => {
+    const segments = buildSegments(
+      input({
+        clockSessions: [{ start: t("09:00"), end: t("12:00"), projectId: "A" }],
+        projectSwitches: [{ at: t("10:00"), projectId: "B" }],
+        projectEdits: [
+          { start: t("09:30"), end: t("10:00"), projectId: "A", taskId: "A1" },
+          { start: t("11:00"), end: t("11:30"), projectId: "B" },
+          { start: t("12:30"), end: t("13:00"), projectId: "M", taskId: "M2" },
+        ],
+        manualEntries: [
+          { start: t("12:00"), end: t("13:00"), projectId: "M", taskId: "M1" },
+          { start: t("14:00"), end: t("15:00"), projectId: null, taskId: "stray" },
+        ],
+      }),
+    );
+    expect(segments.map((s) => [s.type, s.projectId, s.taskId, (s.end - s.start) / 60])).toEqual([
+      ["verified", "A", null, 30],
+      ["verified", "A", "A1", 30],
+      // The edit without a task matches the switch's B, so the pieces merge.
+      ["verified", "B", null, 120],
+      ["manual", "M", "M1", 30],
+      ["manual", "M", "M2", 30],
+      ["manual", null, null, 60],
+    ]);
+  });
+
   it("stops open intervals at now", () => {
     const segments = buildSegments(
       input({
@@ -320,7 +349,9 @@ const arbitraryDay: fc.Arbitrary<DayInput> = fc.record({
     { maxLength: 3 },
   ),
   manualEntries: fc.array(
-    fc.tuple(span, project).map(([s, p]) => ({ ...s, projectId: p })),
+    fc
+      .tuple(span, project, fc.constantFrom(null, "T"))
+      .map(([s, p, task]) => ({ ...s, projectId: p, taskId: p === null ? null : task })),
     {
       maxLength: 2,
     },
@@ -455,7 +486,9 @@ describe("properties", () => {
           const a = segments[i - 1] as Segment;
           const b = segments[i] as Segment;
           if (a.end === b.start)
-            expect(a.type !== b.type || a.projectId !== b.projectId).toBe(true);
+            expect(a.type !== b.type || a.projectId !== b.projectId || a.taskId !== b.taskId).toBe(
+              true,
+            );
         }
       }),
     );
