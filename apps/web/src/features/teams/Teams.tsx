@@ -6,6 +6,7 @@ import type { Policy } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useId, useRef, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -52,9 +53,27 @@ export function Teams() {
             {profile.orgName} · {rows.length} {rows.length === 1 ? "team" : "teams"}
           </p>
         </div>
-        <Button className="ml-auto" disabled={!settings.data} onClick={() => setEditing("new")}>
-          New team
-        </Button>
+        <div className="ml-auto flex gap-2">
+          <ExportButton
+            title="Teams"
+            ready={!teams.isPending && !members.isPending && !error}
+            spec={{
+              page: "teams",
+              filters: {},
+              table: () => ({
+                sheet: "Teams",
+                header: ["Team", "People", "Policy"],
+                rows: rows.map((t) => {
+                  const summary = overrideSummary(t.policy);
+                  return [t.name, count(t.id), summary.length ? summary.join(" · ") : "Org policy"];
+                }),
+              }),
+            }}
+          />
+          <Button disabled={!settings.data} onClick={() => setEditing("new")}>
+            New team
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-line bg-panel">

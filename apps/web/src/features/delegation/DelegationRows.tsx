@@ -3,8 +3,25 @@
 // list is about, or null when it is the viewer's own ("you"). Only the subject's own
 // upcoming or active delegations can be ended from here.
 import { Button } from "../../components/ui/button";
+import { type ExportTable, exportTime } from "../../lib/exportFile";
 import type { Delegation } from "./delegationData";
 import { rangeLabel, statusLabel } from "./range";
+
+/** The rows as an export (#255): who approves for whom, the days and where each stands. */
+export function delegationTable(rows: Delegation[]): ExportTable {
+  return {
+    sheet: "Delegations",
+    header: ["Manager", "Delegate", "First day", "Last day", "Status", "Ended"],
+    rows: rows.map((d) => [
+      d.managerName,
+      d.delegateName,
+      d.startsOn,
+      d.endsOn,
+      statusLabel(d),
+      exportTime(d.endedAt),
+    ]),
+  };
+}
 
 export function DelegationRows({
   rows,

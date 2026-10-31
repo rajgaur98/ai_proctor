@@ -288,6 +288,8 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-22 | P0 | Hours shown as **decimal to 2 places** (e.g. 7.43) plus an **H:MM** column. Columns include worked, flagged, excluded, break, manual, billable/non-billable, approval status, approver |
 | TS-23 | P0 | Unassigned time appears as its own row in project exports |
 | TS-26 | P1 | Exports carry tasks and notes: a **Task** column after Project in the per-project and segment views (one per-project row per task; billable is the task's flag), and a **Work done** column at the end of the per-day view (the day's note, then that day's entry notes), in CSV and XLSX (#254) |
+| TS-27 | P1 | **Exports beyond timesheets (#255):** every list or table page has an Export: CSV, plus XLSX for tabular data, using the same writers as TS-20. Part 1: People, Teams, Projects, Clients, Alerts (alert history), Reports, Device enrollment, Delegations. Part 2: the live grid (current snapshot), the day view (check-ins, segments, activity), the captures list (metadata only, never images) and the remaining timesheet views |
+| TS-28 | P1 | A page's export holds exactly what the viewer can see on it (same access rules) with the page's current filters, and is named `<page>-<filters>-<date>.csv` or `.xlsx` |
 
 ### 4.11 Manager dashboard (DSH)
 
@@ -350,7 +352,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 
 | ID | Pri | Requirement |
 |---|---|---|
-| AUD-01 | P0 | Append-only audit log of: capture views, policy changes, role and reporting-line changes, timesheet edits/approvals/returns/reopens, delegations, exports, user deactivation, data exports/deletions, employees' deletions of parts of their own check-ins (EMP-06), DPIA confirmations |
+| AUD-01 | P0 | Append-only audit log of: capture views, policy changes, role and reporting-line changes, timesheet edits/approvals/returns/reopens, delegations, exports (each with what was exported, its filters and row count, from every page that exports, TS-27), user deactivation, data exports/deletions, employees' deletions of parts of their own check-ins (EMP-06), DPIA confirmations |
 | AUD-02 | P0 | Admin and Owner can search and export the audit log |
 | AUD-03 | P0 | Audit log retained for at least 3 years, regardless of other retention settings |
 
