@@ -147,7 +147,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | CHK-20 | P0 | **Pass:** record the event and trigger captures (see CAP). Show the employee a 2-second thumbnail of the captured webcam frame (if webcam enabled) |
 | CHK-21 | P0 | **Miss:** record the event **without any screenshot or webcam capture**. Store: scheduled, shown and expired timestamps; idle seconds at time of showing; device state (locked/asleep/on battery/display off). Status becomes Away |
 | CHK-22 | P0 | **Failed challenge:** treated as a miss for status and timesheet purposes, flagged separately in reports |
-| CHK-23 | P0 | Employee can add a **reason** to any missed check-in (free text + quick picks: Meeting, Phone call, Break, Away from desk, Other) from the tray app until their timesheet is submitted. Manager sees the reason next to the miss |
+| CHK-23 | P0 | Employee can add a **reason** to any missed check-in (quick picks: Meeting, Phone call, Break, Away from desk, Other, plus a free-text remark up to 500 characters; Other needs a remark) from the tray app or My data, until that week's timesheet is approved. Every change is audit-logged. Manager sees the reason and remark next to the miss in the day view and timesheet |
 | CHK-24 | P0 | Every check-in event stores `response_ms` (time from shown to click). A miss has no click, so its `response_ms` is empty; the shown and expiry times are stored instead (#103) |
 
 **Acceptance criteria**

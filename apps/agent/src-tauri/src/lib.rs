@@ -1438,7 +1438,7 @@ async fn set_miss_reason(
         state
             .account()?
             .set_miss_reason(id, kind.as_deref(), note.as_deref())
-            .map_err(|_| "Couldn't save the reason. Try again in a minute.".to_owned())?;
+            .map_err(|e| miss_reason_error(&e).to_owned())?;
         let mut missed = state.missed_checkin.lock().unwrap();
         if missed.is_some_and(|(m, _)| m == id) {
             *missed = None;
@@ -1448,6 +1448,18 @@ async fn set_miss_reason(
         Ok(())
     })
     .await
+}
+
+/// What the tray says when a miss reason isn't saved (CHK-23, #252): the server's
+/// refusals that the person can act on, else "try again".
+fn miss_reason_error(error: &SyncError) -> &'static str {
+    match error {
+        SyncError::Refused(m) if m.contains("timesheet_locked") => {
+            "This week's timesheet is approved, so the reason can't change."
+        }
+        SyncError::Refused(m) if m.contains("remark_required") => "Add a remark for Other.",
+        _ => "Couldn't save the reason. Try again in a minute.",
+    }
 }
 
 /// The OS settings page to fix a permission, or `None` for a target with none on this
@@ -2256,6 +2268,23 @@ mod tests {
 
     fn wrong(c: &CardChallenge) -> i64 {
         c.options.iter().find(|n| **n != c.target).copied().unwrap()
+    }
+
+    #[test]
+    fn a_refused_miss_reason_says_why() {
+        let refused = |m: &str| SyncError::Refused(format!("400: {m}"));
+        assert_eq!(
+            miss_reason_error(&refused("timesheet_locked")),
+            "This week's timesheet is approved, so the reason can't change."
+        );
+        assert_eq!(
+            miss_reason_error(&refused("remark_required")),
+            "Add a remark for Other."
+        );
+        assert_eq!(
+            miss_reason_error(&SyncError::Retry("offline".into())),
+            "Couldn't save the reason. Try again in a minute."
+        );
     }
 
     // Found only when the bundle first ran on a Mac (#98): each of these broke the

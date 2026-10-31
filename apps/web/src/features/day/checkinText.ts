@@ -34,13 +34,39 @@ export function noFace(c: Pick<Checkin, "outcome" | "facePresent">): boolean {
 
 export const NO_FACE = "No face detected";
 
-/** What the marker button says: the outcome, the time, for a deferral the reason, and a no-face hint. */
+/**
+ * What the marker button says: the outcome, the time, for a deferral the reason, for a
+ * miss the employee's reason and remark (#252, shortened), and a no-face hint.
+ */
 export function markerLabel(c: Checkin, zone: string): string {
   const at = DateTime.fromISO(c.shownAt ?? c.scheduledAt, { zone }).toFormat("HH:mm");
   const reason =
-    c.outcome === "deferred" ? ` (${deferralText(c.deferralReason).toLowerCase()})` : "";
+    c.outcome === "deferred"
+      ? ` (${deferralText(c.deferralReason).toLowerCase()})`
+      : c.outcome === "miss"
+        ? missSuffix(c)
+        : "";
   const face = noFace(c) ? `, ${NO_FACE.toLowerCase()} (needs review)` : "";
   return `${outcomeLabel[c.outcome]} at ${at}${reason}${face}`;
+}
+
+/** Long remarks are cut in marker labels and list rows; the details panel shows all of it. */
+const SHORT_REMARK = 60;
+
+/** One line for a miss's reason: "Meeting: “Client call”", "No reason given", … (#252). */
+export function missReasonLine(kind: string | null, note: string | null): string {
+  const r = missReason(kind, note);
+  const text = r.note?.replace(/\s+/g, " ") ?? null;
+  const remark = text
+    ? `“${text.length > SHORT_REMARK ? `${text.slice(0, SHORT_REMARK - 1).trimEnd()}…` : text}”`
+    : null;
+  if (r.kind && remark) return `${r.kind}: ${remark}`;
+  return r.kind ?? remark ?? "No reason given";
+}
+
+function missSuffix(c: Checkin): string {
+  if (!c.missedReasonKind && !c.missedReason?.trim()) return "";
+  return ` (${missReasonLine(c.missedReasonKind ?? null, c.missedReason ?? null)})`;
 }
 
 /** "11 min", "1 h 05 min": whole minutes, for display only. */
