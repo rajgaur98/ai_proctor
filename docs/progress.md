@@ -9,9 +9,9 @@ _Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (22 Oct):** the P1 backlog is merged: teams and per-team policy (#66, #202), anti-cheat extras (#63), MDM enrollment tokens (#86), XLSX export and overtime (#65), daily digest / top apps / recorded late clock-ins (#67, #237, #238), stable debug signing (#108), the signed-bundle agent e2e (#227) and on-device face presence (#64). No unblocked issue is left.
-- **Open PRs:** none.
-- **Next:** device checks below; Raj's product questions in the merged PRs (#228 teams, #229 anti-cheat, #230 MDM, #232 overtime, #233 face presence, #236 digest); the M6 accounts (#55–#57, #60, #61); #168 / #175.
+- **Now (31 Oct):** Raj's 31 Oct requests: #251 seat map on the Team page, #252 typed remarks for missed check-ins, #254 timesheets to market standard (part 1: tasks + work description), #250 onboarding without a camera — implementers running. Since 22 Oct: #242/#243 macOS 26 Screen Recording prompt, #168 assistive-input exemption, #244 onboarding restart offer, #246 manual Windows installer workflow; Cloudflare R2 buckets + Pages project created; Windows VM (UTM) running for device checks.
+- **Open PRs:** none yet for the 31 Oct issues.
+- **Next:** #253 delete captured data (admins), #255 exports on every list page, #256 imports (after #254 part 1 so tasks are covered); #254 parts 2–8 as sub-issues. Then the hosted Supabase project (staging) for Pages previews and backups.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).

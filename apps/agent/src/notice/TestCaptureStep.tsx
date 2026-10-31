@@ -13,7 +13,7 @@ export function TestCaptureStep({
   phase: CapturePhase;
   onRestart: () => void;
 }) {
-  const problems = captureProblems(phase, state.platform);
+  const problems = captureProblems(phase, state.platform, state.screenshots);
   const result = phase.kind === "done" ? phase.result : null;
   const screen = result?.screens[0] ?? null;
   return (
