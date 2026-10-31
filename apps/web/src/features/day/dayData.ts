@@ -4,6 +4,7 @@ import type { SegmentType } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
 import type { TopApp } from "./appsData";
+import { type RemovedParts, removedFromRow } from "./removedText";
 import type { Checkin, DaySegment, Span, TamperPeriod } from "./timeline";
 
 export interface CheckinRow extends Checkin {
@@ -18,6 +19,8 @@ export interface CheckinRow extends Checkin {
   /** Stored file names (screen-1.webp, webcam.webp); the files open through the audit-logged viewer. */
   objectKeys: string[];
   facePresent: boolean | null;
+  /** Parts the employee removed (#253); the check-in result is unchanged. */
+  removed: RemovedParts;
 }
 
 /**
@@ -85,7 +88,7 @@ export const dayCheckinsQuery = (userId: string, day: Span, date: string, zone: 
       const { data, error } = await supabase
         .from("checkin_events")
         .select(
-          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, project_id, object_keys, face_present",
+          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, response_ms, wrong_clicks, idle_s_at_show, device_state, missed_reason, missed_reason_kind, project_id, object_keys, face_present, webcam_deleted_at, screen_deleted_at, apps_deleted_at, domains_deleted_at",
         )
         .eq("user_id", userId)
         .gte("scheduled_at", new Date(day.start).toISOString())
@@ -108,6 +111,7 @@ export const dayCheckinsQuery = (userId: string, day: Span, date: string, zone: 
         projectId: c.project_id,
         objectKeys: c.object_keys,
         facePresent: c.face_present,
+        removed: removedFromRow(c),
       }));
     },
   });
