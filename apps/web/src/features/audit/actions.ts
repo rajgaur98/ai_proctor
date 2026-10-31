@@ -24,6 +24,7 @@ export const actionLabels: Record<string, string> = {
   "enrollment_token.created": "Created an enrollment token",
   "enrollment_token.revoked": "Revoked an enrollment token",
   "enrollment_token.used": "Enrolled a device",
+  "import.applied": "Imported data",
   "checkin.miss_reason_set": "Set a miss reason",
 };
 
@@ -123,6 +124,11 @@ export function summarize(
       return tokenName(m);
     case "enrollment_token.used":
       return `With ${tokenName(m)}`;
+    case "import.applied": {
+      const n = (v: unknown) => (typeof v === "number" ? v : 0);
+      const kind = role(m.kind);
+      return `${kind} · ${n(m.created)} added, ${n(m.updated)} updated · ${plural(n(m.rows), "row")}`;
+    }
     case "checkin.miss_reason_set": {
       // #252: the quick pick before and after, and the remark's length (never its words).
       const pick = (v: unknown) => reasonLabel[text(v) ?? ""] ?? text(v) ?? "None";

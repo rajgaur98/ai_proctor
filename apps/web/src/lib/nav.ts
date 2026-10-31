@@ -23,6 +23,7 @@ const admin: NavLink[] = [
   { to: "/teams", label: "Teams" },
   { to: "/projects", label: "Projects" },
   { to: "/policy", label: "Policy" },
+  { to: "/settings/import", label: "Import" },
   { to: "/notice", label: "Monitoring notice" },
   { to: "/audit", label: "Audit log" },
 ];
