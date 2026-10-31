@@ -168,6 +168,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | CAP-06 | P0 | Images are downscaled (max 1280 px wide; webcam up to 320 px wide, keeping the camera's aspect, e.g. 320×180 for 16:9; decided 22 Oct 2026, #175) and compressed on device (WebP, quality ~60; target ≤ 150 KB per screenshot, ≤ 20 KB per webcam frame), encrypted in transit, and uploaded directly to object storage after the check-in event is accepted; the storage policy only accepts files in the employee's own folder for a check-in recorded as passed |
 | CAP-07 | P1 | **Face presence detection** (on device, detection only, never recognition): store only a boolean `face_present`. No face images, embeddings or templates are stored or sent. **Disabled** for EU-region orgs and for employees whose work location is Illinois |
 | CAP-08 | P0 | If capture fails (permission revoked, camera in use, no camera), the check-in still passes and the failure reason is stored; repeated permission failures trigger Tamper status |
+| CAP-09 | P0 | A part of a check-in the employee removed (EMP-06) is removed from object storage, can't be uploaded again, and is never listed or signed for a viewer. The check-in keeps a tombstone per part (when it was removed); its result, its time and its flags are unchanged, and it is not a flag. The day view says what was removed, by whom and when ("Webcam and screen removed by Erin on 31 Oct") instead of showing a missing capture (#253) |
 
 ### 4.6 Presence status (STS)
 
@@ -319,6 +320,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | EMP-03 | P0 | Employee can see **who viewed their captures** (viewer name and time) |
 | EMP-04 | P0 | Employee can download a copy of their own data (supports GDPR/DPDP access requests) |
 | EMP-05 | P0 | The monitoring notice they acknowledged is always viewable from the tray app |
+| EMP-06 | P0 | On My data the employee can delete parts of their own passed check-ins, one check-in at a time, in any combination: the webcam frame, the screen captures, the apps of the minute they answered (the activity samples and raw app events of that minute) and that minute's browser domains (domain and page title). Only the person the check-in belongs to can; managers, admins and owners can't delete anyone else's. The dialog lists exactly what goes and that it can't be undone. Each deletion is audit-logged (`capture.deleted`, `activity.deleted`). Deleting the whole account stays an admin data request (ADM-05) (#253) |
 
 ### 4.14 Anti-gaming & tamper detection (ANT)
 
@@ -348,7 +350,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 
 | ID | Pri | Requirement |
 |---|---|---|
-| AUD-01 | P0 | Append-only audit log of: capture views, policy changes, role and reporting-line changes, timesheet edits/approvals/returns/reopens, delegations, exports, user deactivation, data exports/deletions, DPIA confirmations |
+| AUD-01 | P0 | Append-only audit log of: capture views, policy changes, role and reporting-line changes, timesheet edits/approvals/returns/reopens, delegations, exports, user deactivation, data exports/deletions, employees' deletions of parts of their own check-ins (EMP-06), DPIA confirmations |
 | AUD-02 | P0 | Admin and Owner can search and export the audit log |
 | AUD-03 | P0 | Audit log retained for at least 3 years, regardless of other retention settings |
 
