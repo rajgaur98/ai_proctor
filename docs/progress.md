@@ -20,7 +20,7 @@ Read this first after a restart or a context compaction. Update it with every PR
   - #271: #255 part 1, exports
   The migrations in these PRs use different versions and redefine different functions; merge one at a time, merging main in first.
 - **Next:**
-  - #263 day list editing, #265 per-row review comments, #269 task reorder and reports by task (all after #261).
+  - In progress, stacked on #261: #263 day list editing, #269 task reorder and reports by task.
   - #255 part 2: exports on the live grid, day view, captures metadata and the timesheet views (after #260, #261 and #270).
   - #267 after #262 and #263.
   - Then the hosted Supabase project (staging) for Pages previews and backups.
@@ -118,7 +118,7 @@ Format: `- #<issue>: <exact question or action needed>`
 
 - #12, #13, #14 (Windows halves), #56: a Windows VM (Raj is setting one up, 22 Oct). CI builds an unsigned Windows installer to install there; then the Windows checklists in each PR.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
-- #262, #264: should the weekly grid's cells be duration-only entries (no start/end, like Harvest and Clockify), or placed at a default start time? Today a manual entry needs a start and an end.
+- #262, #264, #265, #267 (all wait on the grid): should the weekly grid's cells be duration-only entries (no start/end, like Harvest and Clockify), or placed at a default start time? Today a manual entry needs a start and an end.
 - 31 Oct defaults taken (Raj can change any of them):
   - #251: in_meeting, paused and idle show red on the seat map, although the "Active" tile counts them as active.
   - #252: miss reasons stay editable until the week is **approved**. CHK-23 is updated to match; it said "submitted".
