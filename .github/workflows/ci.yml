@@ -36,6 +36,7 @@ jobs:
       sync: ${{ steps.filter.outputs.sync }}
       web: ${{ steps.filter.outputs.web }}
       functions: ${{ steps.filter.outputs.functions }}
+      integration: ${{ steps.filter.outputs.integration }}
     steps:
       - id: filter
         uses: dorny/paths-filter@v4
@@ -58,6 +59,15 @@ jobs:
               - ".github/workflows/ci.yml"
             functions:
               - "supabase/functions/**"
+              - ".github/workflows/ci.yml"
+            # The web paths plus the integration scripts themselves (#288).
+            integration:
+              - "apps/web/**"
+              - "packages/**"
+              - "supabase/**"
+              - "pnpm-lock.yaml"
+              - "scripts/integration.sh"
+              - "scripts/it-*.sh"
               - ".github/workflows/ci.yml"
             sync:
               - "apps/agent/src-tauri/core/**"
@@ -224,7 +234,7 @@ jobs:
     needs: changes
     if: >-
       always() && needs.changes.result != 'failure' && (
-      github.event_name != 'pull_request' || needs.changes.outputs.web == 'true')
+      github.event_name != 'pull_request' || needs.changes.outputs.integration == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
