@@ -2,7 +2,11 @@
 // approve, return, reopen and edit it. The rules live in the database; messages
 // here only explain its error codes.
 import type { ManualEntryRequest } from "@ai-proctor/contracts";
-import { type OvertimeThresholds, overtimeFromPolicy } from "@ai-proctor/core";
+import {
+  type AssignedSeconds,
+  type OvertimeThresholds,
+  overtimeFromPolicy,
+} from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { supabase } from "../../lib/supabase";
@@ -339,27 +343,35 @@ export interface ListRow extends Timesheet {
   workedS: number;
   flaggedS: number;
   excludedS: number;
+  /** Worked seconds by project and task (#266), for billable and the totals. */
+  assigned: AssignedSeconds[];
 }
 
-/** The timesheets the viewer can see for a week, with totals (DSH-06). */
+/** The timesheets the viewer can see for a week, with totals (DSH-06, TS-29). */
 export const weekListQuery = (weekStart: string) =>
   queryOptions({
     queryKey: ["timesheet-list", weekStart],
     queryFn: async (): Promise<ListRow[]> => {
       const days = weekDays(weekStart);
-      const [sheets, totals] = await Promise.all([
+      const range = { p_from: days[0] ?? weekStart, p_to: days[6] ?? weekStart };
+      const [sheets, totals, assigned] = await Promise.all([
         supabase
           .from("timesheets")
           .select(`${sheetColumns}, users!timesheets_user_id_fkey(full_name, timezone)`)
           .eq("period_start", weekStart),
-        supabase.rpc("timesheet_totals", {
-          p_from: days[0] ?? weekStart,
-          p_to: days[6] ?? weekStart,
-        }),
+        supabase.rpc("timesheet_totals", range),
+        supabase.rpc("timesheet_assignment_totals", range),
       ]);
       if (sheets.error) throw sheets.error;
       if (totals.error) throw totals.error;
+      if (assigned.error) throw assigned.error;
       const byUser = new Map(totals.data.map((t) => [t.user_id, t]));
+      const assignedBy = new Map<string, AssignedSeconds[]>();
+      for (const a of assigned.data) {
+        const list = assignedBy.get(a.user_id) ?? [];
+        list.push({ projectId: a.project_id, taskId: a.task_id, seconds: a.seconds });
+        assignedBy.set(a.user_id, list);
+      }
       return sheets.data
         .map((s) => {
           const t = byUser.get(s.user_id);
@@ -370,6 +382,7 @@ export const weekListQuery = (weekStart: string) =>
             workedS: t?.worked_s ?? 0,
             flaggedS: t?.flagged_s ?? 0,
             excludedS: t?.excluded_s ?? 0,
+            assigned: assignedBy.get(s.user_id) ?? [],
           };
         })
         .sort((a, b) => a.fullName.localeCompare(b.fullName));

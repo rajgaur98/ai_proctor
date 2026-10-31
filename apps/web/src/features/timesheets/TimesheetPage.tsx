@@ -5,8 +5,17 @@
 // draft (or returned) the employee also tags Unassigned time and changes the project of
 // a day (#139, PRJ-04); the manager sees those as the employee's edits. #254: time shows
 // project and task (PRJ-05), and each day has a "work done" note (TS-25) that the employee
-// writes on a draft or returned week and the manager reads while reviewing.
+// writes on a draft or returned week and the manager reads while reviewing. #266: the week's
+// billable and non-billable totals and totals by client, project and task, with overtime
+// next to them (TS-29, TS-19).
 import { ReturnComment, TimesheetReason } from "@ai-proctor/contracts";
+import {
+  billingCatalog,
+  isOver,
+  overtimeAbove,
+  thresholdLabel,
+  workTotals,
+} from "@ai-proctor/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { DateTime } from "luxon";
@@ -15,7 +24,7 @@ import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { viewerZone } from "../../lib/time";
 import { dayEntriesQuery, type ManualEntry, updateEntryDetails } from "../day/entryData";
-import { assignmentLabel, projectsQuery, tasksQuery } from "../projects/projectData";
+import { assignmentLabel, clientsQuery, projectsQuery, tasksQuery } from "../projects/projectData";
 import {
   AdjustDialog,
   type AdjustTarget,
@@ -33,6 +42,7 @@ import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
 import { EditsList, WeekEntries } from "./SheetPanels";
 import { lateDataSummary, SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration, projectSplit, summarizeWeek, taskSplit } from "./summary";
+import { OvertimeChips, TotalsPanel, totalsNames } from "./Totals";
 import {
   adjustTime,
   approveWeek,
@@ -169,6 +179,7 @@ export function TimesheetPage() {
   });
   const projects = useQuery(projectsQuery);
   const tasks = useQuery(tasksQuery);
+  const clients = useQuery(clientsQuery);
   const dayNotes = useQuery({ ...dayNotesQuery(userId, week), enabled: ready });
   const editorIds = [...new Set((edits.data ?? []).map((e) => e.editorId).filter((id) => !!id))];
   const editors = useQuery({
@@ -249,6 +260,20 @@ export function TimesheetPage() {
     id ? ((tasks.data ?? []).find((t) => t.id === id)?.name ?? "Task") : null;
   const assignment = (projectId: string | null, taskId: string | null) =>
     assignmentLabel(projectName(projectId), taskName(taskId));
+  const totals = workTotals(
+    [...summary.total.byTask.values()],
+    billingCatalog(projects.data ?? [], tasks.data ?? []),
+  );
+  const weeklyOver = overtimeAbove(summary.total.worked, overtime?.weeklyHours ?? null);
+  const daysOver = summary.days.filter((d) => isOver(d.worked, overtime?.dailyHours ?? null));
+  const overtimeItems = [
+    weeklyOver > 0 && overtime?.weeklyHours
+      ? `${formatDuration(weeklyOver)} above the ${thresholdLabel(overtime.weeklyHours)} weekly threshold`
+      : null,
+    daysOver.length > 0 && overtime?.dailyHours
+      ? `${daysOver.length} ${daysOver.length > 1 ? "days" : "day"} above the ${thresholdLabel(overtime.dailyHours)} daily threshold`
+      : null,
+  ].filter((t) => t !== null);
   const editorName = (id: string | null) =>
     id === userId
       ? isSelf
@@ -564,6 +589,15 @@ export function TimesheetPage() {
           </tfoot>
         </table>
       </div>
+      <TotalsPanel
+        id="week-totals"
+        title="Totals"
+        description="Worked time this week, billable and by client, project and task."
+        totals={totals}
+        names={totalsNames(clients.data ?? [], projects.data ?? [], tasks.data ?? [])}
+        overtime={<OvertimeChips items={overtimeItems} />}
+        loading={breakdown.isPending || projects.isPending || tasks.isPending || clients.isPending}
+      />
       <OvertimeNote overtime={overtime} />
       <WeekDayList
         userId={userId}

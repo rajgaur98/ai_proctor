@@ -1,8 +1,16 @@
 // The Timesheets tab (#43, DSH-06): the timesheets of the people the viewer manages
 // (or, for admins, everyone), by week and status; open one to review, edit, approve
 // or return it, and the Delegation section (#44). Employees get their own weeks with
-// Submit (MyTimesheets).
-import { EXPORT_FORMATS, type ExportFormat } from "@ai-proctor/core";
+// Submit (MyTimesheets). #266: each timesheet's billable and non-billable time, and
+// totals by client, project and task for the timesheets shown, with overtime (TS-29).
+import {
+  billingCatalog,
+  EXPORT_FORMATS,
+  type ExportFormat,
+  isOver,
+  thresholdLabel,
+  workTotals,
+} from "@ai-proctor/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
@@ -10,11 +18,13 @@ import { useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Delegation } from "../delegation/Delegation";
+import { clientsQuery, projectsQuery, tasksQuery } from "../projects/projectData";
 import { ExportDialog } from "./ExportDialog";
 import { downloadExport, exportFormatLabel } from "./exportData";
 import { OvertimeNote, WorkedTime } from "./Overtime";
 import { LateDataBadge, SheetStatusChip } from "./SheetStatusChip";
 import { formatDuration } from "./summary";
+import { OvertimeChips, TotalsPanel, totalsNames } from "./Totals";
 import {
   ensureAndSubmit,
   overtimeQuery,
@@ -42,6 +52,9 @@ export function Timesheets() {
   const [status, setStatus] = useState<SheetStatus | "all">("all");
   const exportRef = useRef<HTMLDialogElement>(null);
   const overtime = useQuery(overtimeQuery).data;
+  const projects = useQuery(projectsQuery);
+  const tasks = useQuery(tasksQuery);
+  const clients = useQuery(clientsQuery);
 
   const list = useQuery({ ...weekListQuery(week), enabled: startDay.isSuccess });
   const rows = (list.data ?? [])
@@ -52,6 +65,14 @@ export function Timesheets() {
         statuses.indexOf(a.status) - statuses.indexOf(b.status) ||
         a.fullName.localeCompare(b.fullName),
     );
+  // Billable needs the projects' and tasks' flags; until they load it shows as loading.
+  const catalog = projects.data && tasks.data ? billingCatalog(projects.data, tasks.data) : null;
+  const shownTotals = workTotals(
+    rows.flatMap((r) => r.assigned),
+    catalog ?? billingCatalog([], []),
+  );
+  const weeklyHours = overtime?.weeklyHours ?? null;
+  const over = weeklyHours ? rows.filter((r) => isOver(r.workedS, weeklyHours)).length : 0;
 
   return (
     <section className="flex flex-col gap-5">
@@ -139,6 +160,8 @@ export function Timesheets() {
                 <th className="px-5 font-medium">Person</th>
                 <th className="font-medium">Status</th>
                 <th className="font-medium">Worked</th>
+                <th className="font-medium">Billable</th>
+                <th className="font-medium">Non-billable</th>
                 <th className="font-medium">Flagged</th>
                 <th className="pr-5">
                   <span className="sr-only">Actions</span>
@@ -146,54 +169,86 @@ export function Timesheets() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr
-                  key={r.id}
-                  className="flex flex-col gap-1 border-b border-line px-5 py-3 last:border-0 md:table-row md:h-14 md:p-0"
-                >
-                  <td className="md:px-5">
-                    <Link
-                      to="/timesheets/$userId"
-                      params={{ userId: r.userId }}
-                      search={{ week }}
-                      className="font-medium"
-                    >
-                      {r.fullName}
-                    </Link>
-                  </td>
-                  <td>
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <SheetStatusChip sheet={r} />
-                      <LateDataBadge sheet={r} />
-                    </span>
-                  </td>
-                  <td className="font-mono text-[13px]">
-                    <WorkedTime
-                      seconds={r.workedS}
-                      thresholdHours={overtime?.weeklyHours ?? null}
-                      period="weekly"
-                    />
-                  </td>
-                  <td className="font-mono text-[13px]">
-                    {r.flaggedS > 0 ? formatDuration(r.flaggedS) : "—"}
-                  </td>
-                  <td className="md:pr-5 md:text-right">
-                    <Link
-                      to="/timesheets/$userId"
-                      params={{ userId: r.userId }}
-                      search={{ week }}
-                      aria-label={`${r.status === "submitted" ? "Review" : "Open"} ${r.fullName}'s timesheet`}
-                      className="text-acctext"
-                    >
-                      {r.status === "submitted" ? "Review" : "Open"}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const split = catalog ? workTotals(r.assigned, catalog) : null;
+                return (
+                  <tr
+                    key={r.id}
+                    className="flex flex-col gap-1 border-b border-line px-5 py-3 last:border-0 md:table-row md:h-14 md:p-0"
+                  >
+                    <td className="md:px-5">
+                      <Link
+                        to="/timesheets/$userId"
+                        params={{ userId: r.userId }}
+                        search={{ week }}
+                        className="font-medium"
+                      >
+                        {r.fullName}
+                      </Link>
+                    </td>
+                    <td>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <SheetStatusChip sheet={r} />
+                        <LateDataBadge sheet={r} />
+                      </span>
+                    </td>
+                    <td className="font-mono text-[13px]">
+                      <WorkedTime
+                        seconds={r.workedS}
+                        thresholdHours={overtime?.weeklyHours ?? null}
+                        period="weekly"
+                      />
+                    </td>
+                    <td className="font-mono text-[13px]">
+                      <span className="font-sans text-ink3 md:hidden">Billable </span>
+                      {split ? formatDuration(split.billable) : "…"}
+                    </td>
+                    <td className="font-mono text-[13px]">
+                      <span className="font-sans text-ink3 md:hidden">Non-billable </span>
+                      {split ? formatDuration(split.nonBillable) : "…"}
+                    </td>
+                    <td className="font-mono text-[13px]">
+                      {r.flaggedS > 0 ? formatDuration(r.flaggedS) : "—"}
+                    </td>
+                    <td className="md:pr-5 md:text-right">
+                      <Link
+                        to="/timesheets/$userId"
+                        params={{ userId: r.userId }}
+                        search={{ week }}
+                        aria-label={`${r.status === "submitted" ? "Review" : "Open"} ${r.fullName}'s timesheet`}
+                        className="text-acctext"
+                      >
+                        {r.status === "submitted" ? "Review" : "Open"}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
+      {!list.error && !list.isPending && rows.length > 0 && (
+        <TotalsPanel
+          id="list-totals"
+          title="Totals"
+          description={`The ${rows.length} ${rows.length > 1 ? "timesheets" : "timesheet"} shown, ${weekLabel(week)}.`}
+          totals={shownTotals}
+          names={totalsNames(clients.data ?? [], projects.data ?? [], tasks.data ?? [])}
+          overtime={
+            <OvertimeChips
+              items={
+                over > 0 && weeklyHours
+                  ? [
+                      `${over} ${over > 1 ? "people" : "person"} above the ${thresholdLabel(weeklyHours)} weekly threshold`,
+                    ]
+                  : []
+              }
+            />
+          }
+          loading={!catalog || clients.isPending}
+        />
+      )}
       <OvertimeNote overtime={overtime} weeklyOnly />
     </section>
   );
