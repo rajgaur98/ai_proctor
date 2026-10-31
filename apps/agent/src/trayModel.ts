@@ -69,6 +69,7 @@ export const breakChoices: readonly { planned_min: number | null; label: string 
 export const pauseMinutes = [5, 10, 15] as const;
 
 export const PAUSE_REASON_MAX = 200;
+/** The remark on a missed check-in (CHK-23, #252); the server keeps up to 500 characters. */
 export const MISS_NOTE_MAX = 500;
 
 // The same states the agent core and the server count as Tamper (permissions::blocks).
@@ -244,7 +245,13 @@ export function blankToNull(text: string): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-/** Save stays disabled until there's a quick pick or a note. */
+/**
+ * Save stays disabled until there's a quick pick or a remark, and "Other" needs a remark
+ * (#252; the server refuses it without one). The other quick picks keep it optional.
+ */
 export function canSaveMissReason(kind: MissReasonKind | null, note: string): boolean {
-  return kind !== null || blankToNull(note) !== null;
+  const remark = blankToNull(note);
+  if (remark !== null && remark.length > MISS_NOTE_MAX) return false;
+  if (kind === "other") return remark !== null;
+  return kind !== null || remark !== null;
 }
