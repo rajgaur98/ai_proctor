@@ -2,27 +2,32 @@
 
 Living status file. Update it in the same PR as the work.
 
-_Last updated: 31 Oct 2026. M0–M2 built and merged; M3–M5 next._
+_Last updated: 1 Nov 2026. M0–M2 built and merged; M3–M5 next._
 
 ## Now / Next
 
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (31 Oct):** Raj's 31 Oct requests.
-  - Merged: #250 onboarding without a camera (PR #258), #251 seat map (PR #259).
-  - In progress: #256 imports (phase A on `256-imports`; phase B, the RPC and the Settings → Import page, running), #266 timesheet totals and #268 tray task picker (both stacked on PR #261).
-  - Since 22 Oct: #242/#243 macOS 26 Screen Recording prompt, #168 assistive-input exemption, #244 onboarding restart offer, #246 manual Windows installer workflow; Cloudflare R2 buckets and the Pages project created; Windows VM (UTM) running for device checks.
-- **Open PRs:**
-  - #260: #252 miss remarks
-  - #261: #254 part 1, tasks and work notes
-  - #270: #253 employees delete their own check-in parts
-  - #271: #255 part 1, exports
-  The migrations in these PRs use different versions and redefine different functions; merge one at a time, merging main in first.
+- **Now (1 Nov):** Raj's 31 Oct requests are on main, apart from the parts below.
+  - Merged:
+    - #250 onboarding without a camera (#258)
+    - #251 seat map (#259)
+    - #252 miss remarks (#260)
+    - #253 employees delete parts of their own check-ins (#270)
+    - #254 part 1: tasks and work notes (#261)
+    - #255 part 1: exports on list pages (#271)
+    - #256 imports: people, teams, clients, projects, shifts (#276)
+    - #263 day list (#278)
+    - #266 timesheet totals (#277)
+    - #268 tray task picker (#273)
+    - #269 task reorder and reports by task (#275)
+    - #274 fix: back-to-back manual entries kept no project (#279)
+  - In progress: #255 part 2 (exports on the live grid, day view, captures metadata, timesheet views, task report); #282 importing manual time entries.
+  - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
+- **Open PRs:** none yet for #255 part 2 and #282.
 - **Next:**
-  - In progress, stacked on #261: #263 day list editing, #269 task reorder and reports by task.
-  - #255 part 2: exports on the live grid, day view, captures metadata and the timesheet views (after #260, #261 and #270).
-  - #267 after #262 and #263.
+  - #254 parts 2, 5, 6 and 8 (#262, #264, #265, #267) wait on the weekly-grid question in "Blocked on Raj".
   - Then the hosted Supabase project (staging) for Pages previews and backups.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
