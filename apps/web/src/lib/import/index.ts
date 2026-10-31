@@ -4,4 +4,5 @@
 export { COLUMNS, type ColumnSpec, mapColumns } from "./columns";
 export { previewImport, previewRead, readImportFile } from "./preview";
 export { importTemplate, templateColumns, templateFileName } from "./template";
+export { timeEntriesScope } from "./timeEntries";
 export type * from "./types";

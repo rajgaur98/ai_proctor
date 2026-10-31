@@ -1,8 +1,8 @@
-// Settings → Import (#256, ORG-03..08, PRJ-01, SHF-01): owners and admins add or update
-// people, teams, clients, projects and shifts from a spreadsheet. Pick what to import,
-// download the template if needed, choose a CSV or .xlsx file, read the row-by-row
-// preview, then import. Nothing changes until Import is pressed, and then all of it or
-// none of it does. After an import the same file is checked again, so every row it
+// Settings → Import (#256, ORG-03..08, PRJ-01, SHF-01; #282, TS-31): owners and admins add
+// or update people, teams, clients, projects and shifts, and add manual time entries, from
+// a spreadsheet. Pick what to import, download the template if needed, choose a CSV or
+// .xlsx file, read the row-by-row preview, then import. Nothing changes until Import is
+// pressed, and then all of it or none of it does. After an import the same file is checked again, so every row it
 // changed reads "Unchanged".
 
 import type { ImportKind } from "@ai-proctor/contracts";
@@ -18,10 +18,17 @@ import {
   previewRead,
   type RowStatus,
   readImportFile,
+  type TimeContext,
   templateColumns,
   templateFileName,
+  timeEntriesScope,
 } from "../../lib/import";
-import { type ApplyResult, applyImport, importContextQuery } from "./importData";
+import {
+  type ApplyResult,
+  applyImport,
+  importContextQuery,
+  importTimeContextQuery,
+} from "./importData";
 import { explainImportError } from "./importErrors";
 
 const KINDS: { kind: ImportKind; label: string; about: string }[] = [
@@ -44,7 +51,16 @@ const KINDS: { kind: ImportKind; label: string; about: string }[] = [
     about:
       "Set people's shifts, one row per shift. Each person in the file gets exactly those shifts.",
   },
+  {
+    kind: "time_entries",
+    label: "Time entries",
+    about:
+      "Add manual time entries, one row per entry, with times in each person's time zone. Each one needs approval as if the person had asked for it, unless they need none. Matched on email, start and end; existing entries are never changed.",
+  },
 ];
+
+// A time-entry file that names nobody (or can't be read) has nothing to check against.
+const NO_TIME: TimeContext = { entries: [], clocked: [], locked: [] };
 
 const STATUS: Record<RowStatus, string> = {
   create: "New",
@@ -101,9 +117,24 @@ export function ImportPage() {
     };
   }, [data.data, profile.id]);
 
+  // Time entries also need what's already there for the file's people and dates.
+  const scope = useMemo(
+    () => (kind === "time_entries" && file ? timeEntriesScope(file.read) : null),
+    [kind, file],
+  );
+  const time = useQuery({
+    ...importTimeContextQuery(scope ?? { emails: [], from: "", to: "" }),
+    enabled: scope !== null,
+  });
+  const previewContext = useMemo((): ImportContext | null => {
+    if (!context || kind !== "time_entries") return context;
+    if (!scope) return { ...context, time: NO_TIME };
+    return time.data ? { ...context, time: time.data } : null;
+  }, [context, kind, scope, time.data]);
+
   const preview: ImportPreview | null = useMemo(
-    () => (file && context ? previewRead(kind, file.read, context) : null),
-    [file, context, kind],
+    () => (file && previewContext ? previewRead(kind, file.read, previewContext) : null),
+    [file, previewContext, kind],
   );
 
   const apply = useMutation({
@@ -111,8 +142,8 @@ export function ImportPage() {
     onSuccess: async (result) => {
       setDone(result);
       await Promise.all(
-        ["import-context", "members", "teams", "projects", "clients"].map((key) =>
-          queryClient.invalidateQueries({ queryKey: [key] }),
+        ["import-context", "import-time-context", "members", "teams", "projects", "clients"].map(
+          (key) => queryClient.invalidateQueries({ queryKey: [key] }),
         ),
       );
     },
@@ -143,8 +174,9 @@ export function ImportPage() {
         <p className="text-xs font-medium text-ink3">Settings</p>
         <h1 className="text-2xl font-semibold tracking-[-0.025em]">Import</h1>
         <p className="mt-1 max-w-[620px] text-[13.5px] text-ink2">
-          Add or update {profile.orgName}'s people, teams, clients, projects and shifts from a
-          spreadsheet. Nothing changes until you import, and if any row fails nothing is imported.
+          Add or update {profile.orgName}'s people, teams, clients, projects and shifts, and add
+          time entries, from a spreadsheet. Nothing changes until you import, and if any row fails
+          nothing is imported.
         </p>
       </div>
 
@@ -211,7 +243,15 @@ export function ImportPage() {
           Couldn't load your organisation's data: {data.error.message}
         </p>
       )}
+      {time.error && (
+        <p role="alert" className="text-sm text-warnink">
+          Couldn't load the existing time for this file: {time.error.message}
+        </p>
+      )}
       {reading && <p className="text-sm text-ink2">Reading the file…</p>}
+      {!reading && scope && time.isPending && (
+        <p className="text-sm text-ink2">Checking the time already there…</p>
+      )}
 
       {preview && file && (
         <Preview

@@ -9,6 +9,7 @@ import { previewPeople } from "./people";
 import { previewProjects } from "./projects";
 import { previewShifts } from "./shifts";
 import { previewTeams } from "./teams";
+import { previewTimeEntries } from "./timeEntries";
 import type { ImportContext, ImportPreview, PreviewRow, RowStatus } from "./types";
 
 type KindPreview = (
@@ -22,6 +23,7 @@ const KINDS: Record<ImportKind, KindPreview> = {
   clients: previewClients,
   projects: previewProjects,
   shifts: previewShifts,
+  time_entries: previewTimeEntries,
 };
 
 function counts(rows: PreviewRow[]): Record<RowStatus, number> {

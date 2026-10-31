@@ -219,3 +219,67 @@ export function formatDays(days: number[]): string {
   }
   return parts.join(", ");
 }
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+function ymd(year: number, month: number, day: number): string | null {
+  const at = new Date(Date.UTC(year, month - 1, day));
+  if (at.getUTCFullYear() !== year || at.getUTCMonth() !== month - 1 || at.getUTCDate() !== day) {
+    return null;
+  }
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * A calendar date as "YYYY-MM-DD": "2026-10-28", "2026/10/28", "28 Oct 2026",
+ * "Oct 28, 2026", "28-Oct-2026". Day-and-month numbers alone ("10/28/2026", "28.10.2026")
+ * are refused: a file can mean either order, and guessing would move time to another day.
+ */
+export function parseDate(text: string): Parsed<string> {
+  const t = text.trim().toLowerCase().replace(/,/g, " ").replace(/\s+/g, " ");
+  const wrong = bad<string>(`"${text}" isn't a date. Use a date like 2026-10-28.`);
+  let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (m) {
+    const d = ymd(Number(m[1]), Number(m[2]), Number(m[3]));
+    return d ? ok(d) : wrong;
+  }
+  const month = (name: string) => MONTHS.indexOf(name.slice(0, 3)) + 1;
+  m = t.match(/^(\d{1,2})[ -]([a-z]{3,9})\.?[ -](\d{4})$/);
+  if (m && month(m[2] ?? "") > 0) {
+    const d = ymd(Number(m[3]), month(m[2] ?? ""), Number(m[1]));
+    return d ? ok(d) : wrong;
+  }
+  m = t.match(/^([a-z]{3,9})\.? (\d{1,2}) (\d{4})$/);
+  if (m && month(m[1] ?? "") > 0) {
+    const d = ymd(Number(m[3]), month(m[1] ?? ""), Number(m[2]));
+    return d ? ok(d) : wrong;
+  }
+  if (/^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$/.test(t)) {
+    return bad(`"${text}" could be read day-first or month-first. Use a date like 2026-10-28.`);
+  }
+  return wrong;
+}
+
+/**
+ * A time of day with seconds, as "HH:MM:SS": "9", "09:00", "9:30am", "17:30:15". "24:00"
+ * is midnight at the end of the day (an end time).
+ */
+export function parseClockTime(text: string): Parsed<string> {
+  const m = text
+    .trim()
+    .toLowerCase()
+    .match(/^(\d{1,2})(?:[:.](\d{2}))?(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|a|p)?$/);
+  const wrong = bad<string>(`"${text}" isn't a time. Use a time like 09:00 or 5:30pm.`);
+  if (!m) return wrong;
+  let hour = Number(m[1]);
+  const minute = Number(m[2] ?? 0);
+  const second = Number(m[3] ?? 0);
+  if (minute > 59 || second > 59) return wrong;
+  const half = m[4]?.[0];
+  if (half) {
+    if (hour < 1 || hour > 12) return wrong;
+    hour = (hour % 12) + (half === "p" ? 12 : 0);
+  } else if (hour > 24 || (hour === 24 && (minute > 0 || second > 0))) return wrong;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return ok(`${pad(hour)}:${pad(minute)}:${pad(second)}`);
+}
