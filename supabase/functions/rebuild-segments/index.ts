@@ -66,6 +66,7 @@ async function rebuildDay(admin: SupabaseClient, userId: string, day: string): P
       end: s.end,
       type: s.type,
       project_id: s.projectId,
+      task_id: s.taskId,
       counted: s.counted,
       flagged: s.flagged,
     }));

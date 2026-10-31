@@ -222,6 +222,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | PRJ-02 | P0 | Project selection is **optional**. Employee can pick at clock-in, switch any time from the tray or check-in card |
 | PRJ-03 | P0 | Time without a project is recorded as **Unassigned** |
 | PRJ-04 | P0 | Employee can **retroactively assign** unassigned (or wrongly assigned) time to projects while their timesheet is in draft |
+| PRJ-05 | P1 | Projects have **tasks** (name, billable default taken from the project, archived, order). Admins and managers add, rename and archive them; tasks are never deleted. Time can be tagged **project → task** from the dashboard: manual entries, the manager's project edit and the employee's re-assignment. The agent tray picks a project only (a task picker comes later), so clocked time has no task until someone tags it (#254) |
 
 ### 4.10 Timesheets (TS)
 
@@ -261,6 +262,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-07 | P0 | Employee can request a **manual entry** (date, start, end, project, reason) for time not captured (offline work, client visit, whiteboard session) |
 | TS-08 | P0 | Manual entries are **pending** until the direct manager approves or rejects them. Pending entries are shown but not counted in totals |
 | TS-09 | P0 | Manual entries cannot overlap existing clocked-in time |
+| TS-24 | P1 | A manual entry can carry a task (PRJ-05) and a free-text **"work done" note** (up to 2,000 characters). The employee sets them when asking for the time and can change them while the week is a draft or returned (#254) |
 
 #### Weekly approval
 | ID | Pri | Requirement |
@@ -275,6 +277,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-17 | P0 | Reminders: employee is reminded to submit at end of week; manager is reminded **2 days** after submission; after a further 3 days, Admin receives an escalation notice (notify only) |
 | TS-18 | P0 | Approved timesheets are locked. Changes after approval require the manager to **reopen** (audit-logged, employee notified) |
 | TS-19 | P1 | Org setting: daily and weekly **overtime thresholds**; hours above threshold are highlighted (no pay calculation) |
+| TS-25 | P1 | A **"work done" note per person-day** (up to 2,000 characters). The employee writes it on their week while it is a draft or returned; the manager reads it while reviewing. Notes lock with the week on approval (TS-18). A manager's change on the employee's behalf needs a reason, is audit-logged and the employee is notified (TS-13); the employee's own notes are not audit-logged (#254) |
 
 #### Exports
 | ID | Pri | Requirement |
@@ -283,6 +286,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-21 | P0 | Export views: (a) per employee per day, (b) per project/client per employee, (c) segment-level detail |
 | TS-22 | P0 | Hours shown as **decimal to 2 places** (e.g. 7.43) plus an **H:MM** column. Columns include worked, flagged, excluded, break, manual, billable/non-billable, approval status, approver |
 | TS-23 | P0 | Unassigned time appears as its own row in project exports |
+| TS-26 | P1 | Exports carry tasks and notes: a **Task** column after Project in the per-project and segment views (one per-project row per task; billable is the task's flag), and a **Work done** column at the end of the per-day view (the day's note, then that day's entry notes), in CSV and XLSX (#254) |
 | TS-27 | P1 | **Exports beyond timesheets (#255):** every list or table page has an Export: CSV, plus XLSX for tabular data, using the same writers as TS-20. Part 1: People, Teams, Projects, Clients, Alerts (alert history), Reports, Device enrollment, Delegations. Part 2: the live grid (current snapshot), the day view (check-ins, segments, activity), the captures list (metadata only, never images) and the remaining timesheet views |
 | TS-28 | P1 | A page's export holds exactly what the viewer can see on it (same access rules) with the page's current filters, and is named `<page>-<filters>-<date>.csv` or `.xlsx` |
 

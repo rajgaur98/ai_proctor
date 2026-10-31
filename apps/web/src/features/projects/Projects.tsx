@@ -1,5 +1,6 @@
 // Projects (#38, PRJ-01..03): the project list, its client and billable flag, and
 // who can log time to it. Admins and managers edit; everyone else reads names only.
+// Each project's tasks (#254, PRJ-05) are added, renamed and archived from its row.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useId, useRef, useState } from "react";
@@ -10,14 +11,26 @@ import { Label } from "../../components/ui/label";
 import { yesNo } from "../../lib/exportFile";
 import { membersQuery } from "../people/members";
 import { ClientsDialog } from "./ClientsDialog";
-import { clientsQuery, type Project, projectsQuery, saveProject, setMembers } from "./projectData";
+import {
+  clientsQuery,
+  type Project,
+  projectsQuery,
+  saveProject,
+  setMembers,
+  tasksQuery,
+} from "./projectData";
+import { TasksDialog } from "./TasksDialog";
 
 export function Projects() {
   const { profile } = useRouteContext({ from: "/_app" });
   const projects = useQuery(projectsQuery);
   const clients = useQuery(clientsQuery);
+  const tasks = useQuery(tasksQuery);
   // null: closed, "new": blank form, else the project being edited.
   const [editing, setEditing] = useState<Project | "new" | null>(null);
+  const [tasksOf, setTasksOf] = useState<Project | null>(null);
+  const activeTasks = (projectId: string) =>
+    (tasks.data ?? []).filter((t) => t.projectId === projectId && !t.archived).length;
   const [clientsOpen, setClientsOpen] = useState(false);
 
   const clientName = new Map((clients.data ?? []).map((c) => [c.id, c.name]));
@@ -87,6 +100,7 @@ export function Projects() {
                 <th className="font-medium">Client</th>
                 <th className="font-medium">Billable</th>
                 <th className="font-medium">People</th>
+                <th className="font-medium">Tasks</th>
                 <th className="font-medium">Status</th>
                 <th className="pr-5">
                   <span className="sr-only">Actions</span>
@@ -103,10 +117,19 @@ export function Projects() {
                   <td className="text-ink2">{(p.clientId && clientName.get(p.clientId)) || "—"}</td>
                   <td>{p.billable ? "Yes" : "No"}</td>
                   <td className="text-ink2 tabular-nums">{p.memberIds.length}</td>
+                  <td className="text-ink2 tabular-nums">{activeTasks(p.id)}</td>
                   <td className={p.archived ? "text-ink3" : ""}>
                     {p.archived ? "Archived" : "Active"}
                   </td>
-                  <td className="md:pr-5 md:text-right">
+                  <td className="flex gap-2 md:table-cell md:pr-5 md:text-right">
+                    <Button
+                      variant="secondary"
+                      className="h-9 md:mr-2"
+                      aria-label={`Tasks of ${p.name}`}
+                      onClick={() => setTasksOf(p)}
+                    >
+                      Tasks
+                    </Button>
                     <Button
                       variant="secondary"
                       className="h-9"
@@ -127,6 +150,7 @@ export function Projects() {
       </div>
 
       {clientsOpen && <ClientsDialog onClose={() => setClientsOpen(false)} />}
+      {tasksOf && <TasksDialog project={tasksOf} onClose={() => setTasksOf(null)} />}
       {editing && (
         <ProjectDialog
           project={editing === "new" ? null : editing}

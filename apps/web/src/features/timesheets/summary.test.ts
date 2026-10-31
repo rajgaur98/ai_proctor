@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type BreakdownRow, formatDuration, projectSplit, summarizeWeek } from "./summary";
+import {
+  type BreakdownRow,
+  formatDuration,
+  projectSplit,
+  summarizeWeek,
+  taskSplit,
+} from "./summary";
 
 const row = (over: Partial<BreakdownRow>): BreakdownRow => ({
   day: "2026-03-16",
@@ -62,6 +68,34 @@ describe("summarizeWeek", () => {
       { projectId: null, seconds: 1800 },
       { projectId: "p1", seconds: 600 },
     ]);
+  });
+
+  // #254: the same worked time split by project and task; Unassigned time has no task.
+  it("splits worked time by project and task, adding up to the project split", () => {
+    const s = summarizeWeek(
+      [
+        row({ taskId: "t1", seconds: 1200 }),
+        row({ taskId: "t1", seconds: 600, day: "2026-03-17" }),
+        row({ seconds: 600 }),
+        row({ taskId: "t2", seconds: 600 }),
+        row({ projectId: null, taskId: "stray", seconds: 600 }),
+        row({ taskId: "t1", seconds: 900, counted: false }),
+      ],
+      days,
+    );
+    expect(taskSplit(s.total.byTask)).toEqual([
+      { projectId: "p1", taskId: "t1", seconds: 1800 },
+      { projectId: "p1", taskId: null, seconds: 600 },
+      { projectId: "p1", taskId: "t2", seconds: 600 },
+      { projectId: null, taskId: null, seconds: 600 },
+    ]);
+    expect(taskSplit(s.days[0]?.byTask ?? new Map())[0]).toEqual({
+      projectId: "p1",
+      taskId: "t1",
+      seconds: 1200,
+    });
+    const byTask = [...s.total.byTask.values()].reduce((a, b) => a + b.seconds, 0);
+    expect(byTask).toBe(s.total.worked);
   });
 
   it("ignores days outside the week", () => {

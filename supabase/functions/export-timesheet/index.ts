@@ -9,13 +9,15 @@
 // returns a row, so no path through here skips the log. This function only shapes the rows
 // into the view (packages/core exportRows.ts, copied to ../_shared/core by `pnpm core:fn`)
 // and writes the file. The XLSX highlights overtime with the org's thresholds, which the
-// same call returns (exportXlsx). Errors: 400 invalid_request, 401 not_signed_in,
+// same call returns (exportXlsx). The per-day view's Work done column (#254, TS-25) comes
+// from the day notes the call returns next to the rows. Errors: 400 invalid_request, 401 not_signed_in,
 // 403 forbidden, 413 too_large (more rows than a spreadsheet holds; the CSV has no limit).
 //
 // The UTF-8 byte order mark at the start of the file is for Excel, which otherwise reads
 // names with accents as Windows-1252.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import {
+  type DbDayNote,
   type DbExportRow,
   EXPORT_FORMATS,
   EXPORT_VIEWS,
@@ -24,6 +26,7 @@ import {
   exportCsv,
   exportFilename,
   exportXlsx,
+  fromDbDayNote,
   fromDbRow,
 } from "../_shared/core/exportRows.ts";
 import { overtimeFromPolicy } from "../_shared/core/overtime.ts";
@@ -139,13 +142,15 @@ Deno.serve(async (req) => {
 
   const result = data as {
     rows: DbExportRow[];
+    day_notes?: DbDayNote[];
     overtime?: { daily_hours: unknown; weekly_hours: unknown };
     week_start?: string | null;
   };
   const rows = result.rows.map(fromDbRow);
+  const dayNotes = (result.day_notes ?? []).map(fromDbDayNote);
   const disposition = `attachment; filename="${exportFilename(view, filters.from, filters.to, format)}"`;
   if (format === "csv") {
-    return new Response(`\uFEFF${exportCsv(view, rows)}`, {
+    return new Response(`\uFEFF${exportCsv(view, rows, dayNotes)}`, {
       headers: {
         ...cors,
         "Content-Type": "text/csv; charset=utf-8",
@@ -163,6 +168,7 @@ Deno.serve(async (req) => {
         overtime_weekly_hours: result.overtime?.weekly_hours,
       }),
       weekStart: result.week_start ?? null,
+      dayNotes,
     });
   } catch (e) {
     // More rows than a spreadsheet holds (XLSX_MAX_ROWS); the CSV has no such limit.

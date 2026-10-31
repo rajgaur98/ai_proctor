@@ -32,6 +32,11 @@ export interface Segment extends Span {
   type: SegmentType;
   /** null = Unassigned (PRJ-03). */
   projectId: string | null;
+  /**
+   * The project's task (#254, PRJ-05), or null. Only manual entries and dashboard edits
+   * carry one; the agent sends a project only, so clocked time starts with no task.
+   */
+  taskId: string | null;
   /** Counted as worked time (TS-01; breaks only when the org pays them). */
   counted: boolean;
   /** Highlighted for the manager; never deducted automatically (TS-02). */
@@ -45,15 +50,18 @@ export interface DayInput {
   now: number;
   clockSessions: { start: number; end: number | null; projectId: string | null }[];
   /** Approved manual entries only (TS-08: pending ones aren't counted). */
-  manualEntries: { start: number; end: number; projectId: string | null }[];
+  manualEntries: { start: number; end: number; projectId: string | null; taskId?: string | null }[];
   breaks: { start: number; end: number | null }[];
   pauses: { start: number; end: number | null }[];
   /** The server's status timeline; supplies offline, locked, meeting, idle and tamper. */
   statusPeriods: { status: PresenceStatus; start: number; end: number | null }[];
   checkins: { at: number; outcome: "pass" | "miss" | "failed" }[];
   projectSwitches: { at: number; projectId: string | null }[];
-  /** Employee re-assignments while the week is draft (PRJ-04), applied last. */
-  projectEdits?: { start: number; end: number; projectId: string | null }[];
+  /**
+   * Project edits, the manager's (TS-13) and the employee's (PRJ-04), oldest first so the
+   * latest over a span wins; applied last. An edit sets the task too (null: none).
+   */
+  projectEdits?: { start: number; end: number; projectId: string | null; taskId?: string | null }[];
   policy: {
     breaksPaid: boolean;
     /** BRK-06 caps, in seconds. */
@@ -108,7 +116,7 @@ export function buildSegments(input: DayInput): Segment[] {
   }
   for (const span of unverifiedWindows(input)) overlays.push({ span, type: "unverified" });
 
-  const projectAt = projectTimeline(input);
+  const assignmentAt = projectTimeline(input);
 
   // Cut the base time at every boundary, classify each piece, then merge.
   const cuts = new Set<number>();
@@ -119,18 +127,24 @@ export function buildSegments(input: DayInput): Segment[] {
   for (const base of sessions) {
     for (const span of cutAt(base, cuts)) {
       const type = classify(span, overlays);
-      pieces.push(segment(span, type, projectAt(span.start), input.policy.breaksPaid));
+      pieces.push(segment(span, type, assignmentAt(span.start), input.policy.breaksPaid));
     }
   }
   const entries = [...input.manualEntries].sort(
-    (a, b) => a.start - b.start || a.end - b.end || byProject(a.projectId, b.projectId),
+    (a, b) =>
+      a.start - b.start ||
+      a.end - b.end ||
+      byProject(a.projectId, b.projectId) ||
+      byProject(a.taskId ?? null, b.taskId ?? null),
   );
   for (const m of manual) {
     const entry = entries.find((e) => e.start <= m.start && m.end <= e.end);
     for (const span of cutAt(m, cuts)) {
-      const edited = editAt(input, span.start);
-      const projectId = edited !== undefined ? edited : (entry?.projectId ?? null);
-      pieces.push(segment(span, "manual", projectId, input.policy.breaksPaid));
+      const assignment = editAt(input, span.start) ?? {
+        projectId: entry?.projectId ?? null,
+        taskId: entry?.taskId ?? null,
+      };
+      pieces.push(segment(span, "manual", assignment, input.policy.breaksPaid));
     }
   }
   return merge(pieces.sort((a, b) => a.start - b.start));
@@ -161,17 +175,25 @@ export function segmentTotals(segments: Segment[]) {
 
 // --- pieces ------------------------------------------------------------------
 
+/** What a stretch of time is logged to: a project (null: Unassigned) and its task. */
+interface Assignment {
+  projectId: string | null;
+  taskId: string | null;
+}
+
 function segment(
   span: Span,
   type: SegmentType,
-  projectId: string | null,
+  assignment: Assignment,
   breaksPaid: boolean,
 ): Segment {
   return {
     start: span.start,
     end: span.end,
     type,
-    projectId,
+    projectId: assignment.projectId,
+    // A task belongs to its project: no project, no task.
+    taskId: assignment.projectId === null ? null : assignment.taskId,
     counted: type !== "break" || breaksPaid,
     flagged: FLAGGED.has(type),
   };
@@ -254,8 +276,11 @@ function unverifiedWindows(input: DayInput): Span[] {
   return out;
 }
 
-/** The project in force at a moment: session start, then switches, then edits. */
-function projectTimeline(input: DayInput): (t: number) => string | null {
+/**
+ * The project in force at a moment: session start, then switches, then edits. Only an
+ * edit carries a task; the agent's switches don't (the tray picks a project only).
+ */
+function projectTimeline(input: DayInput): (t: number) => Assignment {
   const switches = [...input.projectSwitches].sort(
     (a, b) => a.at - b.at || byProject(a.projectId, b.projectId),
   );
@@ -269,7 +294,7 @@ function projectTimeline(input: DayInput): (t: number) => string | null {
       if (s.at > t) break;
       if (!session || s.at >= session.start) project = s.projectId;
     }
-    return project;
+    return { projectId: project, taskId: null };
   };
 }
 
@@ -280,16 +305,22 @@ function byProject(a: string | null, b: string | null): number {
   return (a ?? "").localeCompare(b ?? "");
 }
 
-function editAt(input: DayInput, t: number): string | null | undefined {
+function editAt(input: DayInput, t: number): Assignment | undefined {
   const edit = (input.projectEdits ?? []).filter((e) => e.start <= t && t < e.end).at(-1);
-  return edit ? edit.projectId : undefined;
+  return edit ? { projectId: edit.projectId, taskId: edit.taskId ?? null } : undefined;
 }
 
 function merge(pieces: Segment[]): Segment[] {
   const out: Segment[] = [];
   for (const p of pieces) {
     const last = out.at(-1);
-    if (last && last.end === p.start && last.type === p.type && last.projectId === p.projectId) {
+    if (
+      last &&
+      last.end === p.start &&
+      last.type === p.type &&
+      last.projectId === p.projectId &&
+      last.taskId === p.taskId
+    ) {
       last.end = p.end;
     } else {
       out.push({ ...p });

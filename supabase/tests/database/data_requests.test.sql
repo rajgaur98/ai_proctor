@@ -132,6 +132,9 @@ begin
           'exclude', now() - interval '3 hours', now() - interval '2 hours', 'test');
   insert into public.manual_entries (org_id, user_id, start_at, end_at, reason)
   values ('00000000-0000-4000-8000-000000000001', u, now() - interval '8 hours', now() - interval '7 hours', 'offline work');
+  -- #254: a work note for the day, which they wrote.
+  insert into public.timesheet_day_notes (user_id, day, org_id, timesheet_id, note, updated_by)
+  values (u, current_date, '00000000-0000-4000-8000-000000000001', v_ts, 'Wrote the spec', u);
   insert into public.notifications (org_id, user_id, kind)
   values ('00000000-0000-4000-8000-000000000001', u, 'timesheet.returned');
   insert into public.anticheat_flags (org_id, user_id, day, kind)

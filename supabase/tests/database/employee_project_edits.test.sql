@@ -131,11 +131,12 @@ select is((select count(*)::int from public.notifications where user_id = :erin)
 
 select is(public.segment_inputs(:erin, '2026-03-16') -> 'input' -> 'projectEdits',
   jsonb_build_array(jsonb_build_object('start', pg_temp.epoch('2026-03-16 09:00:00-07'),
-    'end', pg_temp.epoch('2026-03-16 10:00:00-07'), 'projectId', '00000000-0000-4000-8000-0000000000f2')),
+    'end', pg_temp.epoch('2026-03-16 10:00:00-07'), 'projectId', '00000000-0000-4000-8000-0000000000f2',
+    'taskId', null)),
   'segment_inputs: the employee edit reaches buildSegments as projectEdits');
 select is(public.segment_inputs(:erin, '2026-03-17') -> 'input' -> 'projectEdits',
   jsonb_build_array(jsonb_build_object('start', pg_temp.epoch('2026-03-17 09:00:00-07'),
-    'end', pg_temp.epoch('2026-03-17 10:00:00-07'), 'projectId', null)),
+    'end', pg_temp.epoch('2026-03-17 10:00:00-07'), 'projectId', null, 'taskId', null)),
   'segment_inputs: Unassigned goes through as a null project, only on the day it touches');
 select is(public.segment_inputs(:erin, '2026-03-18') -> 'input' -> 'projectEdits', '[]'::jsonb,
   'segment_inputs: other days have none');

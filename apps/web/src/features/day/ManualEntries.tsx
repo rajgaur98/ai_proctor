@@ -1,6 +1,7 @@
 // Manual entries on the day page (#42, TS-07..09): time the employee asks to have
 // added. Pending entries are shown but not counted; the direct manager approves or
 // rejects them (or their active delegate does), and the employee can withdraw a pending one.
+// An entry can carry a task of its project and a "work done" note (#254, PRJ-05, TS-24).
 import { ManualEntryRequest } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -9,7 +10,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Time } from "../../lib/time";
-import { projectsQuery } from "../projects/projectData";
+import { assignmentLabel, projectsQuery, tasksQuery } from "../projects/projectData";
+import { TaskSelect } from "../projects/TaskSelect";
 import {
   cancelEntry,
   dayEntriesQuery,
@@ -59,7 +61,9 @@ export function ManualEntries({
     dayEntriesQuery(userId, new Date(dayStart).toISOString(), new Date(dayEnd).toISOString()),
   );
   const projects = useQuery(projectsQuery);
+  const tasks = useQuery(tasksQuery);
   const projectName = new Map((projects.data ?? []).map((p) => [p.id, p.name]));
+  const taskName = new Map((tasks.data ?? []).map((t) => [t.id, t.name]));
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["manual-entries", userId] });
 
   return (
@@ -96,7 +100,14 @@ export function ManualEntries({
               key={e.id}
               entry={e}
               zone={zone}
-              projectName={e.projectId ? (projectName.get(e.projectId) ?? "Project") : "Unassigned"}
+              projectName={
+                e.projectId
+                  ? assignmentLabel(
+                      projectName.get(e.projectId) ?? "Project",
+                      e.taskId ? taskName.get(e.taskId) : null,
+                    )
+                  : "Unassigned"
+              }
               canCancel={isSelf}
               canDecide={canDecide}
               onChanged={refresh}
@@ -157,6 +168,7 @@ function EntryRow({
         </span>
       </div>
       <p className="text-ink2">{entry.reason}</p>
+      {entry.note && <p className="text-ink2">Work done: {entry.note}</p>}
       {entry.decisionNote && <p className="text-ink3">Manager's note: {entry.decisionNote}</p>}
       {pending && canDecide && (
         <div className="flex flex-wrap items-center gap-2">
@@ -217,8 +229,9 @@ function RequestDialog({
   onRequested: () => void;
 }) {
   const projects = useQuery(projectsQuery);
+  const tasks = useQuery(tasksQuery).data ?? [];
   const mine = (projects.data ?? []).filter((p) => !p.archived && p.memberIds.includes(userId));
-  const blank = { day: date, start: "", end: "", projectId: "", reason: "" };
+  const blank = { day: date, start: "", end: "", projectId: "", taskId: "", reason: "", note: "" };
   const [form, setForm] = useState(blank);
   const [problem, setProblem] = useState<string | null>(null);
   const set = (patch: Partial<typeof blank>) => setForm((f) => ({ ...f, ...patch }));
@@ -249,7 +262,9 @@ function RequestDialog({
       start_at: start.toISO(),
       end_at: end.toISO(),
       project_id: form.projectId || null,
+      task_id: (form.projectId && form.taskId) || null,
       reason: form.reason,
+      note: form.note,
     });
     if (!parsed.success) {
       setProblem(parsed.error.issues[0]?.message ?? "Check the fields.");
@@ -317,7 +332,7 @@ function RequestDialog({
           <select
             id="manual-project"
             value={form.projectId}
-            onChange={(e) => set({ projectId: e.target.value })}
+            onChange={(e) => set({ projectId: e.target.value, taskId: "" })}
             className="h-11 w-full rounded-[9px] border border-line2 bg-panel px-3 text-sm text-ink"
           >
             <option value="">Unassigned</option>
@@ -328,6 +343,14 @@ function RequestDialog({
             ))}
           </select>
         </div>
+        <TaskSelect
+          id="manual-task"
+          tasks={tasks}
+          projectId={form.projectId || null}
+          value={form.taskId}
+          onChange={(taskId) => set({ taskId })}
+          className="h-11 w-full rounded-[9px] border border-line2 bg-panel px-3 text-sm text-ink"
+        />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="manual-reason">Reason</Label>
           <textarea
@@ -337,6 +360,17 @@ function RequestDialog({
             maxLength={500}
             value={form.reason}
             onChange={(e) => set({ reason: e.target.value })}
+            className="rounded-[9px] border border-line2 bg-panel p-3 text-sm text-ink"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="manual-note">Work done (optional)</Label>
+          <textarea
+            id="manual-note"
+            rows={3}
+            maxLength={2000}
+            value={form.note}
+            onChange={(e) => set({ note: e.target.value })}
             className="rounded-[9px] border border-line2 bg-panel p-3 text-sm text-ink"
           />
         </div>

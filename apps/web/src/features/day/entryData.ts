@@ -12,7 +12,11 @@ export interface ManualEntry {
   startAt: string;
   endAt: string;
   projectId: string | null;
+  /** The project's task (#254, PRJ-05). */
+  taskId: string | null;
   reason: string;
+  /** What was done (TS-24). */
+  note: string | null;
   status: EntryStatus;
   decisionNote: string | null;
 }
@@ -24,7 +28,7 @@ export const dayEntriesQuery = (userId: string, fromIso: string, toIso: string) 
     queryFn: async (): Promise<ManualEntry[]> => {
       const { data, error } = await supabase
         .from("manual_entries")
-        .select("id, start_at, end_at, project_id, reason, status, decision_note")
+        .select("id, start_at, end_at, project_id, task_id, reason, note, status, decision_note")
         .eq("user_id", userId)
         .lt("start_at", toIso)
         .gt("end_at", fromIso)
@@ -35,7 +39,9 @@ export const dayEntriesQuery = (userId: string, fromIso: string, toIso: string) 
         startAt: e.start_at,
         endAt: e.end_at,
         projectId: e.project_id,
+        taskId: e.task_id,
         reason: e.reason,
+        note: e.note,
         status: e.status as EntryStatus,
         decisionNote: e.decision_note,
       }));
@@ -49,6 +55,28 @@ export async function requestEntry(r: ManualEntryRequest): Promise<void> {
     // Generated types don't mark function arguments nullable; no project is Unassigned.
     p_project_id: r.project_id as string,
     p_reason: r.reason,
+    p_task_id: (r.task_id ?? null) as string,
+    p_note: (r.note ?? null) as string,
+  });
+  if (error) throw new Error(explain(error.message));
+}
+
+/**
+ * TS-24 (#254): changes an entry's task and work note. The employee's own change needs no
+ * reason; anyone else's does (audit-logged, the employee is told).
+ */
+export async function updateEntryDetails(
+  id: string,
+  taskId: string | null,
+  note: string | null,
+  reason?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("update_manual_entry_details", {
+    p_id: id,
+    // Generated types don't mark function arguments nullable.
+    p_task_id: taskId as string,
+    p_note: note as string,
+    ...(reason ? { p_reason: reason } : {}),
   });
   if (error) throw new Error(explain(error.message));
 }
@@ -72,7 +100,8 @@ const messages: Record<string, string> = {
   range_too_long: "An entry can be at most 24 hours.",
   in_the_future: "The entry can't end in the future.",
   invalid_reason: "Give a reason of up to 500 characters.",
-  invalid_note: "The note can be at most 500 characters.",
+  // A decision note is at most 500 characters, a work note 2,000.
+  invalid_note: "That note is too long.",
   project_not_allowed: "You can't log time to that project.",
   overlaps_clocked_time: "That overlaps time you were clocked in.",
   overlaps_manual_entry: "That overlaps another manual entry.",
@@ -80,6 +109,10 @@ const messages: Record<string, string> = {
   entry_not_found: "That entry no longer exists.",
   not_the_manager: "Only the direct manager can decide this.",
   not_pending: "This entry has already been decided.",
+  task_not_allowed: "That task isn't available for this project.",
+  not_adjustable: "A rejected entry can't be changed.",
+  timesheet_submitted: "This week is with your manager. You can change it if they return it.",
+  timesheet_locked: "This week is approved. It can't change unless it's reopened.",
 };
 
 export function explain(code: string): string {
