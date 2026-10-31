@@ -10,6 +10,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Time } from "../../lib/time";
+import { missReason } from "../day/checkinText";
+import { missesBySegment, type WeekMiss } from "./misses";
 import { formatDuration } from "./summary";
 import { editSegment, type FlaggedSegment, type SegmentEdit } from "./timesheetData";
 
@@ -42,6 +44,7 @@ export function FlaggedSegments({
   employeeName,
   zone,
   segments,
+  misses,
   projectName,
   editable,
   onChanged,
@@ -51,12 +54,15 @@ export function FlaggedSegments({
   employeeName: string;
   zone: string;
   segments: FlaggedSegment[];
+  /** The week's missed check-ins with the employee's reason (#252). */
+  misses: WeekMiss[];
   projectName: (id: string | null) => string;
   /** The viewer decides and the week isn't approved. */
   editable: boolean;
   onChanged: () => void;
   onChangeProject: (s: FlaggedSegment) => void;
 }) {
+  const { bySegment, other } = missesBySegment(segments, misses);
   return (
     <section
       aria-labelledby="flagged-title"
@@ -79,6 +85,7 @@ export function FlaggedSegments({
               employeeName={employeeName}
               zone={zone}
               segment={s}
+              misses={bySegment.get(s.id) ?? []}
               project={projectName(s.projectId)}
               editable={editable}
               onChanged={onChanged}
@@ -87,7 +94,44 @@ export function FlaggedSegments({
           ))}
         </ul>
       )}
+      {other.length > 0 && (
+        <div className="flex flex-col gap-1.5 border-t border-line px-5 py-4">
+          <span className="text-[12.5px] font-medium">Other missed check-ins</span>
+          <MissList misses={other} zone={zone} />
+        </div>
+      )}
     </section>
+  );
+}
+
+/**
+ * Each miss with the employee's quick pick and remark, or that none was given. Plain
+ * lines, not a nested list: the segments are the list items of this section.
+ */
+function MissList({ misses, zone }: { misses: WeekMiss[]; zone: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      {misses.map((m) => {
+        const { kind, note } = missReason(m.kind, m.remark);
+        return (
+          <p key={m.id} className="text-[12.5px] text-ink2">
+            <span className="font-mono">
+              {DateTime.fromISO(m.at, { zone: "local" }).toFormat("ccc d")} ·{" "}
+              <Time iso={m.at} employeeZone={zone} />
+            </span>{" "}
+            Missed check-in ·{" "}
+            {kind || note ? (
+              <>
+                <span className="font-medium text-ink">{kind ?? "Remark"}</span>
+                {note && <span className="break-words whitespace-pre-line">: “{note}”</span>}
+              </>
+            ) : (
+              "no reason given"
+            )}
+          </p>
+        );
+      })}
+    </div>
   );
 }
 
@@ -96,6 +140,7 @@ function FlaggedRow({
   employeeName,
   zone,
   segment: s,
+  misses,
   project,
   editable,
   onChanged,
@@ -105,6 +150,7 @@ function FlaggedRow({
   employeeName: string;
   zone: string;
   segment: FlaggedSegment;
+  misses: WeekMiss[];
   project: string;
   editable: boolean;
   onChanged: () => void;
@@ -179,6 +225,7 @@ function FlaggedRow({
           {excluded && s.excludedReason && (
             <span className="text-[12.5px] text-ink2">Excluded: {s.excludedReason}</span>
           )}
+          {misses.length > 0 && <MissList misses={misses} zone={zone} />}
         </div>
         {editable && (
           <div className="flex flex-wrap items-center gap-2">

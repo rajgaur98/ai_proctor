@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { agentFor, asEmployee } from "./agent";
-import { expectNoA11yViolations, timeAt } from "./helpers";
+import { ERIN, expectNoA11yViolations, reopenApprovedWeeks, timeAt } from "./helpers";
 
 test("a manager opens an employee's day and reads a missed and a deferred check-in", async ({
   page,
@@ -25,7 +25,8 @@ test("a manager opens an employee's day and reads a missed and a deferred check-
     },
     missId,
   );
-  // CHK-23: she explains it (the tray does this with #37).
+  // CHK-23: she explains it (the tray does this with #37), which an approved week refuses.
+  await reopenApprovedWeeks(ERIN);
   await asEmployee("erin@acme.test", (db) =>
     db.rpc("set_miss_reason", { p_checkin_id: missId, p_kind: "meeting", p_note: "Client call" }),
   );
