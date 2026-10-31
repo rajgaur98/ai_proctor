@@ -2796,6 +2796,16 @@ export type Database = {
           user_id: string;
         }[];
       };
+      edit_manual_entry: {
+        Args: {
+          p_end_at: string;
+          p_id: string;
+          p_note: string;
+          p_start_at: string;
+          p_task_id: string;
+        };
+        Returns: undefined;
+      };
       edit_segment: {
         Args: {
           p_end_at: string;
@@ -2906,6 +2916,7 @@ export type Database = {
         Returns: number;
       };
       mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
+      merge_manual_entries: { Args: { p_first: string; p_second: string }; Returns: string };
       my_capture_views: {
         Args: { p_days?: number };
         Returns: {
@@ -3113,6 +3124,7 @@ export type Database = {
       set_team_members: { Args: { p_team_id: string; p_user_ids: string[] }; Returns: undefined };
       set_team_policy: { Args: { p_policy: Json; p_team_id: string }; Returns: Json };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
+      split_manual_entry: { Args: { p_at: string; p_id: string }; Returns: string };
       stuck_segment_days: {
         Args: Record<PropertyKey, never>;
         Returns: {
