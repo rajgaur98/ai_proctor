@@ -47,6 +47,9 @@ export interface Checkin {
   deferralReason: string | null;
   /** CAP-07: whether the pass's webcam frame showed a face; null or missing when not checked. */
   facePresent?: boolean | null;
+  /** CHK-23: the employee's quick pick and remark on a miss; null or missing when none. */
+  missedReasonKind?: string | null;
+  missedReason?: string | null;
 }
 
 export interface Span {

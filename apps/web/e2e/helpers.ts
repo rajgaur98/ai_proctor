@@ -61,6 +61,25 @@ export async function resetErinWeeks() {
   }
 }
 
+/**
+ * Reopens every approved week of a person the manager manages (back to submitted), so a
+ * spec can set reasons on their misses (#252: an approved week locks them) whatever
+ * earlier specs approved.
+ */
+export async function reopenApprovedWeeks(userId: string) {
+  const manager = await clientFor(MANAGER_EMAIL);
+  const { data, error } = await manager
+    .from("timesheets")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "approved");
+  if (error) throw error;
+  for (const sheet of data) {
+    const r = await manager.rpc("reopen_timesheet", { p_id: sheet.id, p_reason: "e2e reset" });
+    if (r.error) throw r.error;
+  }
+}
+
 /** Erin submits her current week (call `resetErinWeeks` first). Returns the sheet's id. */
 export async function submitErinWeek(): Promise<string> {
   const erin = await clientFor(ERIN_EMAIL);

@@ -2,6 +2,7 @@
 // summary of each row's metadata. Unknown actions (added by newer migrations) fall
 // back to the raw name and the metadata as JSON.
 import type { Json } from "@ai-proctor/contracts";
+import { reasonLabel } from "../day/checkinText";
 
 export const actionLabels: Record<string, string> = {
   "member.invited": "Invited a member",
@@ -23,6 +24,7 @@ export const actionLabels: Record<string, string> = {
   "enrollment_token.revoked": "Revoked an enrollment token",
   "enrollment_token.used": "Enrolled a device",
   "import.applied": "Imported data",
+  "checkin.miss_reason_set": "Set a miss reason",
 };
 
 /** Actions offered in the filter, in the order above. */
@@ -114,6 +116,13 @@ export function summarize(
       const n = (v: unknown) => (typeof v === "number" ? v : 0);
       const kind = role(m.kind);
       return `${kind} · ${n(m.created)} added, ${n(m.updated)} updated · ${plural(n(m.rows), "row")}`;
+    }
+    case "checkin.miss_reason_set": {
+      // #252: the quick pick before and after, and the remark's length (never its words).
+      const pick = (v: unknown) => reasonLabel[text(v) ?? ""] ?? text(v) ?? "None";
+      const remark = (v: unknown) =>
+        typeof v === "number" && v > 0 ? `remark ${plural(v, "character")}` : "no remark";
+      return `${pick(m.from_kind)} (${remark(m.from_note_length)}) → ${pick(m.to_kind)} (${remark(m.to_note_length)})`;
     }
     default:
       return Object.keys(m).length ? JSON.stringify(m) : "—";
