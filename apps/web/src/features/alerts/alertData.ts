@@ -74,26 +74,55 @@ export const alertPageQuery = (recipientId: string, filters: AlertFilters) =>
   infiniteQueryOptions({
     queryKey: ["alerts", recipientId, "page", filters],
     initialPageParam: null as AlertCursor | null,
-    queryFn: async ({ pageParam }) => {
-      let q = supabase.from("alerts").select(SELECT).eq("recipient_id", recipientId);
-      if (filters.kind) q = q.eq("kind", filters.kind);
-      if (filters.userId) q = q.eq("user_id", filters.userId);
-      if (filters.read === "unread") q = q.is("read_at", null);
-      if (filters.read === "read") q = q.not("read_at", "is", null);
-      const { from, to } = dateBounds(filters);
-      if (from) q = q.gte("triggered_at", from);
-      if (to) q = q.lt("triggered_at", to);
-      if (pageParam) q = q.or(cursorFilter(pageParam));
-      const { data, error } = await q
-        .order("triggered_at", { ascending: false })
-        .order("id", { ascending: false })
-        .limit(PAGE + 1);
-      if (error) throw error;
-      return splitPage(data.map(toAlert), PAGE);
-    },
+    queryFn: ({ pageParam }) => alertPage(recipientId, filters, pageParam, PAGE),
     getNextPageParam: (last) => last.next,
     refetchInterval: FALLBACK_POLL_MS,
   });
+
+/** One page of the recipient's alerts that match the filters, newest first, after `cursor`. */
+async function alertPage(
+  recipientId: string,
+  filters: AlertFilters,
+  cursor: AlertCursor | null,
+  size: number,
+): Promise<{ rows: Alert[]; next: AlertCursor | null }> {
+  let q = supabase.from("alerts").select(SELECT).eq("recipient_id", recipientId);
+  if (filters.kind) q = q.eq("kind", filters.kind);
+  if (filters.userId) q = q.eq("user_id", filters.userId);
+  if (filters.read === "unread") q = q.is("read_at", null);
+  if (filters.read === "read") q = q.not("read_at", "is", null);
+  const { from, to } = dateBounds(filters);
+  if (from) q = q.gte("triggered_at", from);
+  if (to) q = q.lt("triggered_at", to);
+  if (cursor) q = q.or(cursorFilter(cursor));
+  const { data, error } = await q
+    .order("triggered_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(size + 1);
+  if (error) throw error;
+  return splitPage(data.map(toAlert), size);
+}
+
+/** The most alerts one export holds; more is refused so nothing is cut off silently. */
+export const EXPORT_MAX_ALERTS = 50_000;
+
+/**
+ * Every alert the page's filters match (#255), not only the loaded pages: the page's own
+ * query, a page of 500 at a time (under the API's 1000-row cap).
+ */
+export async function matchingAlerts(recipientId: string, filters: AlertFilters): Promise<Alert[]> {
+  const all: Alert[] = [];
+  let cursor: AlertCursor | null = null;
+  do {
+    const page = await alertPage(recipientId, filters, cursor, 500);
+    all.push(...page.rows);
+    if (all.length > EXPORT_MAX_ALERTS) {
+      throw new Error("Too many alerts for one export. Narrow the dates or other filters.");
+    }
+    cursor = page.next;
+  } while (cursor);
+  return all;
+}
 
 /** Marks the given alerts read, or all of the caller's when no ids are given. */
 export async function markAlertsRead(ids?: string[]) {
