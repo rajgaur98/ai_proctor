@@ -6,6 +6,7 @@ import { type OvertimeThresholds, overtimeFromPolicy } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { supabase } from "../../lib/supabase";
+import type { WeekMiss } from "./misses";
 import type { TimeSegment } from "./reassign";
 import type { BreakdownRow } from "./summary";
 import { weekDays, weekStartDay } from "./weeks";
@@ -219,6 +220,34 @@ export const flaggedQuery = (userId: string, weekStart: string) =>
         excluded: r.excluded,
         excludedReason: r.excluded_reason,
         decision: r.decision === "keep" || r.decision === "exclude" ? r.decision : null,
+      }));
+    },
+  });
+
+/**
+ * The missed check-ins of a week with the employee's quick pick and remark (#252), read
+ * through row-level security (the employee, their manager and delegate, admins). The
+ * week's days are the employee-local ones, as for its segments.
+ */
+export const weekMissesQuery = (userId: string, weekStart: string, zone: string) =>
+  queryOptions({
+    queryKey: ["timesheet-misses", userId, weekStart, zone],
+    queryFn: async (): Promise<WeekMiss[]> => {
+      const from = DateTime.fromISO(weekStart, { zone });
+      const { data, error } = await supabase
+        .from("checkin_events")
+        .select("id, scheduled_at, shown_at, missed_reason_kind, missed_reason")
+        .eq("user_id", userId)
+        .eq("outcome", "miss")
+        .gte("scheduled_at", from.toUTC().toISO() ?? "")
+        .lt("scheduled_at", from.plus({ days: 7 }).toUTC().toISO() ?? "")
+        .order("scheduled_at");
+      if (error) throw error;
+      return data.map((c) => ({
+        id: c.id,
+        at: c.shown_at ?? c.scheduled_at,
+        kind: c.missed_reason_kind,
+        remark: c.missed_reason,
       }));
     },
   });

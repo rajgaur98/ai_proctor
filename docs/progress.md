@@ -2,16 +2,28 @@
 
 Living status file. Update it in the same PR as the work.
 
-_Last updated: 20 Oct 2026. M0–M2 built and merged; M3–M5 next._
+_Last updated: 31 Oct 2026. M0–M2 built and merged; M3–M5 next._
 
 ## Now / Next
 
 Read this first after a restart or a context compaction. Update it with every PR.
 
 - **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
-- **Now (31 Oct):** Raj's 31 Oct requests: #251 seat map on the Team page, #252 typed remarks for missed check-ins, #254 timesheets to market standard (part 1: tasks + work description), #250 onboarding without a camera — implementers running. Since 22 Oct: #242/#243 macOS 26 Screen Recording prompt, #168 assistive-input exemption, #244 onboarding restart offer, #246 manual Windows installer workflow; Cloudflare R2 buckets + Pages project created; Windows VM (UTM) running for device checks.
-- **Open PRs:** none yet for the 31 Oct issues.
-- **Next:** #253 delete captured data (admins), #255 exports on every list page, #256 imports (after #254 part 1 so tasks are covered); #254 parts 2–8 as sub-issues. Then the hosted Supabase project (staging) for Pages previews and backups.
+- **Now (31 Oct):** Raj's 31 Oct requests.
+  - Merged: #250 onboarding without a camera (PR #258), #251 seat map (PR #259).
+  - In progress: #256 imports (phase A on `256-imports`; phase B, the RPC and the Settings → Import page, running), #266 timesheet totals and #268 tray task picker (both stacked on PR #261).
+  - Since 22 Oct: #242/#243 macOS 26 Screen Recording prompt, #168 assistive-input exemption, #244 onboarding restart offer, #246 manual Windows installer workflow; Cloudflare R2 buckets and the Pages project created; Windows VM (UTM) running for device checks.
+- **Open PRs:**
+  - #260: #252 miss remarks
+  - #261: #254 part 1, tasks and work notes
+  - #270: #253 employees delete their own check-in parts
+  - #271: #255 part 1, exports
+  The migrations in these PRs use different versions and redefine different functions; merge one at a time, merging main in first.
+- **Next:**
+  - In progress, stacked on #261: #263 day list editing, #269 task reorder and reports by task.
+  - #255 part 2: exports on the live grid, day view, captures metadata and the timesheet views (after #260, #261 and #270).
+  - #267 after #262 and #263.
+  - Then the hosted Supabase project (staging) for Pages previews and backups.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
@@ -106,6 +118,26 @@ Format: `- #<issue>: <exact question or action needed>`
 
 - #12, #13, #14 (Windows halves), #56: a Windows VM (Raj is setting one up, 22 Oct). CI builds an unsigned Windows installer to install there; then the Windows checklists in each PR.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
+- #262, #264, #265, #267 (all wait on the grid): should the weekly grid's cells be duration-only entries (no start/end, like Harvest and Clockify), or placed at a default start time? Today a manual entry needs a start and an end.
+- 31 Oct defaults taken (Raj can change any of them):
+  - #251: in_meeting, paused and idle show red on the seat map, although the "Active" tile counts them as active.
+  - #252: miss reasons stay editable until the week is **approved**. CHK-23 is updated to match; it said "submitted".
+  - #253: "apps for a check-in" is the minute it was answered; deleting domains also clears browser page titles; only passed check-ins can have parts deleted; managers get no separate notification.
+  - #254:
+    - notes lock once the week is submitted;
+    - managers edit notes only through the audited RPC;
+    - a task's billable flag is copied from its project when the task is made;
+    - there are no task-level member lists.
+  - #255:
+    - no notifications export (that list has no page);
+    - `record_export` trusts the browser's row count;
+    - employees may record exports.
+  - #256:
+    - CSV plus an .xlsx reader with no new dependency;
+    - membership imports only add;
+    - an unknown team or client is an error;
+    - imports are admin-only;
+    - invite emails go out after the database commit.
 
 Decided 22 Oct 2026: #168 per-person assistive-input exemption (flag, don't block); #175 keep the camera's aspect (CAP-06 updated); #54 names stay in the deletion tombstone and audit rows as the legal record; #21 camera-on target ≤ 2 s; the pilot includes Windows (VM).
 

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, asEmployee, clientFor } from "./agent";
-import { expectNoA11yViolations } from "./helpers";
+import { expectNoA11yViolations, reopenApprovedWeeks } from "./helpers";
 
 // The day page follows the Claude Design DayView screen (#124): totals, the bar of
 // segments, the selected check-in on the left, the list on the right. The day is built
@@ -96,6 +96,8 @@ async function seedDay() {
     at("15:10"),
   );
   await send("clock_out", at("15:30"), { reason: "manual" });
+  // An approved week locks miss reasons (#252); late-events.spec approves a recent one.
+  await reopenApprovedWeeks(LUCAS);
   await asEmployee("lucas@acme.test", (db) =>
     db.rpc("set_miss_reason", {
       p_checkin_id: missId,
@@ -159,7 +161,13 @@ test("a manager reads a seeded day: totals, the bar, a pass, a miss, the neighbo
   await expect(pass).toContainText("No screenshot");
   await expectNoA11yViolations(page);
 
-  await page.getByRole("button", { name: "Missed check-in at 14:03" }).click();
+  // The marker and the list name the employee's quick pick and remark (#252).
+  await expect(list.getByRole("button", { name: /14:03 Missed/ })).toContainText(
+    "Phone call: “Client call”",
+  );
+  await page
+    .getByRole("button", { name: "Missed check-in at 14:03 (Phone call: “Client call”)" })
+    .click();
   const missX = await lineAt();
   expect(missX).toBeLessThan(passX);
   const miss = page.getByRole("region", { name: "Missed check-in · 14:03" });

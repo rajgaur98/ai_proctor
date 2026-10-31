@@ -275,6 +275,17 @@ function MissedCard({ missed }: { missed: MissedCheckin }) {
   const [note, setNote] = useState("");
   const save = useCommand();
   const ready = canSaveMissReason(kind, note);
+  const needsRemark = kind === "other";
+  const submit = () => {
+    if (!ready || save.busy) return;
+    save.run(() =>
+      invoke("set_miss_reason", {
+        checkin_id: missed.id,
+        kind,
+        note: blankToNull(note),
+      }),
+    );
+  };
 
   return (
     <section className="t-card t-missed" aria-labelledby="missed-title">
@@ -301,28 +312,35 @@ function MissedCard({ missed }: { missed: MissedCheckin }) {
         </div>
       </fieldset>
       <div className="t-field">
-        <label htmlFor="miss-note">Note (optional)</label>
-        <input
+        <label htmlFor="miss-note">
+          Remark {needsRemark ? "(needed for Other)" : "(optional)"}
+        </label>
+        <textarea
           id="miss-note"
-          type="text"
+          rows={3}
           maxLength={MISS_NOTE_MAX}
           value={note}
+          required={needsRemark}
+          aria-describedby="miss-note-count"
+          placeholder="What happened, in your words"
           onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter adds a line; Cmd/Ctrl+Enter saves.
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              submit();
+            }
+          }}
         />
+        <span id="miss-note-count" className="t-count">
+          {note.length} / {MISS_NOTE_MAX}
+        </span>
       </div>
       <button
         type="button"
         className="btn btn-primary"
         disabled={!ready || save.busy}
-        onClick={() =>
-          save.run(() =>
-            invoke("set_miss_reason", {
-              checkin_id: missed.id,
-              kind,
-              note: blankToNull(note),
-            }),
-          )
-        }
+        onClick={submit}
       >
         {save.busy ? "Saving…" : "Save reason"}
       </button>

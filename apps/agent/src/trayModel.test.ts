@@ -10,6 +10,7 @@ import {
   formatDay,
   formatDuration,
   liveWorkedSeconds,
+  MISS_NOTE_MAX,
   noticePrompt,
   pauseAllowance,
   permissionIssues,
@@ -228,11 +229,21 @@ describe("small helpers", () => {
     expect(blankToNull("   ")).toBeNull();
     expect(blankToNull("  school run ")).toBe("school run");
   });
-  it("enables Save once there is a pick or a note", () => {
+  it("enables Save once there is a pick or a remark", () => {
     expect(canSaveMissReason(null, "")).toBe(false);
     expect(canSaveMissReason(null, "  ")).toBe(false);
     expect(canSaveMissReason("meeting", "")).toBe(true);
+    expect(canSaveMissReason("phone_call", "Client call")).toBe(true);
     expect(canSaveMissReason(null, "ran late")).toBe(true);
+  });
+  it("needs a remark for Other, and keeps it within 500 characters", () => {
+    expect(canSaveMissReason("other", "")).toBe(false);
+    expect(canSaveMissReason("other", "   ")).toBe(false);
+    expect(canSaveMissReason("other", "Fire drill")).toBe(true);
+    expect(canSaveMissReason("other", "x".repeat(MISS_NOTE_MAX))).toBe(true);
+    expect(canSaveMissReason("meeting", "x".repeat(MISS_NOTE_MAX + 1))).toBe(false);
+    // Surrounding spaces are trimmed before saving, so they don't count.
+    expect(canSaveMissReason("other", ` ${"x".repeat(MISS_NOTE_MAX)} `)).toBe(true);
   });
 });
 
