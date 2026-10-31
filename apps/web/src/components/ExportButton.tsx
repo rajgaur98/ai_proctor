@@ -4,6 +4,9 @@
 //
 //   <ExportButton title="People" spec={{ page: "people", filters: { search },
 //     table: () => peopleTable(visible) }} />
+//
+// A page with several tables (the day view: check-ins, segments, apps) passes `choices`
+// instead: the dialog then asks which table, and each is its own file and audit row.
 import { useMutation } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -17,15 +20,23 @@ import {
 import { type ExportSpec, runExport } from "../lib/exports";
 import { Button } from "./ui/button";
 
+/** One of the tables a page with several offers. */
+export interface ExportChoice {
+  /** The table, as the page calls it: "Check-ins". */
+  label: string;
+  spec: ExportSpec;
+  /** As ExportButton's `ready`, for this table. */
+  ready?: boolean;
+}
+
 export function ExportButton({
   title,
-  spec,
   ready = true,
   className,
+  ...source
 }: {
   /** What is exported, as the page calls it: "People", "Enrollment tokens". */
   title: string;
-  spec: ExportSpec;
   /**
    * False while the page's rows are loading (or failed to): the dialog opens but its
    * Download waits. The Export button itself never flips between enabled and disabled.
@@ -33,15 +44,24 @@ export function ExportButton({
   ready?: boolean;
   /** Extra classes for the button, e.g. a smaller height in a section header. */
   className?: string;
-}) {
+} & ({ spec: ExportSpec; choices?: never } | { choices: ExportChoice[]; spec?: never })) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [format, setFormat] = useState<ExportFormat>("csv");
+  const [picked, setPicked] = useState(0);
+  const choices: ExportChoice[] = source.spec
+    ? [{ label: title, spec: source.spec }]
+    : (source.choices ?? []);
+  const choice = choices[picked] ?? choices[0];
+  const canDownload = ready && !!choice && (choice.ready ?? true);
   const send = useMutation({
-    mutationFn: () => runExport(spec, format),
+    mutationFn: () => {
+      if (!choice) throw new Error("Nothing to export.");
+      return runExport(choice.spec, format);
+    },
     onSuccess: () => dialogRef.current?.close(),
   });
-  const filters = Object.entries(activeFilters(spec.filters));
+  const filters = Object.entries(activeFilters(choice?.spec.filters ?? {}));
   const what = title.toLowerCase();
 
   return (
@@ -89,6 +109,22 @@ export function ExportButton({
                 ))}
               </ul>
             )}
+            {source.choices && (
+              <div className="flex flex-col gap-1.5">
+                <span aria-hidden="true" className="text-[13px] font-medium text-ink2">
+                  Table
+                </span>
+                <Segmented
+                  label="Table"
+                  value={String(picked)}
+                  options={source.choices.map((c, i) => [String(i), c.label] as const)}
+                  onChange={(v) => {
+                    setPicked(Number(v));
+                    send.reset();
+                  }}
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <span aria-hidden="true" className="text-[13px] font-medium text-ink2">
                 Format
@@ -117,8 +153,8 @@ export function ExportButton({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={!ready || send.isPending}>
-                {!ready
+              <Button type="submit" disabled={!canDownload || send.isPending}>
+                {!canDownload
                   ? "Loading…"
                   : send.isPending
                     ? "Exporting…"

@@ -8,6 +8,7 @@ import { ManualEntryRequest, WorkNote } from "@ai-proctor/contracts";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useEffect, useRef, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -36,6 +37,7 @@ import {
   type TrackedSegment,
   weekDayList,
 } from "./dayList";
+import { dayListTable } from "./sheetExport";
 import { formatDuration } from "./summary";
 import { dayLabel, weekDays } from "./weeks";
 
@@ -95,9 +97,12 @@ export function WeekDayList({
   enabled,
   canEdit,
   onChanged,
+  personName,
 }: {
   userId: string;
   week: string;
+  /** Whose week, for the export's filters (#255). */
+  personName: string;
   /** The employee's zone: days are theirs, and times are typed in it. */
   zone: string;
   /** The week's manual entries (the page already reads them). */
@@ -109,8 +114,10 @@ export function WeekDayList({
   onChanged: () => Promise<void>;
 }) {
   const segments = useQuery({ ...weekSegmentsQuery(userId, week), enabled });
-  const projects = useQuery(projectsQuery).data ?? [];
-  const tasks = useQuery(tasksQuery).data ?? [];
+  const projectsQ = useQuery(projectsQuery);
+  const tasksQ = useQuery(tasksQuery);
+  const projects = projectsQ.data ?? [];
+  const tasks = tasksQ.data ?? [];
   const days = weekDays(week);
   const today = DateTime.now().setZone(zone).toISODate() ?? "";
   const list = weekDayList(days, segments.data ?? [], entries, zone);
@@ -153,9 +160,28 @@ export function WeekDayList({
       className="flex flex-col gap-4 rounded-xl border border-line bg-panel p-[18px]"
     >
       <div className="flex flex-col gap-1">
-        <h2 id="day-list-title" className="text-[15px] font-semibold">
-          Days
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 id="day-list-title" className="text-[15px] font-semibold">
+            Days
+          </h2>
+          <ExportButton
+            title="Days"
+            className="ml-auto h-9"
+            ready={enabled && segments.isSuccess && projectsQ.isSuccess && tasksQ.isSuccess}
+            spec={{
+              page: "timesheet-days",
+              filters: { person: personName, week },
+              table: () =>
+                dayListTable(
+                  list,
+                  projectName,
+                  (id) => tasks.find((t) => t.id === id)?.name ?? "Task",
+                  (projectId, taskId) => isBillable(projectId, taskId, projects, tasks),
+                  viewerZone(),
+                ),
+            }}
+          />
+        </div>
         <p className="text-[13px] text-ink2">
           Tracked time is read-only.
           {canEdit &&

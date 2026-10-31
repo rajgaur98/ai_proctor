@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { type PresenceStatus, StatusChip, statusStyle } from "../../components/StatusChip";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
@@ -21,6 +22,7 @@ import {
   type TeamRow,
 } from "./grid";
 import { SeatMap } from "./SeatMap";
+import { liveTeamTable } from "./teamExport";
 import { useLivePresence } from "./useLivePresence";
 
 const queryKey = ["team_live"];
@@ -153,6 +155,29 @@ export function LiveTeam() {
             ? ` · updated ${formatTime(new Date(dataUpdatedAt).toISOString(), zone, zone)}`
             : ""}
         </span>
+        <ExportButton
+          title="Live team"
+          ready={!!data}
+          spec={{
+            page: "live-team",
+            filters: {
+              view: seats ? "Seats" : "",
+              status:
+                status === "all" ? "" : status === "tamper" ? "Tamper" : statusStyle[status].label,
+              team: team ? (teams.find((t) => t.id === team)?.name ?? team) : "",
+              search: search.trim(),
+            },
+            // The snapshot on screen: the list's rows in its order, or the seats (off
+            // shift too, in name order).
+            table: () =>
+              liveTeamTable(
+                seats ? sortRows(seated, "name") : visible,
+                (id) => (id ? (teams.find((t) => t.id === id)?.name ?? "") : ""),
+                (id) => (id ? (projectName.get(id) ?? "") : ""),
+                zone,
+              ),
+          }}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-panel p-4 md:grid-cols-5 md:p-5">
