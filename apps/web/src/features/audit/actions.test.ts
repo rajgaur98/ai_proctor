@@ -83,6 +83,24 @@ describe("summarize", () => {
     ).toBe("12 rows · actions: capture.viewed · from 2026-03-01");
   });
 
+  it("reads list exports (#255): page, format, rows and the page's filters", () => {
+    expect(actionLabel("export.created")).toBe("Exported a list");
+    expect(
+      summarize(
+        "export.created",
+        { page: "alerts", format: "xlsx", row_count: 1, filters: { kind: "Missed check-ins" } },
+        nameOf,
+      ),
+    ).toBe("alerts · XLSX · 1 row · kind: Missed check-ins");
+    expect(
+      summarize(
+        "export.created",
+        { page: "people", format: "csv", row_count: 4, filters: {} },
+        nameOf,
+      ),
+    ).toBe("people · CSV · 4 rows");
+  });
+
   it("names enrollment tokens by label and prefix only", () => {
     const meta = { token_id: "t1", label: "Jamf: Macs", prefix: "apet_AbCd" };
     expect(actionLabel("enrollment_token.used")).toBe("Enrolled a device");

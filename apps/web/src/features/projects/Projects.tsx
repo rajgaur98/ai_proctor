@@ -3,9 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useId, useRef, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { yesNo } from "../../lib/exportFile";
 import { membersQuery } from "../people/members";
 import { ClientsDialog } from "./ClientsDialog";
 import { clientsQuery, type Project, projectsQuery, saveProject, setMembers } from "./projectData";
@@ -33,6 +35,25 @@ export function Projects() {
           <p className="mt-1 text-[13.5px] text-ink2">{profile.orgName}</p>
         </div>
         <div className="ml-auto flex gap-2">
+          <ExportButton
+            title="Projects"
+            ready={!projects.isPending && !error}
+            spec={{
+              page: "projects",
+              filters: {},
+              table: () => ({
+                sheet: "Projects",
+                header: ["Project", "Client", "Billable", "People", "Status"],
+                rows: rows.map((p) => [
+                  p.name,
+                  (p.clientId && clientName.get(p.clientId)) || "",
+                  yesNo(p.billable),
+                  p.memberIds.length,
+                  p.archived ? "Archived" : "Active",
+                ]),
+              }),
+            }}
+          />
           <Button variant="secondary" onClick={() => setClientsOpen(true)}>
             Clients
           </Button>

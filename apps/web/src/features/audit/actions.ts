@@ -19,6 +19,7 @@ export const actionLabels: Record<string, string> = {
   "team.policy_changed": "Changed a team's policy",
   "capture.viewed": "Viewed captures",
   "audit_log.exported": "Exported the audit log",
+  "export.created": "Exported a list",
   "enrollment_token.created": "Created an enrollment token",
   "enrollment_token.revoked": "Revoked an enrollment token",
   "enrollment_token.used": "Enrolled a device",
@@ -103,6 +104,17 @@ export function summarize(
       if (text(f.from)) parts.push(`from ${text(f.from)}`);
       if (text(f.to)) parts.push(`to ${text(f.to)}`);
       return parts.join(" · ");
+    }
+    case "export.created": {
+      // #255: a list page's export; the filters are as the page names them.
+      const f = (m.filters ?? {}) as Meta;
+      const parts = [
+        text(m.page) ?? "—",
+        (text(m.format) ?? "").toUpperCase() || null,
+        plural(typeof m.row_count === "number" ? m.row_count : 0, "row"),
+        ...Object.entries(f).map(([k, v]) => `${k}: ${String(v)}`),
+      ];
+      return parts.filter(Boolean).join(" · ");
     }
     case "enrollment_token.created":
     case "enrollment_token.revoked":

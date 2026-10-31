@@ -2814,6 +2814,10 @@ export type Database = {
         Args: { p_end: string; p_project_id: string; p_reason?: string; p_start: string };
         Returns: string;
       };
+      record_export: {
+        Args: { p_filters?: Json; p_format: string; p_page: string; p_row_count?: number };
+        Returns: undefined;
+      };
       record_my_data_export: { Args: { p_counts: Json; p_user_id: string }; Returns: undefined };
       record_segment_failure: {
         Args: { p_day: string; p_error: string; p_started_at?: string; p_user_id: string };
