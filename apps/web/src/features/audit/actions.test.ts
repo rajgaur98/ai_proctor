@@ -53,6 +53,24 @@ describe("summarize", () => {
     ).toBe("US · CA → IN");
   });
 
+  it("reads miss reason changes without the remark (#252)", () => {
+    expect(actionLabel("checkin.miss_reason_set")).toBe("Set a miss reason");
+    expect(
+      summarize(
+        "checkin.miss_reason_set",
+        { from_kind: null, to_kind: "other", from_note_length: 0, to_note_length: 10 },
+        nameOf,
+      ),
+    ).toBe("None (no remark) → Other (remark 10 characters)");
+    expect(
+      summarize(
+        "checkin.miss_reason_set",
+        { from_kind: "meeting", to_kind: "phone_call", from_note_length: 1, to_note_length: 0 },
+        nameOf,
+      ),
+    ).toBe("Meeting (remark 1 character) → Phone call (no remark)");
+  });
+
   it("reads assistive input changes", () => {
     expect(actionLabel("member.assistive_input_changed")).toBe("Changed assistive input");
     expect(summarize("member.assistive_input_changed", { from: false, to: true }, nameOf)).toBe(

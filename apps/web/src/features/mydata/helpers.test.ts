@@ -6,8 +6,10 @@ import {
   type DaySegment,
   filesOf,
   imagesExpired,
+  MISS_REMARK_MAX,
   minutesText,
   missReasonLabel,
+  missReasonProblem,
   placeSegments,
   recentViews,
   sampleMinute,
@@ -114,6 +116,19 @@ describe("miss reasons", () => {
     expect(missReasonLabel("away")).toBe("Away from desk");
     expect(missReasonLabel("other_thing")).toBe("other_thing");
     expect(missReasonLabel(null)).toBeNull();
+  });
+
+  it("needs a pick or a remark, and a remark for Other (#252)", () => {
+    expect(missReasonProblem(null, "")).toBe("Pick a reason or write a remark.");
+    expect(missReasonProblem(null, "   ")).toBe("Pick a reason or write a remark.");
+    expect(missReasonProblem("meeting", "")).toBeNull();
+    expect(missReasonProblem(null, "Ran late")).toBeNull();
+    expect(missReasonProblem("other", " ")).toBe("Add a remark for Other.");
+    expect(missReasonProblem("other", "Fire drill")).toBeNull();
+    expect(missReasonProblem("break", "x".repeat(MISS_REMARK_MAX))).toBeNull();
+    expect(missReasonProblem("break", "x".repeat(MISS_REMARK_MAX + 1))).toBe(
+      "Keep the remark to 500 characters.",
+    );
   });
 });
 
