@@ -241,16 +241,19 @@ export const unassignedQuery = (userId: string, from: string, to: string) =>
     },
   });
 
-/** Sets or changes the reason on one of the caller's own misses (CHK-23, #39). */
+/**
+ * Sets or changes the reason on one of the caller's own misses (CHK-23, #39, #252): a
+ * quick pick and/or a remark, until the week is approved. Audit-logged on the server.
+ */
 export async function setMissReason(
   checkinId: string,
-  kind: string,
+  kind: string | null,
   note: string | null,
 ): Promise<void> {
   const { error } = await supabase.rpc("set_miss_reason", {
     p_checkin_id: checkinId,
-    p_kind: kind,
-    // Generated types don't mark function arguments nullable; keep a written note.
+    // Generated types don't mark function arguments nullable; either may be left out.
+    p_kind: kind as string,
     p_note: note as string,
   });
   if (error) throw new Error(missMessages[error.message] ?? error.message);
@@ -260,5 +263,8 @@ const missMessages: Record<string, string> = {
   checkin_not_found: "That check-in isn't available to you.",
   not_a_miss: "Only a missed check-in takes a reason.",
   invalid_reason: "Pick one of the reasons.",
-  note_too_long: "The note is too long.",
+  reason_required: "Pick a reason or write a remark.",
+  remark_required: "Add a remark for Other.",
+  note_too_long: "Keep the remark to 500 characters.",
+  timesheet_locked: "This week's timesheet is approved, so the reason can't change.",
 };

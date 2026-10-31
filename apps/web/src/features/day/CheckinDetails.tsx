@@ -5,10 +5,13 @@
 //
 // Captures stay behind "View captures": opening them is an audit-logged view (AUD-01,
 // EMP-03), so selecting a row or marker must not open one by itself.
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { type ReactNode, useState } from "react";
 import { formatTime, Time, viewerZone } from "../../lib/time";
+import { MissReasonEdit } from "../mydata/MissReasonDialog";
+import { timesheetQuery } from "../timesheets/timesheetData";
 import { CaptureImages, DisplaySwitch, screenFiles, useCaptureView } from "./CaptureViewer";
 import {
   deferralText,
@@ -235,7 +238,14 @@ export function CheckinDetails({
               { label: "Screen", value: screenState(c.deviceState) },
             ]}
           />
-          <MissReason c={c} personName={personName} />
+          <MissReason
+            c={c}
+            personName={personName}
+            isSelf={isSelf}
+            userId={userId}
+            week={week}
+            time={at}
+          />
           <p className="flex flex-wrap items-center gap-3 text-[13px] text-ink2">
             <span>
               No captures: screenshots and webcam frames are only taken when a check-in is passed.
@@ -284,15 +294,50 @@ export function CheckinDetails({
   );
 }
 
-function MissReason({ c, personName }: { c: CheckinRow; personName: string }) {
+function MissReason({
+  c,
+  personName,
+  isSelf,
+  userId,
+  week,
+  time,
+}: {
+  c: CheckinRow;
+  personName: string;
+  isSelf: boolean;
+  userId: string;
+  week: string;
+  time: string;
+}) {
   const { kind, note } = missReason(c.missedReasonKind, c.missedReason);
+  const queryClient = useQueryClient();
+  // The person's own miss: its reason can change until the week is approved (#252).
+  const sheet = useQuery({ ...timesheetQuery(userId, week), enabled: isSelf && week !== "" });
   return (
-    <div className="flex flex-col gap-1.5 rounded-[10px] border border-line bg-sunk p-3.5">
-      <span className="text-xs text-ink3">Employee's reason{kind && note ? ` · ${kind}` : ""}</span>
-      {note || kind ? (
-        <span className="text-base font-medium">{note ? `“${note}”` : kind}</span>
-      ) : (
-        <span className="text-[13.5px] text-ink2">No reason given yet by {personName}.</span>
+    <div className="flex flex-wrap items-start gap-3 rounded-[10px] border border-line bg-sunk p-3.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className="text-xs text-ink3">
+          {isSelf ? "Your reason" : "Employee's reason"}
+          {kind && note ? ` · ${kind}` : ""}
+        </span>
+        {note || kind ? (
+          <span className="text-base font-medium break-words whitespace-pre-line">
+            {note ? `“${note}”` : kind}
+          </span>
+        ) : (
+          <span className="text-[13.5px] text-ink2">
+            {isSelf ? "No reason yet." : `No reason given yet by ${personName}.`}
+          </span>
+        )}
+      </div>
+      {isSelf && sheet.data && sheet.data.status !== "approved" && (
+        <MissReasonEdit
+          checkinId={c.id}
+          time={time}
+          kind={c.missedReasonKind}
+          remark={c.missedReason}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ["day-checkins", userId] })}
+        />
       )}
     </div>
   );
