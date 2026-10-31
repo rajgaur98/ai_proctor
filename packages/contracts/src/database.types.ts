@@ -440,12 +440,14 @@ export type Database = {
       };
       checkin_events: {
         Row: {
+          apps_deleted_at: string | null;
           capture_errors: Json | null;
           captures_purged_at: string | null;
           created_at: string;
           deferral_reason: string | null;
           device_id: string;
           device_state: string | null;
+          domains_deleted_at: string | null;
           face_present: boolean | null;
           flags: string[];
           id: string;
@@ -459,18 +461,22 @@ export type Database = {
           responded_at: string | null;
           response_ms: number | null;
           scheduled_at: string;
+          screen_deleted_at: string | null;
           shown_at: string | null;
           user_id: string;
+          webcam_deleted_at: string | null;
           wrong_clicks: number;
         };
         ComputedFields: never;
         Insert: {
+          apps_deleted_at?: string | null;
           capture_errors?: Json | null;
           captures_purged_at?: string | null;
           created_at?: string;
           deferral_reason?: string | null;
           device_id: string;
           device_state?: string | null;
+          domains_deleted_at?: string | null;
           face_present?: boolean | null;
           flags?: string[];
           id: string;
@@ -484,17 +490,21 @@ export type Database = {
           responded_at?: string | null;
           response_ms?: number | null;
           scheduled_at: string;
+          screen_deleted_at?: string | null;
           shown_at?: string | null;
           user_id: string;
+          webcam_deleted_at?: string | null;
           wrong_clicks?: number;
         };
         Update: {
+          apps_deleted_at?: string | null;
           capture_errors?: Json | null;
           captures_purged_at?: string | null;
           created_at?: string;
           deferral_reason?: string | null;
           device_id?: string;
           device_state?: string | null;
+          domains_deleted_at?: string | null;
           face_present?: boolean | null;
           flags?: string[];
           id?: string;
@@ -508,8 +518,10 @@ export type Database = {
           responded_at?: string | null;
           response_ms?: number | null;
           scheduled_at?: string;
+          screen_deleted_at?: string | null;
           shown_at?: string | null;
           user_id?: string;
+          webcam_deleted_at?: string | null;
           wrong_clicks?: number;
         };
         Relationships: [
@@ -2583,6 +2595,7 @@ export type Database = {
       can_view_user: { Args: { target: string }; Returns: boolean };
       cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
+      checkin_removed_paths: { Args: { p_checkin_id: string }; Returns: string[] };
       create_enrollment_token: {
         Args: { p_label: string };
         Returns: {
@@ -2629,6 +2642,7 @@ export type Database = {
           status: string;
         }[];
       };
+      delete_checkin_parts: { Args: { p_checkin_id: string; p_parts: string[] }; Returns: Json };
       delete_team: { Args: { p_team_id: string }; Returns: undefined };
       delete_user_data: { Args: { p_email: string; p_user_id: string }; Returns: Json };
       due_segment_days: {

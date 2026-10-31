@@ -4,6 +4,7 @@
 import type { Json } from "@ai-proctor/contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
+import { type RemovedParts, removedFromRow } from "../day/removedText";
 import type { Outcome } from "../day/timeline";
 import type { AppSample, CaptureView, DaySegment } from "./helpers";
 import { sampleMinute } from "./helpers";
@@ -23,6 +24,8 @@ export interface MyCheckin {
   projectId: string | null;
   /** CAP-07: whether the webcam frame showed a face; null when not checked. */
   facePresent: boolean | null;
+  /** Parts the employee removed (#253). */
+  removed: RemovedParts;
 }
 
 export interface ActivityRow {
@@ -74,7 +77,7 @@ export const checkinsQuery = (userId: string, from: string, to: string) =>
       const { data, error } = await supabase
         .from("checkin_events")
         .select(
-          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys, project_id, face_present",
+          "id, scheduled_at, shown_at, responded_at, outcome, deferral_reason, idle_s_at_show, device_state, missed_reason, missed_reason_kind, object_keys, project_id, face_present, webcam_deleted_at, screen_deleted_at, apps_deleted_at, domains_deleted_at",
         )
         .eq("user_id", userId)
         .gte("scheduled_at", from)
@@ -95,6 +98,7 @@ export const checkinsQuery = (userId: string, from: string, to: string) =>
         objectKeys: c.object_keys,
         projectId: c.project_id,
         facePresent: c.face_present,
+        removed: removedFromRow(c),
       }));
     },
   });

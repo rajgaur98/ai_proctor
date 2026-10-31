@@ -1,12 +1,14 @@
 // Captures of one passed check-in (#34, #124, DSH-04): the screenshot and the webcam
 // frame side by side, with a display switcher when several screens were captured.
 // Every open is audit-logged on the server (capture_view), so nothing loads until the
-// viewer asks for it ("View captures"); links last 5 minutes.
+// viewer asks for it ("View captures"); links last 5 minutes. A part the employee removed
+// (#253) shows who removed it and when instead of an image.
 import { useQuery } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
-import { Time } from "../../lib/time";
+import { Time, viewerZone } from "../../lib/time";
+import { noneRemoved, partRemovedText, type RemovedParts } from "./removedText";
 
 export interface CaptureView {
   checkin_id: string;
@@ -17,6 +19,8 @@ export interface CaptureView {
   domain: string | null;
   expired: boolean;
   capture_errors: { screen?: string; webcam?: string } | null;
+  /** When the employee removed each part (#253); its files are not listed. */
+  removed?: RemovedParts;
   files: { name: string; signed_path: string | null }[];
 }
 
@@ -153,15 +157,53 @@ export function CaptureImages({
   onOpen,
   view,
   display,
+  removed = noneRemoved,
+  removedBy = "the employee",
 }: {
   keys: string[];
   opened: boolean;
   onOpen: () => void;
   view: ReturnType<typeof useCaptureView>;
   display: number;
+  /** Parts the employee removed (#253). */
+  removed?: RemovedParts;
+  /** Who removed them: the employee's name, or "you". */
+  removedBy?: string;
 }) {
-  const hasScreen = screenFiles(keys.map((name) => ({ name }))).length > 0;
-  const hasWebcam = keys.includes(webcamName);
+  const zone = viewerZone();
+  const screenGone = removed.screen !== null;
+  const webcamGone = removed.webcam !== null;
+  const hadScreen = screenFiles(keys.map((name) => ({ name }))).length > 0;
+  const hadWebcam = keys.includes(webcamName);
+  const hasScreen = hadScreen && !screenGone;
+  const hasWebcam = hadWebcam && !webcamGone;
+  const screenRemoved = (
+    <Slot aspect="aspect-[16/10]" dashed>
+      <span className="font-semibold text-ink">
+        {partRemovedText(
+          screenFiles(keys.map((name) => ({ name }))).length > 1
+            ? "Screen captures"
+            : "Screen capture",
+          removed.screen ?? "",
+          removedBy,
+          zone,
+        )}
+      </span>
+      <span>The check-in still counts as passed.</span>
+    </Slot>
+  );
+  const webcamRemoved = (
+    <Slot aspect="aspect-[4/3]" dashed>
+      <span className="font-semibold text-ink">
+        {partRemovedText("Webcam frame", removed.webcam ?? "", removedBy, zone)}
+      </span>
+    </Slot>
+  );
+  const openButton = (
+    <Button variant="secondary" className="self-start" onClick={onOpen}>
+      View captures
+    </Button>
+  );
 
   if (opened && view.isPending) return <p className="text-sm text-ink2">Loading captures…</p>;
   if (opened && view.error) {
@@ -179,21 +221,25 @@ export function CaptureImages({
           {hasScreen ? (
             <Slot aspect="aspect-[16/10]">
               <span>Screenshot and webcam frame are not loaded until you open them.</span>
-              <Button variant="secondary" className="self-start" onClick={onOpen}>
-                View captures
-              </Button>
+              {openButton}
             </Slot>
+          ) : hadScreen ? (
+            screenRemoved
           ) : (
             <Slot aspect="aspect-[16/10]" dashed>
               <span className="font-semibold text-ink">No screenshot</span>
-              <span>No captures were stored for this check-in.</span>
+              {!hadWebcam && <span>No captures were stored for this check-in.</span>}
             </Slot>
           )}
         </div>
         {hasWebcam ? (
           <Slot aspect="aspect-[4/3]">
             <span className="font-mono text-[11px] text-ink3">webcam frame</span>
+            {/* The screen slot holds the button while there is a screenshot to open. */}
+            {!hasScreen && openButton}
           </Slot>
+        ) : hadWebcam && webcamGone ? (
+          webcamRemoved
         ) : (
           <Slot aspect="aspect-[4/3]" dashed>
             <span className="font-semibold text-ink">No webcam frame</span>
@@ -213,6 +259,8 @@ export function CaptureImages({
     <div className="grid items-start gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       {screen ? (
         <Image name={screen.name} url={signedUrl(screen.signed_path)} expired={data.expired} />
+      ) : hadScreen && screenGone ? (
+        screenRemoved
       ) : (
         <Slot aspect="aspect-[16/10]" dashed>
           <span className="font-semibold text-ink">No screenshot</span>
@@ -221,6 +269,8 @@ export function CaptureImages({
       )}
       {webcam ? (
         <Image name={webcam.name} url={signedUrl(webcam.signed_path)} expired={data.expired} />
+      ) : hadWebcam && webcamGone ? (
+        webcamRemoved
       ) : (
         <Slot aspect="aspect-[4/3]" dashed>
           <span className="font-semibold text-ink">No webcam frame</span>
@@ -239,7 +289,19 @@ export function CaptureImages({
  * data): it loads on mount, so it is only rendered once the person asked, and says
  * what was recorded about the view.
  */
-export function CaptureViewer({ checkinId, zone }: { checkinId: string; zone: string }) {
+export function CaptureViewer({
+  checkinId,
+  zone,
+  keys,
+  removed,
+}: {
+  checkinId: string;
+  zone: string;
+  /** The check-in's stored file names, removed ones included (the view lists only what is left). */
+  keys?: string[];
+  /** Parts the person removed (#253); this page is their own, so "you" removed them. */
+  removed?: RemovedParts;
+}) {
   const view = useCaptureView(checkinId, true);
   const [display, setDisplay] = useState(0);
   const data = view.data;
@@ -264,11 +326,13 @@ export function CaptureViewer({ checkinId, zone }: { checkinId: string; zone: st
         </p>
       )}
       <CaptureImages
-        keys={data?.files.map((f) => f.name) ?? []}
+        keys={keys ?? data?.files.map((f) => f.name) ?? []}
         opened
         onOpen={() => {}}
         view={view}
         display={display}
+        removed={removed ?? data?.removed ?? noneRemoved}
+        removedBy="you"
       />
       <p className="text-xs text-ink3">
         This view is recorded in the audit log and visible to the employee. Links expire in 5

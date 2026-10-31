@@ -22,6 +22,7 @@ import {
 import { Marker } from "./DayTimeline";
 import type { CheckinRow } from "./dayData";
 import { NeedsReviewBadge, NoFaceBadge } from "./NeedsReview";
+import { removedText } from "./removedText";
 
 function title(c: CheckinRow, at: string): string {
   if (c.outcome === "miss") return `Missed check-in · ${at}`;
@@ -100,6 +101,12 @@ export function CheckinDetails({
   const at = formatTime(c.shownAt ?? c.scheduledAt, viewer, viewer);
   const screens = view.data ? screenFiles(view.data.files) : [];
   const shownTime = c.shownAt ? <Time iso={c.shownAt} employeeZone={zone} seconds /> : "—";
+  // #253: parts the employee removed. Not a flag: the check-in still passed.
+  const removedBy = isSelf ? "you" : personName;
+  const removedNote = removedText(c.removed, removedBy, viewer);
+  const filesLeft = c.objectKeys.some((k) =>
+    k === "webcam.webp" ? c.removed.webcam === null : c.removed.screen === null,
+  );
 
   const timesheetLink = (
     <Link
@@ -140,7 +147,15 @@ export function CheckinDetails({
             onOpen={() => setOpened(true)}
             view={view}
             display={display}
+            removed={c.removed}
+            removedBy={removedBy}
           />
+          {removedNote && (
+            <p className="rounded-[9px] border border-line bg-sunk px-3 py-2.5 text-[13px] text-ink2">
+              <span className="font-semibold text-ink">{removedNote}.</span> The check-in still
+              counts as passed and its time is unchanged.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4">
             <Cell label="Shown">{shownTime}</Cell>
             <Cell label="Answered in">
@@ -150,13 +165,15 @@ export function CheckinDetails({
             </Cell>
             <Cell label="Active app">
               <span className="font-medium">
-                {!opened
-                  ? "Shown with the captures"
-                  : view.data
-                    ? view.data.app
-                      ? `${view.data.app}${view.data.domain ? ` (${view.data.domain})` : ""}`
-                      : "Not recorded"
-                    : "…"}
+                {c.removed.apps !== null
+                  ? `Removed by ${removedBy}`
+                  : !opened
+                    ? "Shown with the captures"
+                    : view.data
+                      ? view.data.app
+                        ? `${view.data.app}${view.data.domain ? ` (${view.data.domain})` : ""}`
+                        : "Not recorded"
+                      : "…"}
               </span>
             </Cell>
             <Cell label="Project">
@@ -176,7 +193,7 @@ export function CheckinDetails({
               {c.wrongClicks} wrong {c.wrongClicks === 1 ? "click" : "clicks"} before the right one.
             </p>
           )}
-          {c.objectKeys.length > 0 && (
+          {filesLeft && (
             <p className="flex items-center gap-2.5 rounded-[9px] bg-accsoft px-3 py-2.5 text-[13px]">
               <span
                 aria-hidden
