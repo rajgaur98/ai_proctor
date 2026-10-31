@@ -6,24 +6,27 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useMemo, useRef, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { StatusChip } from "../../components/StatusChip";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
 import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
-import { projectsQuery } from "../projects/projectData";
+import { projectsQuery, tasksQuery } from "../projects/projectData";
 import { canDecideQuery, weekStartQuery } from "../timesheets/timesheetData";
 import { weekStartOf } from "../timesheets/weeks";
 import { CheckinDetails } from "./CheckinDetails";
 import { deferralText, missReasonLine, noFace, outcomeWord } from "./checkinText";
-import { DayTimeline, Marker, StatsRow } from "./DayTimeline";
+import { DayTimeline, Marker, StatsRow, segmentStyle } from "./DayTimeline";
 import {
   dayCheckinsQuery,
   daySegmentsQuery,
   dayTamperQuery,
   rebuildDay,
   responseWindowQuery,
+  topAppsQuery,
 } from "./dayData";
+import { appsTable, checkinsTable, segmentsTable } from "./dayExport";
 import { statCards } from "./dayStats";
 import { flagCheckinIds } from "./flagText";
 import { ManualEntries } from "./ManualEntries";
@@ -111,6 +114,11 @@ export function DayPage() {
   });
   const responseWindow = useQuery(responseWindowQuery).data ?? 90;
   const projects = useQuery(projectsQuery).data;
+  const tasks = useQuery(tasksQuery).data;
+  // The same top apps the card shows (one cached query), for the export.
+  const dayFrom = new Date(day.start).toISOString();
+  const dayTo = new Date(day.end).toISOString();
+  const apps = useQuery({ ...topAppsQuery(userId, dayFrom, dayTo), refetchInterval: live });
   const startDay = useQuery(weekStartQuery).data;
 
   // ANT-08: anti-cheat flags for the day, shown as "needs review".
@@ -168,6 +176,8 @@ export function DayPage() {
   const status = person.data.presence?.status;
   const projectName = (id: string | null) =>
     id === null ? "Unassigned" : (projects?.find((p) => p.id === id)?.name ?? "Unknown project");
+  // #255: each table of the day is its own file, with the person and the day as filters.
+  const exportFilters = { person: name, date };
 
   return (
     <section className="flex flex-col gap-5">
@@ -236,6 +246,47 @@ export function DayPage() {
                 Schedule
               </Button>
             )}
+            <ExportButton
+              title="Day"
+              className="h-10"
+              choices={[
+                {
+                  label: "Check-ins",
+                  ready: checkinsQ.isSuccess && !!projects,
+                  spec: {
+                    page: "day-checkins",
+                    filters: exportFilters,
+                    table: () =>
+                      checkinsTable(checkins, projectName, (id) => flaggedCheckins.has(id), viewer),
+                  },
+                },
+                {
+                  label: "Segments",
+                  ready: segments.isSuccess && !!projects && !!tasks,
+                  spec: {
+                    page: "day-segments",
+                    filters: exportFilters,
+                    table: () =>
+                      segmentsTable(
+                        segs,
+                        (t) => segmentStyle[t as keyof typeof segmentStyle]?.label ?? t,
+                        projectName,
+                        (id) => tasks?.find((t) => t.id === id)?.name ?? "Unknown task",
+                        viewer,
+                      ),
+                  },
+                },
+                {
+                  label: "Apps",
+                  ready: apps.isSuccess,
+                  spec: {
+                    page: "day-apps",
+                    filters: exportFilters,
+                    table: () => appsTable(apps.data ?? []),
+                  },
+                },
+              ]}
+            />
             <Link
               to="/timesheets/$userId"
               params={{ userId }}

@@ -71,6 +71,31 @@ export const COLUMNS: Record<ImportKind, ColumnSpec[]> = {
     col("end", "17:30", ["end time", "shift end", "to", "ends"], true),
     col("timezone", "America/New_York", TIMEZONE),
   ],
+  // Toggl's and Clockify's exports name their columns like this ("Start date", "Start
+  // time", "Description"); their "End date" and "Duration" are not read.
+  time_entries: [
+    col(
+      "email",
+      "jane.doe@example.com",
+      [...EMAIL, "employee email", "user email", "person email"],
+      true,
+    ),
+    col("date", "2026-10-26", ["start date", "day", "work date", "entry date"], true),
+    col("start", "09:00", ["start time", "from", "starts", "time in", "clock in"], true),
+    col("end", "12:30", ["end time", "to", "ends", "time out", "clock out"], true),
+    col("project", "Website redesign", ["project name"]),
+    col("task", "Design", ["task name"]),
+    col("note", "Home page wireframes", [
+      "notes",
+      "description",
+      "work done",
+      "work note",
+      "details",
+      "comment",
+      "comments",
+    ]),
+    col("reason", "Logged in our old tool", ["reason for entry", "why"]),
+  ],
 };
 
 // The template leaves the combined work location out: country and state say the same.

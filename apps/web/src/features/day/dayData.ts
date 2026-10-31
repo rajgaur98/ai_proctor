@@ -23,6 +23,12 @@ export interface CheckinRow extends Checkin {
   removed: RemovedParts;
 }
 
+/** A stored segment with its project and task (#255: the day view's export lists them). */
+export interface DaySegmentRow extends DaySegment {
+  projectId: string | null;
+  taskId: string | null;
+}
+
 /**
  * Asks for the day's segments to be rebuilt (LLD section 6), so the numbers are current
  * when the page opens. A day in an approved week or a failing rebuild keeps what is
@@ -38,10 +44,10 @@ export async function rebuildDay(userId: string, day: string): Promise<boolean> 
 export const daySegmentsQuery = (userId: string, date: string) =>
   queryOptions({
     queryKey: ["day-segments", userId, date],
-    queryFn: async (): Promise<DaySegment[]> => {
+    queryFn: async (): Promise<DaySegmentRow[]> => {
       const { data, error } = await supabase
         .from("time_segments")
-        .select("type, start_at, end_at, counted, flagged, excluded")
+        .select("type, start_at, end_at, counted, flagged, excluded, project_id, task_id")
         .eq("user_id", userId)
         .eq("day", date)
         .order("start_at");
@@ -53,6 +59,8 @@ export const daySegmentsQuery = (userId: string, date: string) =>
         counted: s.counted,
         flagged: s.flagged,
         excluded: s.excluded,
+        projectId: s.project_id,
+        taskId: s.task_id,
       }));
     },
   });

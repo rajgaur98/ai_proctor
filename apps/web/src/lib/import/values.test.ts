@@ -3,7 +3,9 @@ import {
   formatDays,
   nameKey,
   normalizeHeader,
+  parseClockTime,
   parseCountry,
+  parseDate,
   parseDays,
   parseEmail,
   parseEmailList,
@@ -128,5 +130,44 @@ describe("parseDays", () => {
     expect(formatDays([1, 2, 3, 4, 5])).toBe("Mon-Fri");
     expect(formatDays([1, 2, 3, 4, 5, 7])).toBe("Mon-Fri, Sun");
     expect(formatDays([1, 3, 4])).toBe("Mon, Wed, Thu");
+  });
+});
+
+describe("dates and clock times (time entries)", () => {
+  it("reads dates in unambiguous forms", () => {
+    for (const t of ["2026-10-28", "2026/10/28", "2026-10-28", "28 Oct 2026", "Oct 28, 2026"]) {
+      expect(value(parseDate(t)), t).toBe("2026-10-28");
+    }
+    expect(value(parseDate("28-October-2026"))).toBe("2026-10-28");
+    expect(value(parseDate("2028-02-29"))).toBe("2028-02-29");
+  });
+
+  it("refuses day-month numbers and dates that don't exist", () => {
+    expect(value(parseDate("10/28/2026"))).toBe(
+      'ERROR "10/28/2026" could be read day-first or month-first. Use a date like 2026-10-28.',
+    );
+    for (const t of ["", "2026-02-29", "2026-13-01", "28 Foo 2026", "yesterday"]) {
+      expect(parseDate(t).ok, t).toBe(false);
+    }
+  });
+
+  it("round-trips every day of a leap year and a common one", () => {
+    for (const year of [2027, 2028]) {
+      for (let at = Date.UTC(year, 0, 1); at < Date.UTC(year + 1, 0, 1); at += 86_400_000) {
+        const iso = new Date(at).toISOString().slice(0, 10);
+        expect(value(parseDate(iso))).toBe(iso);
+      }
+    }
+  });
+
+  it("reads clock times with seconds, and 24:00 as the end of the day", () => {
+    expect(value(parseClockTime("9"))).toBe("09:00:00");
+    expect(value(parseClockTime("9:30am"))).toBe("09:30:00");
+    expect(value(parseClockTime("12am"))).toBe("00:00:00");
+    expect(value(parseClockTime("17:30:15"))).toBe("17:30:15");
+    expect(value(parseClockTime("24:00"))).toBe("24:00:00");
+    for (const t of ["24:01", "25", "9:60", "13pm", "9:30:60", "noon"]) {
+      expect(parseClockTime(t).ok, t).toBe(false);
+    }
   });
 });

@@ -15,15 +15,28 @@
 //            unique index; `members` are added, nobody is removed.
 //   shifts   items: ImportShifts, one per person: their shifts become exactly `shifts`
 //            (set_shifts' rules: at most 7).
+//   time_entries items: ImportTimeEntry, `action` create only: a manual time entry for the
+//            person, through request_manual_entry's rules as if they had asked for it
+//            (#282, TS-31). An entry with the same person, start and end already there is
+//            left alone when it's identical and refused (entry_exists) when it isn't;
+//            imports never change existing entries.
 // Every item carries `rows`, the file's row numbers it came from, so an error the RPC
 // raises can point at a row. Rows the preview found unchanged are not sent.
 import { z } from "zod";
+import { MANUAL_ENTRY_MAX_REASON, MANUAL_ENTRY_MAX_SECONDS, WORK_NOTE_MAX } from "./manualEntries";
 
 export const IMPORT_MAX_ROWS = 5_000;
 /** New people one import may invite (two Auth calls each; supabase/functions/import-people). */
 export const IMPORT_MAX_INVITES = 500;
 
-export const ImportKind = z.enum(["people", "teams", "clients", "projects", "shifts"]);
+export const ImportKind = z.enum([
+  "people",
+  "teams",
+  "clients",
+  "projects",
+  "shifts",
+  "time_entries",
+]);
 export const ImportAction = z.enum(["create", "update"]);
 
 const Rows = z.array(z.int().min(2)).min(1);
@@ -105,6 +118,41 @@ export const ImportShifts = z.object({
   shifts: z.array(ImportShift).min(1).max(7),
 });
 
+/** A time entry's reason when its row leaves the reason empty. */
+export const IMPORT_TIME_ENTRY_REASON = "Imported";
+
+export const ImportTimeEntry = z
+  .object({
+    rows: Rows,
+    action: z.literal("create"),
+    email: Email,
+    // Instants with their offset, whole seconds (the row's date and times in the person's
+    // time zone).
+    start_at: z.iso.datetime({ offset: true }),
+    end_at: z.iso.datetime({ offset: true }),
+    // An existing project's name and its client's (null: none), or null for Unassigned.
+    project: z.string().trim().min(1).max(120).nullable(),
+    client: z.string().trim().min(1).max(120).nullable(),
+    // A task of that project, by name, or null.
+    task: z.string().trim().min(1).max(120).nullable(),
+    note: z.string().trim().min(1).max(WORK_NOTE_MAX).nullable(),
+    reason: z.string().trim().min(1).max(MANUAL_ENTRY_MAX_REASON),
+  })
+  .superRefine((e, ctx) => {
+    const seconds = (Date.parse(e.end_at) - Date.parse(e.start_at)) / 1000;
+    if (!(seconds > 0)) {
+      ctx.addIssue({ code: "custom", message: "must end after it starts", path: ["end_at"] });
+    } else if (seconds > MANUAL_ENTRY_MAX_SECONDS) {
+      ctx.addIssue({ code: "custom", message: "can be at most 24 hours", path: ["end_at"] });
+    }
+    if (e.task !== null && e.project === null) {
+      ctx.addIssue({ code: "custom", message: "needs a project", path: ["task"] });
+    }
+    if (e.client !== null && e.project === null) {
+      ctx.addIssue({ code: "custom", message: "needs a project", path: ["client"] });
+    }
+  });
+
 const items = <T extends z.ZodType>(item: T) => z.array(item).min(1).max(IMPORT_MAX_ROWS);
 
 export const ImportPayload = z.discriminatedUnion("kind", [
@@ -113,6 +161,7 @@ export const ImportPayload = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("clients"), items: items(ImportClient) }),
   z.object({ kind: z.literal("projects"), items: items(ImportProject) }),
   z.object({ kind: z.literal("shifts"), items: items(ImportShifts) }),
+  z.object({ kind: z.literal("time_entries"), items: items(ImportTimeEntry) }),
 ]);
 
 export type ImportKind = z.infer<typeof ImportKind>;
@@ -123,4 +172,5 @@ export type ImportClient = z.infer<typeof ImportClient>;
 export type ImportProject = z.infer<typeof ImportProject>;
 export type ImportShift = z.infer<typeof ImportShift>;
 export type ImportShifts = z.infer<typeof ImportShifts>;
+export type ImportTimeEntry = z.infer<typeof ImportTimeEntry>;
 export type ImportPayload = z.infer<typeof ImportPayload>;

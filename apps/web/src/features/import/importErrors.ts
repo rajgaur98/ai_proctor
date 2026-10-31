@@ -47,6 +47,20 @@ const MESSAGES: Record<string, string> = {
   state_only_for_us: "Only US work locations have a state.",
   invalid_country: "A country code in the file isn't valid.",
   user_not_visible: "Someone in the file isn't visible to you.",
+  // Time entries (#282): request_manual_entry's refusals.
+  project_not_found: "A project in the file doesn't exist any more.",
+  project_not_allowed: "Someone in the file can't log time to their project any more.",
+  task_not_found: "A task in the file doesn't exist any more.",
+  task_not_allowed: "A task in the file has been archived.",
+  overlaps_clocked_time: "An entry in the file now overlaps clocked time.",
+  overlaps_manual_entry: "An entry in the file now overlaps another entry.",
+  day_locked: "An entry in the file is in a week that has since been approved.",
+  entry_exists: "An entry for the same person and times now exists with other details.",
+  in_the_future: "An entry in the file ends in the future.",
+  invalid_range: "An entry in the file ends before it starts.",
+  range_too_long: "An entry in the file is longer than 24 hours.",
+  invalid_reason: "A reason in the file is empty or too long.",
+  invalid_note: "A note in the file is too long.",
 };
 
 /** What went wrong, in plain words, with the rows when the database named them. */

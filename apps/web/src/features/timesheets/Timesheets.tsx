@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { DateTime } from "luxon";
 import { useRef, useState } from "react";
+import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Delegation } from "../delegation/Delegation";
@@ -23,6 +24,7 @@ import { ExportDialog } from "./ExportDialog";
 import { downloadExport, exportFormatLabel } from "./exportData";
 import { OvertimeNote, WorkedTime } from "./Overtime";
 import { LateDataBadge, SheetStatusChip } from "./SheetStatusChip";
+import { sheetListTable } from "./sheetExport";
 import { formatDuration } from "./summary";
 import { OvertimeChips, TotalsPanel, totalsNames } from "./Totals";
 import {
@@ -137,6 +139,24 @@ export function Timesheets() {
             ))}
           </select>
         </label>
+        {/* #255: the rows below as shown (the Export above is the timesheet export). */}
+        <ExportButton
+          title="Timesheet list"
+          className="h-10"
+          ready={list.isSuccess && !!catalog}
+          spec={{
+            page: "timesheets",
+            filters: { week, status: status === "all" ? "" : statusLabel[status] },
+            table: () =>
+              sheetListTable(
+                rows,
+                week,
+                catalog ?? billingCatalog([], []),
+                weeklyHours,
+                statusLabel,
+              ),
+          }}
+        />
       </div>
 
       <div className="overflow-hidden rounded-xl border border-line bg-panel">
@@ -247,6 +267,10 @@ export function Timesheets() {
             />
           }
           loading={!catalog || clients.isPending}
+          exportAs={{
+            page: "timesheet-totals",
+            filters: { week, status: status === "all" ? "" : statusLabel[status] },
+          }}
         />
       )}
       <OvertimeNote overtime={overtime} weeklyOnly />

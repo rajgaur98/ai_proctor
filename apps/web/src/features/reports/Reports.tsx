@@ -14,6 +14,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { cn } from "../../lib/cn";
 import { exportHours } from "../../lib/exportFile";
+import { projectsQuery, tasksQuery } from "../projects/projectData";
 import { teamsQuery } from "../teams/teamData";
 import { formatDuration } from "../timesheets/summary";
 import { weekStartQuery } from "../timesheets/timesheetData";
@@ -22,8 +23,9 @@ import { chartNote } from "./paging";
 import { CHART_PEOPLE, ReportCharts } from "./ReportCharts";
 import { columnTitle, ReportTable, useReportTable } from "./ReportTable";
 import { type DateRange, presetLabel, presetOf, presetRange, presets, rangeProblem } from "./range";
-import { reportQuery } from "./reportData";
+import { reportQuery, taskReportQuery } from "./reportData";
 import { TaskReport } from "./TaskReport";
+import { groupByTask, taskReportTable } from "./taskGroups";
 
 const NO_ROWS: ReportRow[] = [];
 const fieldClass = "h-10 rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px] text-ink";
@@ -50,6 +52,18 @@ export function Reports() {
     () => (rows ? teamTotals(rows, report.data?.teamMedianResponseMs ?? null) : null),
     [rows, report.data?.teamMedianResponseMs],
   );
+  // Grouped by task (#269): the same cached queries as the TaskReport table, for the export.
+  const byTask = groupBy === "task" && startDay.isSuccess && problem === null;
+  const taskRows = useQuery({ ...taskReportQuery(range.from, range.to, teamId), enabled: byTask });
+  const projects = useQuery({ ...projectsQuery, enabled: byTask });
+  const tasks = useQuery({ ...tasksQuery, enabled: byTask });
+  const taskReport = useMemo(
+    () =>
+      taskRows.data && projects.data && tasks.data
+        ? groupByTask(taskRows.data, projects.data, tasks.data)
+        : null,
+    [taskRows.data, projects.data, tasks.data],
+  );
   const table = useReportTable(rows ?? NO_ROWS);
   // Everyone in the table's order (sorting runs before the page is cut), for the charts.
   const sortedRows = table.getPrePaginatedRowModel().rows.map((r) => r.original);
@@ -66,48 +80,56 @@ export function Reports() {
         <ExportButton
           title="Report"
           className="ml-auto"
-          ready={!!rows && problem === null}
+          ready={(groupBy === "task" ? !!taskReport : !!rows) && problem === null}
           spec={{
-            page: "report",
+            page: groupBy === "task" ? "report-tasks" : "report",
             filters: {
               from: range.from,
               to: range.to,
               team: teamId ? (teams.data?.find((t) => t.id === teamId)?.name ?? teamId) : "",
             },
-            // Everyone, in the table's order; hours as decimals from the same seconds.
-            table: () => ({
-              sheet: "Report",
-              header: [
-                "Person",
-                "Worked (h)",
-                "Flagged (h)",
-                "Check-ins shown",
-                "Passed",
-                "Missed",
-                "Failed",
-                "Response rate (%)",
-                "Median response (s)",
-                "Breaks (h)",
-                "Pauses (h)",
-                "Late clock-ins",
-                "Needs review",
-              ],
-              rows: sortedRows.map((r) => [
-                r.fullName,
-                exportHours(r.workedS),
-                exportHours(r.flaggedS),
-                r.checkinsShown,
-                r.checkinsPassed,
-                r.checkinsMissed,
-                r.checkinsFailed,
-                r.responseRate === null ? null : Math.round(r.responseRate * 1000) / 10,
-                r.medianResponseMs === null ? null : Math.round(r.medianResponseMs / 100) / 10,
-                exportHours(r.breakS),
-                exportHours(r.pauseS),
-                r.lateClockIns,
-                r.needsReview,
-              ]),
-            }),
+            // By task: the projects and tasks as the table shows them (#269). By person:
+            // everyone, in the table's order. Hours as decimals from the same seconds.
+            table: () =>
+              groupBy === "task"
+                ? taskReportTable(
+                    taskReport ?? { projects: [], total: { workedS: 0, flaggedS: 0, people: 0 } },
+                  )
+                : {
+                    sheet: "Report",
+                    header: [
+                      "Person",
+                      "Worked (h)",
+                      "Flagged (h)",
+                      "Check-ins shown",
+                      "Passed",
+                      "Missed",
+                      "Failed",
+                      "Response rate (%)",
+                      "Median response (s)",
+                      "Breaks (h)",
+                      "Pauses (h)",
+                      "Late clock-ins",
+                      "Needs review",
+                    ],
+                    rows: sortedRows.map((r) => [
+                      r.fullName,
+                      exportHours(r.workedS),
+                      exportHours(r.flaggedS),
+                      r.checkinsShown,
+                      r.checkinsPassed,
+                      r.checkinsMissed,
+                      r.checkinsFailed,
+                      r.responseRate === null ? null : Math.round(r.responseRate * 1000) / 10,
+                      r.medianResponseMs === null
+                        ? null
+                        : Math.round(r.medianResponseMs / 100) / 10,
+                      exportHours(r.breakS),
+                      exportHours(r.pauseS),
+                      r.lateClockIns,
+                      r.needsReview,
+                    ]),
+                  },
           }}
         />
       </div>
