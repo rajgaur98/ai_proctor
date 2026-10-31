@@ -81,6 +81,42 @@ export async function updateEntryDetails(
   if (error) throw new Error(explain(error.message));
 }
 
+/**
+ * #263 (TS-30): the employee changes the times, task and note of their own entry, on a
+ * draft or returned week. New times on an approved entry need approving again.
+ */
+export async function editEntry(
+  id: string,
+  e: { startAt: string; endAt: string; taskId: string | null; note: string | null },
+): Promise<void> {
+  const { error } = await supabase.rpc("edit_manual_entry", {
+    p_id: id,
+    p_start_at: e.startAt,
+    p_end_at: e.endAt,
+    // Generated types don't mark function arguments nullable.
+    p_task_id: e.taskId as string,
+    p_note: e.note as string,
+  });
+  if (error) throw new Error(explain(error.message));
+}
+
+/** #263: splits the employee's own entry at `at` into two; returns the second part's id. */
+export async function splitEntry(id: string, at: string): Promise<string> {
+  const { data, error } = await supabase.rpc("split_manual_entry", { p_id: id, p_at: at });
+  if (error) throw new Error(explain(error.message));
+  return data;
+}
+
+/** #263: merges two of the employee's own entries that touch; returns the kept one's id. */
+export async function mergeEntries(first: string, second: string): Promise<string> {
+  const { data, error } = await supabase.rpc("merge_manual_entries", {
+    p_first: first,
+    p_second: second,
+  });
+  if (error) throw new Error(explain(error.message));
+  return data;
+}
+
 export async function decideEntry(id: string, approve: boolean, note: string): Promise<void> {
   const { error } = await supabase.rpc("decide_manual_entry", {
     p_id: id,
@@ -113,6 +149,12 @@ const messages: Record<string, string> = {
   not_adjustable: "A rejected entry can't be changed.",
   timesheet_submitted: "This week is with your manager. You can change it if they return it.",
   timesheet_locked: "This week is approved. It can't change unless it's reopened.",
+  not_your_entry: "Only the employee changes their own entries.",
+  invalid_split: "Choose a time inside the entry.",
+  invalid_merge: "Choose two entries to merge.",
+  not_adjacent: "Only entries that follow on from each other can be merged.",
+  not_same_day: "Only entries on the same day can be merged.",
+  not_same_assignment: "Only entries with the same project and task can be merged.",
 };
 
 export function explain(code: string): string {

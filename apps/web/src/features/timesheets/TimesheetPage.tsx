@@ -66,6 +66,7 @@ import {
   weekMissesQuery,
   weekStartQuery,
 } from "./timesheetData";
+import { WeekDayList } from "./WeekDayList";
 import { addWeeks, weekDays, weekLabel, weekStartOf } from "./weeks";
 
 // Pages made by router.tsx's page() aren't in the typed route tree (same as the nav).
@@ -598,6 +599,15 @@ export function TimesheetPage() {
         loading={breakdown.isPending || projects.isPending || tasks.isPending || clients.isPending}
       />
       <OvertimeNote overtime={overtime} />
+      <WeekDayList
+        userId={userId}
+        week={week}
+        zone={zone}
+        entries={entryList}
+        enabled={fresh}
+        canEdit={canEditNotes}
+        onChanged={refreshAfterRebuild}
+      />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         {canDecide ? (

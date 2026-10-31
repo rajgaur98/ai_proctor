@@ -264,6 +264,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-08 | P0 | Manual entries are **pending** until the direct manager approves or rejects them. Pending entries are shown but not counted in totals |
 | TS-09 | P0 | Manual entries cannot overlap existing clocked-in time |
 | TS-24 | P1 | A manual entry can carry a task (PRJ-05) and a free-text **"work done" note** (up to 2,000 characters). The employee sets them when asking for the time and can change them while the week is a draft or returned (#254) |
+| TS-30 | P1 | A **day-by-day list** of the week shows each day's tracked time (read-only) and manual entries with start/end, project/task, work note and billable. While the week is a draft or returned, the employee can **edit** an entry's times, task and note, **split** it at a time into two, **merge** two entries that follow on from each other on the same day with the same project and task, and **duplicate** it to another day. Split and merge never add or remove time (the parts' seconds sum to the whole, TS-05) and keep its approval; new times and duplicates are pending like any request (TS-08), unless the person needs no approval (TS-16). Only the employee changes their own entries (the manager adjusts, TS-13); every change is audit-logged (#263) |
 
 #### Weekly approval
 | ID | Pri | Requirement |
