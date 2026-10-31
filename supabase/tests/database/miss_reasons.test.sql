@@ -42,7 +42,7 @@ select lives_ok($$ select public.set_miss_reason((select miss from ids), 'meetin
 select results_eq($$ select missed_reason_kind, missed_reason from public.checkin_events where id = (select miss from ids) $$,
   $$ values ('meeting', 'Client call ran over') $$, 'stored, note trimmed');
 select lives_ok($$ select public.set_miss_reason((select miss from ids), 'phone_call') $$,
-  'she can change it (until #43 locks submitted weeks)');
+  'she can change it (until the week is approved, #252)');
 select throws_ok($$ select public.set_miss_reason((select pass from ids), 'other', 'x') $$,
   '22023', 'not_a_miss', 'only misses take a reason');
 select throws_ok($$ select public.set_miss_reason((select miss from ids), null, '  ') $$,
