@@ -22,6 +22,7 @@ export const actionLabels: Record<string, string> = {
   "enrollment_token.created": "Created an enrollment token",
   "enrollment_token.revoked": "Revoked an enrollment token",
   "enrollment_token.used": "Enrolled a device",
+  "import.applied": "Imported data",
 };
 
 /** Actions offered in the filter, in the order above. */
@@ -109,6 +110,11 @@ export function summarize(
       return tokenName(m);
     case "enrollment_token.used":
       return `With ${tokenName(m)}`;
+    case "import.applied": {
+      const n = (v: unknown) => (typeof v === "number" ? v : 0);
+      const kind = role(m.kind);
+      return `${kind} · ${n(m.created)} added, ${n(m.updated)} updated · ${plural(n(m.rows), "row")}`;
+    }
     default:
       return Object.keys(m).length ? JSON.stringify(m) : "—";
   }

@@ -25,6 +25,7 @@
     "it:rebuild-segments": "bash scripts/it-rebuild-segments.sh",
     "it:export-my-data": "bash scripts/it-export-my-data.sh",
     "it:export-timesheet": "bash scripts/it-export-timesheet.sh",
+    "it:import-people": "bash scripts/it-import-people.sh",
     "it:user-data": "bash scripts/it-user-data.sh"
   },
   "devDependencies": {

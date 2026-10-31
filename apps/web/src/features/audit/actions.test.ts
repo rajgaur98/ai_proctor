@@ -64,6 +64,13 @@ describe("summarize", () => {
     expect(summarize("member.assistive_input_changed", {}, nameOf)).toBe("— → —");
   });
 
+  it("sums up an import (#256)", () => {
+    expect(actionLabel("import.applied")).toBe("Imported data");
+    expect(
+      summarize("import.applied", { kind: "people", created: 2, updated: 1, rows: 3 }, nameOf),
+    ).toBe("People · 2 added, 1 updated · 3 rows");
+  });
+
   it("counts shifts and files", () => {
     expect(summarize("member.shifts_changed", { from: [1, 2], to: [1] }, nameOf)).toBe(
       "2 shifts → 1 shift",

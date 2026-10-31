@@ -89,6 +89,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | ORG-06 | P0 | Each employee has a **work location** (country, plus state for US), used for compliance rules (e.g. Illinois, EU) |
 | ORG-07 | P0 | Admin can deactivate a user; their agent stops tracking within 5 minutes and their data is retained per retention policy |
 | ORG-08 | P1 | Teams (groups of employees) for filtering in dashboard and reports |
+| ORG-09 | P1 | Admin **imports** people (email, name, role, manager email, team, work location, time zone) and teams with their members from a CSV or XLSX file, from a downloadable template: a row-by-row preview with plain errors, then an all-or-nothing apply. Re-importing matches on email / team name and updates instead of duplicating; new people get the normal invite email after the import is saved; at most 5,000 rows (500 new people) per file; every import is audit-logged with its counts |
 
 **Acceptance criteria**
 - An employee without a direct manager sees a setup warning in the agent and cannot submit timesheets; Admin sees them in a "needs setup" list.
@@ -119,6 +120,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | SHF-04 | P0 | **Forgotten clock-out**: if no input for 30 min after shift end (configurable), agent auto clocks out at last activity time and flags the day |
 | SHF-05 | P0 | Check-ins, captures and activity sampling run **only while clocked in** and not on break or pause |
 | SHF-06 | P1 | Late clock-in (> 15 min after shift start, configurable) is recorded and can trigger an alert |
+| SHF-07 | P1 | Admin **imports** shifts (email, days, start, end, time zone), one row per shift; each person in the file gets exactly the shifts listed (same preview, all-or-nothing apply and audit as ORG-09) |
 
 ### 4.4 Check-ins (CHK)
 
@@ -222,6 +224,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | PRJ-02 | P0 | Project selection is **optional**. Employee can pick at clock-in, switch any time from the tray or check-in card |
 | PRJ-03 | P0 | Time without a project is recorded as **Unassigned** |
 | PRJ-04 | P0 | Employee can **retroactively assign** unassigned (or wrongly assigned) time to projects while their timesheet is in draft |
+| PRJ-06 | P1 | Admin **imports** clients and projects (client, billable, archived, members) the same way as ORG-09, matched on name (client + name for projects). Imported members are added; nobody is removed |
 
 ### 4.10 Timesheets (TS)
 
@@ -283,6 +286,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | TS-21 | P0 | Export views: (a) per employee per day, (b) per project/client per employee, (c) segment-level detail |
 | TS-22 | P0 | Hours shown as **decimal to 2 places** (e.g. 7.43) plus an **H:MM** column. Columns include worked, flagged, excluded, break, manual, billable/non-billable, approval status, approver |
 | TS-23 | P0 | Unassigned time appears as its own row in project exports |
+| TS-31 | P2 | Admin imports manual time entries from another tool, through the manual-entry rules (TS-07..09: pending, audited). Not built yet: waits for the timesheet changes in #254 |
 
 ### 4.11 Manager dashboard (DSH)
 

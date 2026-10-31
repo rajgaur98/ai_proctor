@@ -129,6 +129,14 @@ export function readCsv(text: string, options: CsvReadOptions = {}): CsvReadResu
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+  return tableOf(all, maxRows, delimiter);
+}
+
+/**
+ * The header (the first non-blank row) and the non-blank rows after it, numbered as
+ * given; the same checks as readCsv. Shared with the XLSX reader.
+ */
+export function tableOf(all: CsvRow[], maxRows: number, delimiter: CsvDelimiter): CsvReadResult {
   const headerAt = all.findIndex((r) => !blank(r.cells));
   const header = all[headerAt];
   if (!header) return { ok: false, error: "The file is empty." };

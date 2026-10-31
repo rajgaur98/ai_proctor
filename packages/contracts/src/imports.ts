@@ -20,6 +20,8 @@
 import { z } from "zod";
 
 export const IMPORT_MAX_ROWS = 5_000;
+/** New people one import may invite (two Auth calls each; supabase/functions/import-people). */
+export const IMPORT_MAX_INVITES = 500;
 
 export const ImportKind = z.enum(["people", "teams", "clients", "projects", "shifts"]);
 export const ImportAction = z.enum(["create", "update"]);

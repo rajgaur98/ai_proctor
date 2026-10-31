@@ -1,8 +1,8 @@
 // The import preview (#256): a CSV file and what already exists in, a row-by-row verdict
 // and the apply payload out. Nothing is written here; phase B's RPC applies `payload`
 // all or nothing, so the payload is only there when no row has an error.
-import { type ImportKind, ImportPayload } from "@ai-proctor/contracts";
-import { readCsv } from "@ai-proctor/core";
+import { IMPORT_MAX_INVITES, type ImportKind, ImportPayload } from "@ai-proctor/contracts";
+import { type CsvReadResult, readCsv, readXlsxTable } from "@ai-proctor/core";
 import { previewClients } from "./clients";
 import { mapColumns, type RowCells, rowCells } from "./columns";
 import { previewPeople } from "./people";
@@ -43,9 +43,27 @@ const failed = (
   payload: null,
 });
 
+/** A file the person picked: an .xlsx workbook (its first sheet) or CSV text (UTF-8). */
+export async function readImportFile(name: string, bytes: Uint8Array): Promise<CsvReadResult> {
+  const zip = bytes[0] === 0x50 && bytes[1] === 0x4b; // "PK"
+  if (/\.xlsx$/i.test(name) || zip) return readXlsxTable(bytes);
+  if (/\.(xls|numbers|ods)$/i.test(name)) {
+    return { ok: false, error: "This reads .xlsx and .csv files. Save the sheet as one of those." };
+  }
+  return readCsv(new TextDecoder().decode(bytes));
+}
+
 /** Checks every row of `text` (a CSV file) as an import of `kind` into what `ctx` holds. */
 export function previewImport(kind: ImportKind, text: string, ctx: ImportContext): ImportPreview {
-  const read = readCsv(text);
+  return previewRead(kind, readCsv(text), ctx);
+}
+
+/** The same, for a file already read (readImportFile). */
+export function previewRead(
+  kind: ImportKind,
+  read: CsvReadResult,
+  ctx: ImportContext,
+): ImportPreview {
   if (!read.ok) return failed(kind, [read.error]);
   const { header, rows } = read.table;
   const map = mapColumns(kind, header);
@@ -63,6 +81,12 @@ export function previewImport(kind: ImportKind, text: string, ctx: ImportContext
     counts: counts(result.rows),
     payload: null,
   };
+  if (kind === "people" && preview.counts.create > IMPORT_MAX_INVITES) {
+    preview.fileErrors.push(
+      `The file invites ${preview.counts.create.toLocaleString("en-US")} new people; one import can invite at most ${IMPORT_MAX_INVITES}. Split it into smaller files.`,
+    );
+    return preview;
+  }
   if (preview.counts.error > 0 || result.items.length === 0) return preview;
   const payload = ImportPayload.safeParse({ kind, items: result.items });
   if (payload.success) {
