@@ -3146,6 +3146,15 @@ export type Database = {
         }[];
       };
       submit_timesheet: { Args: { p_id: string }; Returns: string };
+      timesheet_assignment_totals: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          project_id: string;
+          seconds: number;
+          task_id: string;
+          user_id: string;
+        }[];
+      };
       timesheet_breakdown: {
         Args: { p_from: string; p_to: string; p_user_id: string };
         Returns: {
