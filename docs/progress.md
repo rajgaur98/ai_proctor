@@ -28,11 +28,11 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #285 fix: teams page axe flake, no fade on Button enable (#287)
     - #288 fix: it-reminders CI flake, retry and diagnostics in the script (#289)
     - #291 fix: two pgTAP tests failed from 00:00 UTC to US-local midnight (#292)
-  - In progress: none. Every unblocked issue is merged.
+  - In progress: #262 weekly grid, #265 review comments and lock banner (grid decided 1 Nov).
   - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
 - **Open PRs:** none.
 - **Next:**
-  - #254 parts 2, 5, 6 and 8 (#262, #264, #265, #267) wait on the weekly-grid question in "Blocked on Raj".
+  - #254 parts 2, 5, 6 and 8: #262 weekly grid and #265 review comments in parallel, then #264, then #267.
   - Then the hosted Supabase project (staging) for Pages previews and backups.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
@@ -131,7 +131,6 @@ Format: `- #<issue>: <exact question or action needed>`
 
 - #12, #13, #14 (Windows halves), #56: a Windows VM (Raj is setting one up, 22 Oct). CI builds an unsigned Windows installer to install there; then the Windows checklists in each PR.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
-- #262, #264, #265, #267 (all wait on the grid): should the weekly grid's cells be duration-only entries (no start/end, like Harvest and Clockify), or placed at a default start time? Today a manual entry needs a start and an end.
 - 31 Oct defaults taken (Raj can change any of them):
   - #251: in_meeting, paused and idle show red on the seat map, although the "Active" tile counts them as active.
   - #252: miss reasons stay editable until the week is **approved**. CHK-23 is updated to match; it said "submitted".
@@ -151,6 +150,8 @@ Format: `- #<issue>: <exact question or action needed>`
     - an unknown team or client is an error;
     - imports are admin-only;
     - invite emails go out after the database commit.
+
+Decided 1 Nov 2026: weekly grid (#262, TS-32): a cell shows the day's tracked and manual hours for that row; adding or changing time opens the manual-entry form with a start and end the employee picks (no duration-only entries, nothing auto-placed). Extra hours after the shift are a normal manual entry.
 
 Decided 22 Oct 2026: #168 per-person assistive-input exemption (flag, don't block); #175 keep the camera's aspect (CAP-06 updated); #54 names stay in the deletion tombstone and audit rows as the legal record; #21 camera-on target ≤ 2 s; the pilot includes Windows (VM).
 
