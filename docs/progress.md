@@ -27,6 +27,7 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #282 importing manual time entries (#286)
     - #285 fix: teams page axe flake, no fade on Button enable (#287)
     - #288 fix: it-reminders CI flake, retry and diagnostics in the script (#289)
+    - #291 fix: two pgTAP tests failed from 00:00 UTC to US-local midnight (#292)
   - In progress: none. Every unblocked issue is merged.
   - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
 - **Open PRs:** none.
