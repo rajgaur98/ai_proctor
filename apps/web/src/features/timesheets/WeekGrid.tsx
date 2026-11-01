@@ -8,7 +8,9 @@
 // opens one, Escape closes it. #264 (TS-34): the employee pins rows from their header
 // (favourites, kept server-side, so every week starts with them), and on a week they can
 // change adds time with quick add or copies last week's rows, and its manual entries if
-// they ask (WeekGridTools).
+// they ask (WeekGridTools). #299 (TS-33): each row header has a comment button with the
+// row's count that opens its thread, and the manual entries in a cell show theirs; the
+// employee and the people who review the week write, everyone else reads.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useEffect, useRef, useState } from "react";
@@ -26,6 +28,9 @@ import {
   tasksQuery,
 } from "../projects/projectData";
 import { TaskSelect } from "../projects/TaskSelect";
+import { CommentThread, EntryComments } from "./CommentThread";
+import { useSheetComments } from "./commentData";
+import { rowCommentsName, rowKey, rowThreadCounts } from "./comments";
 import { canLogTo, isFavourite, shownFavourites } from "./copyWeek";
 import { trackedRuns } from "./dayList";
 import { favouritesQuery, setFavourite } from "./gridData";
@@ -73,6 +78,9 @@ export function WeekGrid({
   loading,
   canEdit,
   isSelf,
+  timesheetId,
+  viewerId,
+  canPost,
   onChanged,
 }: {
   userId: string;
@@ -90,6 +98,11 @@ export function WeekGrid({
   canEdit: boolean;
   /** The viewer is the employee: their pinned rows show, and they pin and unpin. */
   isSelf: boolean;
+  /** The week's timesheet, for its comments; empty while it loads. */
+  timesheetId: string;
+  viewerId: string;
+  /** The viewer is the employee or reviews the week (TS-33); others read. */
+  canPost: boolean;
   onChanged: () => Promise<void>;
 }) {
   const projectsQ = useQuery(projectsQuery);
@@ -140,7 +153,12 @@ export function WeekGrid({
     setFocusNext(null);
   }, [focusNext]);
 
+  const sheetComments = useSheetComments(timesheetId);
+  const rowCounts = rowThreadCounts(sheetComments.data ?? []);
+  const rowCount = (a: GridAssignment) => rowCounts.get(rowKey(a.projectId, a.taskId)) ?? 0;
+
   const cellRef = useRef<HTMLDialogElement>(null);
+  const commentsRef = useRef<HTMLDialogElement>(null);
   const requestRef = useRef<HTMLDialogElement>(null);
   const editRef = useRef<HTMLDialogElement>(null);
   const addRowRef = useRef<HTMLDialogElement>(null);
@@ -154,6 +172,7 @@ export function WeekGrid({
     taskId: string | null;
   } | null>(null);
   const [editTarget, setEditTarget] = useState<ManualEntry | null>(null);
+  const [commentsOn, setCommentsOn] = useState<GridAssignment | null>(null);
   // A target is set while its dialog is open; the dialog opens once it's rendered.
   useEffect(() => {
     if (open && !cellRef.current?.open) cellRef.current?.showModal();
@@ -167,6 +186,9 @@ export function WeekGrid({
   useEffect(() => {
     if (copying && !copyRef.current?.open) copyRef.current?.showModal();
   }, [copying]);
+  useEffect(() => {
+    if (commentsOn && !commentsRef.current?.open) commentsRef.current?.showModal();
+  }, [commentsOn]);
 
   const openRow = open ? grid.rows.find((r) => r.key === open.key) : undefined;
   const openCell = openRow?.cells.find((c) => c.day === open?.day);
@@ -283,7 +305,7 @@ export function WeekGrid({
                   <tr key={row.key} className="border-b border-line align-top">
                     <th
                       scope="row"
-                      // Named by the row alone, not its pin button too.
+                      // Named by the row alone, not its pin and comment buttons too.
                       aria-label={name}
                       className="px-4 py-2.5 text-left font-medium"
                     >
@@ -298,6 +320,15 @@ export function WeekGrid({
                                 a: { projectId: row.projectId, taskId: row.taskId },
                                 on: !pinned(row),
                               })
+                            }
+                          />
+                        )}
+                        {timesheetId !== "" && (canPost || rowCount(row) > 0) && (
+                          <CommentsButton
+                            name={name}
+                            count={rowCount(row)}
+                            onClick={() =>
+                              setCommentsOn({ projectId: row.projectId, taskId: row.taskId })
                             }
                           />
                         )}
@@ -440,6 +471,15 @@ export function WeekGrid({
                       {e.note && (
                         <p className="text-[13px] whitespace-pre-line text-ink2">{e.note}</p>
                       )}
+                      {timesheetId !== "" && (
+                        <EntryComments
+                          timesheetId={timesheetId}
+                          entryId={e.id}
+                          viewerId={viewerId}
+                          canPost={canPost}
+                          label={`${formatTime(e.startAt, viewerZone())}–${formatTime(e.endAt, viewerZone())} on ${dayLabel(openCell.day)}`}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -474,6 +514,40 @@ export function WeekGrid({
                   Add entry
                 </Button>
               )}
+            </div>
+          </div>
+        )}
+      </dialog>
+
+      <dialog
+        ref={commentsRef}
+        aria-labelledby="week-grid-comments-title"
+        className={dialogClass}
+        onClose={() => setCommentsOn(null)}
+      >
+        <h2 id="week-grid-comments-title" className="mb-4 text-lg font-semibold">
+          {commentsOn ? `Comments on ${label(commentsOn)}` : "Comments"}
+        </h2>
+        {commentsOn && (
+          <div className="flex flex-col gap-4">
+            <CommentThread
+              // A new row starts a new form.
+              key={rowKey(commentsOn.projectId, commentsOn.taskId)}
+              timesheetId={timesheetId}
+              target={{ kind: "row", projectId: commentsOn.projectId, taskId: commentsOn.taskId }}
+              viewerId={viewerId}
+              canPost={canPost}
+              label={label(commentsOn)}
+            />
+            <div className="flex">
+              <Button
+                type="button"
+                variant="secondary"
+                className="ml-auto"
+                onClick={() => commentsRef.current?.close()}
+              >
+                Close
+              </Button>
             </div>
           </div>
         )}
@@ -566,6 +640,49 @@ function PinButton({
         pinned ? "text-acctext before:content-['★']" : "text-ink3 before:content-['☆']",
       )}
     />
+  );
+}
+
+/**
+ * Opens a row's comment thread: a speech bubble with the row's count after it. The count is
+ * drawn by CSS, like the pin's star, so the row header's text stays the row's name.
+ */
+function CommentsButton({
+  name,
+  count,
+  onClick,
+}: {
+  name: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={rowCommentsName(name, count)}
+      aria-haspopup="dialog"
+      title="Comments"
+      data-count={count}
+      onClick={onClick}
+      className={cn(
+        "flex h-6 min-w-6 flex-none items-center justify-center gap-1 rounded-md px-1 text-xs leading-none font-medium hover:bg-sunk",
+        count > 0 ? "text-acctext after:content-[attr(data-count)]" : "text-ink3",
+      )}
+    >
+      <svg
+        aria-hidden="true"
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2v-7Z" />
+      </svg>
+    </button>
   );
 }
 

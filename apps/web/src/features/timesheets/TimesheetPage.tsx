@@ -633,6 +633,9 @@ export function TimesheetPage() {
           loading={!fresh || breakdown.isPending || entries.isPending}
           canEdit={canEditNotes}
           isSelf={isSelf}
+          timesheetId={sheet.data?.id ?? ""}
+          viewerId={profile.id}
+          canPost={isSelf || canDecide}
           onChanged={refreshAfterRebuild}
         />
       ) : (
