@@ -28,11 +28,15 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #285 fix: teams page axe flake, no fade on Button enable (#287)
     - #288 fix: it-reminders CI flake, retry and diagnostics in the script (#289)
     - #291 fix: two pgTAP tests failed from 00:00 UTC to US-local midnight (#292)
-  - In progress: #262 weekly grid, #265 review comments and lock banner (grid decided 1 Nov).
+    - #262 weekly grid: project/task rows × days, start/end manual entries from a cell (#294)
+    - #265 review comments per row and entry, lock banner (#297)
+    - #264 copy last week, favourite rows, quick add (#298)
+    - #295 fix: it-rebuild-segments failed in the hour after LA midnight (#296)
+  - In progress: #299 comment buttons on the grid's rows and entries.
   - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
-- **Open PRs:** none.
+- **Open PRs:** none yet for #299.
 - **Next:**
-  - #254 parts 2, 5, 6 and 8: #262 weekly grid and #265 review comments in parallel, then #264, then #267.
+  - #267 keyboard, axe and query budget for the grid and day list (last, after #299).
   - Then the hosted Supabase project (staging) for Pages previews and backups.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
