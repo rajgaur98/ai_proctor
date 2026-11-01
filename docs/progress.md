@@ -23,9 +23,13 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #268 tray task picker (#273)
     - #269 task reorder and reports by task (#275)
     - #274 fix: back-to-back manual entries kept no project (#279)
-  - In progress: #255 part 2 (exports on the live grid, day view, captures metadata, timesheet views, task report); #282 importing manual time entries.
+    - #255 part 2: exports on the live grid, day view, captures metadata, timesheet views, task report (#284)
+    - #282 importing manual time entries (#286)
+    - #285 fix: teams page axe flake, no fade on Button enable (#287)
+    - #288 fix: it-reminders CI flake, retry and diagnostics in the script (#289)
+  - In progress: none. Every unblocked issue is merged.
   - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
-- **Open PRs:** none yet for #255 part 2 and #282.
+- **Open PRs:** none.
 - **Next:**
   - #254 parts 2, 5, 6 and 8 (#262, #264, #265, #267) wait on the weekly-grid question in "Blocked on Raj".
   - Then the hosted Supabase project (staging) for Pages previews and backups.
