@@ -148,6 +148,19 @@ insert into public.dirty_days (user_id, day) values
   (:erin, pg_temp.d(4)), (:erin, pg_temp.d(2)), (:u2, pg_temp.d(6)), (:u2, pg_temp.d(4))
 on conflict do nothing;
 
+-- Entries end 4 years ago, an hour before org 1's cutoff, an hour after it, 2 years ago.
+-- Inserted before the timesheets: an entry landing in an approved week sends the manager
+-- a late-data notification, and d-just-inside's local day can fall in d(3, -7)'s (#291).
+insert into public.manual_entries (org_id, user_id, start_at, end_at, reason, status, decided_at)
+select org, usr, e - interval '1 hour', e, label, st, case when st = 'pending' then null else now() end
+from (values (:org1::uuid, :erin::uuid, now() - interval '4 years', 'a-4y-approved', 'approved'),
+             (:org1, :erin, now() - interval '4 years', 'b-4y-pending', 'pending'),
+             (:org1, :erin, now() - interval '3 years' - interval '1 hour', 'c-just-past', 'rejected'),
+             (:org1, :erin, now() - interval '3 years' + interval '1 hour', 'd-just-inside', 'approved'),
+             (:org1, :erin, now() - interval '2 years', 'e-2y', 'approved'),
+             (:org2, :u2, now() - interval '6 years', 'f-6y', 'approved'),
+             (:org2, :u2, now() - interval '4 years', 'g-4y', 'approved')) v (org, usr, e, label, st);
+
 -- A week is labelled by its start; ends 6 days later. The old ones are a draft and an
 -- approved week: status makes no difference.
 insert into public.timesheets (org_id, user_id, period_start, status)
@@ -166,17 +179,6 @@ select t.org_id, t.id, t.user_id, 'exclude', t.period_start::timestamptz + inter
   t.period_start::timestamptz + interval '2 hours', 'retention fixture'
 from public.timesheets t
 where t.period_start = pg_temp.d(2);
-
--- Entries end 4 years ago, an hour before org 1's cutoff, an hour after it, 2 years ago.
-insert into public.manual_entries (org_id, user_id, start_at, end_at, reason, status, decided_at)
-select org, usr, e - interval '1 hour', e, label, st, case when st = 'pending' then null else now() end
-from (values (:org1::uuid, :erin::uuid, now() - interval '4 years', 'a-4y-approved', 'approved'),
-             (:org1, :erin, now() - interval '4 years', 'b-4y-pending', 'pending'),
-             (:org1, :erin, now() - interval '3 years' - interval '1 hour', 'c-just-past', 'rejected'),
-             (:org1, :erin, now() - interval '3 years' + interval '1 hour', 'd-just-inside', 'approved'),
-             (:org1, :erin, now() - interval '2 years', 'e-2y', 'approved'),
-             (:org2, :u2, now() - interval '6 years', 'f-6y', 'approved'),
-             (:org2, :u2, now() - interval '4 years', 'g-4y', 'approved')) v (org, usr, e, label, st);
 
 insert into public.reminders_sent (org_id, kind, user_id, period_start, recipient_id)
 values (:org1, 'submit', :erin, pg_temp.d(4), :max), (:org1, 'submit', :erin, pg_temp.d(2), :max),

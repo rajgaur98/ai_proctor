@@ -162,10 +162,11 @@ select throws_ok(format($$ select pg_temp.rows(p_user_ids => array[%L]::uuid[]) 
 select throws_ok(format($$ select pg_temp.rows(p_user_ids => array[%L, %L]::uuid[]) $$, :erin, :lucas),
   '42501', 'forbidden', 'one name that may not be viewed refuses the whole report');
 
--- An active delegate sees the manager's reports.
+-- An active delegate sees the manager's reports. Starts yesterday: "active" is the
+-- manager's local date, which is a day behind UTC's current_date after 00:00 UTC (#291).
 select pg_temp.act_as_postgres();
 insert into public.delegations (org_id, manager_id, delegate_id, starts_on, ends_on)
-values (:org, :max, :mia, current_date, current_date + 3);
+values (:org, :max, :mia, current_date - 1, current_date + 3);
 select pg_temp.act_as(:mia);
 select is(pg_temp.names(pg_temp.rows()), 'Erin Employee, Ivan Inactive, Lucas Martin',
   'an active delegate sees the manager''s reports');
