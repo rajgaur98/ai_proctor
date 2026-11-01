@@ -86,7 +86,22 @@ const device = await call("/rest/v1/rpc/register_device", erin, {
 assert.equal(device.status, 200, "register_device");
 const deviceId = (Array.isArray(device.json) ? device.json[0] : device.json).device_id as string;
 
-const base = Math.floor(Date.now() / 1000); // whole seconds, so the expectations are exact
+// Whole seconds, so the expectations are exact. The scripted hour has to sit inside one of
+// Erin's local days, or the rebuild rightly cuts it at her midnight (#295): within the hour
+// after midnight, it ends a minute before it instead.
+const now = Math.floor(Date.now() / 1000);
+const clock = new Intl.DateTimeFormat("en-GB", {
+  timeZone: ERIN_ZONE,
+  hourCycle: "h23",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+})
+  .format(new Date(now * 1000))
+  .split(":")
+  .map(Number);
+const sinceMidnight = clock[0] * 3600 + clock[1] * 60 + clock[2];
+const base = sinceMidnight < 3600 ? now - sinceMidnight - 60 : now;
 const at = (minutesAgo: number) => new Date((base - minutesAgo * 60) * 1000).toISOString();
 const checkin = (minutesAgo: number, outcome: "pass" | "miss") => ({
   scheduled_at: at(minutesAgo),
