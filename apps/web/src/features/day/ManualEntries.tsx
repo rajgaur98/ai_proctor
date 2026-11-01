@@ -8,6 +8,7 @@ import { useId, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { useFocusAfter } from "../../lib/focus";
 import { Time } from "../../lib/time";
 import { assignmentLabel, projectsQuery, tasksQuery } from "../projects/projectData";
 import { TaskSelect } from "../projects/TaskSelect";
@@ -267,6 +268,11 @@ export function RequestDialog({
       dialogRef.current?.close();
     },
   });
+  // Sending disables the button; if the request failed and the dialog stays open, the focus
+  // goes back to it (#267).
+  useFocusAfter(send.isPending, () =>
+    dialogRef.current?.querySelector<HTMLElement>('button[type="submit"]'),
+  );
 
   function submit() {
     setProblem(null);

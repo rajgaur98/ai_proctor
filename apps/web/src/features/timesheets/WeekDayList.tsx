@@ -13,6 +13,7 @@ import { ExportButton } from "../../components/ExportButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { useFocusAfter } from "../../lib/focus";
 import { supabase } from "../../lib/supabase";
 import { formatTime, Time, viewerZone } from "../../lib/time";
 import {
@@ -147,6 +148,11 @@ export function WeekDayList({
     mutationFn: (pair: { first: string; second: string }) => mergeEntries(pair.first, pair.second),
     onSuccess: onChanged,
   });
+  // Merging takes away the button that did it (the merged entry has no next one to merge
+  // with): the focus goes to the merged entry's Edit, not to the page.
+  useFocusAfter(merge.isPending, () =>
+    document.querySelector<HTMLElement>(`[data-entry="${merge.variables?.first}"] button`),
+  );
 
   const projectName = (id: string | null) =>
     id ? (projects.find((p) => p.id === id)?.name ?? "Project") : "Unassigned";
@@ -330,7 +336,10 @@ function ItemRow({
   const name = spanName(item, day);
 
   return (
-    <li className="flex flex-col gap-1.5 border-b border-line py-2.5 text-[13.5px] last:border-0">
+    <li
+      data-entry={item.kind === "manual" ? item.entry.id : undefined}
+      className="flex flex-col gap-1.5 border-b border-line py-2.5 text-[13.5px] last:border-0"
+    >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-mono text-[13px]">
           <Time iso={item.startAt} employeeZone={zone} />–
@@ -393,6 +402,9 @@ function ItemRow({
 }
 
 function Actions({ dialogRef, busy, label }: { dialogRef: Ref; busy: boolean; label: string }) {
+  // Saving disables the button; if the dialog stays open (the save failed), the focus goes
+  // back to it.
+  useFocusAfter(busy, () => dialogRef.current?.querySelector<HTMLElement>('button[type="submit"]'));
   return (
     <div className="flex gap-2">
       <Button

@@ -26,8 +26,16 @@ export interface Task {
   archived: boolean;
 }
 
+/**
+ * How long the org's clients, projects and tasks stay fresh. A page's parts mount as their
+ * data arrives, often after the first read has finished; fresh for a minute, they share that
+ * read instead of each reading the list again (#267). Changing a list reloads it.
+ */
+const LISTS_FRESH_MS = 60_000;
+
 export const clientsQuery = queryOptions({
   queryKey: ["clients"],
+  staleTime: LISTS_FRESH_MS,
   queryFn: async (): Promise<Client[]> => {
     const { data, error } = await supabase
       .from("clients")
@@ -40,6 +48,7 @@ export const clientsQuery = queryOptions({
 
 export const projectsQuery = queryOptions({
   queryKey: ["projects"],
+  staleTime: LISTS_FRESH_MS,
   queryFn: async (): Promise<Project[]> => {
     const [projects, members] = await Promise.all([
       supabase.from("projects").select("id, name, client_id, billable, archived").order("name"),
@@ -61,6 +70,7 @@ export const projectsQuery = queryOptions({
 /** Every task in the org, in each project's order. */
 export const tasksQuery = queryOptions({
   queryKey: ["project-tasks"],
+  staleTime: LISTS_FRESH_MS,
   queryFn: async (): Promise<Task[]> => {
     const { data, error } = await supabase
       .from("project_tasks")

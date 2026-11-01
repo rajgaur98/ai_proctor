@@ -6,11 +6,12 @@
 // copied and what was skipped and why.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { cn } from "../../lib/cn";
+import { useFocusAfter } from "../../lib/focus";
 import { Time } from "../../lib/time";
 import { dayEntriesQuery, requestEntry } from "../day/entryData";
 import { type ManualRequestForm, manualRequest } from "../day/manualRequest";
@@ -65,6 +66,11 @@ export function QuickAdd({
       await onAdded();
     },
   });
+
+  // Sending disables Add time; the focus goes back to it, for the next one.
+  useFocusAfter(send.isPending, () =>
+    document.querySelector<HTMLElement>('#week-grid-quick-add button[type="submit"]'),
+  );
 
   return (
     <section
@@ -245,6 +251,12 @@ export function CopyWeekDialog({
     outcomes: CopyOutcome[] | null;
   } | null>(null);
 
+  // The summary replaces the form and its Copy button, which had the focus: move the focus
+  // to Done, so it isn't lost to the page (#267).
+  useEffect(() => {
+    if (summary) dialogRef.current?.querySelector<HTMLElement>("#week-grid-copy-close")?.focus();
+  }, [summary, dialogRef]);
+
   const rows = lastWeekRows(
     days,
     breakdown.data ?? [],
@@ -363,6 +375,7 @@ export function CopyWeekDialog({
         )}
         <div className="flex gap-2">
           <Button
+            id="week-grid-copy-close"
             type="button"
             variant="secondary"
             className="ml-auto"
