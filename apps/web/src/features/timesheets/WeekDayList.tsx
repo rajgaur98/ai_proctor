@@ -3,7 +3,8 @@
 // read-only here. On their own draft or returned week the employee edits a manual entry's
 // times, task and note, splits it in two, merges it with the entry it runs into, or
 // duplicates it to another day (a new request). The database checks every rule again:
-// whose entry, the week's state, overlaps, and approval (TS-08).
+// whose entry, the week's state, overlaps, and approval (TS-08). #265: each manual entry can
+// carry extra content under it (the page puts the entry's comment thread there, TS-33).
 import { ManualEntryRequest, WorkNote } from "@ai-proctor/contracts";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -98,6 +99,7 @@ export function WeekDayList({
   canEdit,
   onChanged,
   personName,
+  entryExtra,
 }: {
   userId: string;
   week: string;
@@ -112,6 +114,8 @@ export function WeekDayList({
   /** The viewer is the employee and the week is a draft or returned. */
   canEdit: boolean;
   onChanged: () => Promise<void>;
+  /** Shown under each manual entry, given the entry and its name ("10:00–11:00 on Mon 2 Feb"). */
+  entryExtra?: (entry: ManualEntry, name: string) => React.ReactNode;
 }) {
   const segments = useQuery({ ...weekSegmentsQuery(userId, week), enabled });
   const projectsQ = useQuery(projectsQuery);
@@ -239,6 +243,7 @@ export function WeekDayList({
                   onSplit={setSplitTarget}
                   onDuplicate={setDuplicateTarget}
                   onMerge={(first, second) => merge.mutate({ first, second })}
+                  extra={entryExtra}
                 />
               ))}
             </ul>
@@ -301,6 +306,7 @@ function ItemRow({
   onSplit,
   onDuplicate,
   onMerge,
+  extra,
 }: {
   item: DayItem;
   day: string;
@@ -314,6 +320,7 @@ function ItemRow({
   onSplit: (e: ManualEntry) => void;
   onDuplicate: (e: ManualEntry) => void;
   onMerge: (first: string, second: string) => void;
+  extra?: ((entry: ManualEntry, name: string) => React.ReactNode) | undefined;
 }) {
   const kind =
     item.kind === "manual"
@@ -380,6 +387,7 @@ function ItemRow({
           </Button>
         </div>
       )}
+      {extra && item.kind === "manual" && extra(item.entry, name)}
     </li>
   );
 }

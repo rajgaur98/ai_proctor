@@ -9,3 +9,11 @@ export const TimesheetReason = z.string().trim().min(1, "Give a reason").max(TIM
 
 /** The comment that goes with a returned week. */
 export const ReturnComment = z.string().trim().min(1, "Add a comment").max(TIMESHEET_MAX_TEXT);
+
+/** TS-33 (#265): a comment on a row or a manual entry of a week, up to 2,000 characters. */
+export const TIMESHEET_COMMENT_MAX = 2000;
+export const TimesheetComment = z
+  .string()
+  .trim()
+  .min(1, "Write a comment")
+  .max(TIMESHEET_COMMENT_MAX, "A comment can be at most 2,000 characters");
