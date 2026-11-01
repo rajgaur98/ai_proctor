@@ -56,7 +56,7 @@ const statusText: Record<EntryStatus, string> = {
 };
 
 /** Counted time of the week as stored, every segment (the list joins them into runs). */
-const weekSegmentsQuery = (userId: string, week: string) =>
+export const weekSegmentsQuery = (userId: string, week: string) =>
   queryOptions({
     // Under "timesheet-segments", so the page's refresh after an edit reloads it too.
     queryKey: ["timesheet-segments", userId, "day-list", week],
@@ -424,7 +424,7 @@ function Problem({ text }: { text: string | null | undefined }) {
  * then the dialog opens; closing clears it. Not keyed on the target, so the form resets
  * when the target changes instead.
  */
-function EditDialog({
+export function EditDialog({
   dialogRef,
   target,
   zone,
