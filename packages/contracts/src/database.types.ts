@@ -2390,6 +2390,70 @@ export type Database = {
           },
         ];
       };
+      timesheet_favourites: {
+        Row: {
+          created_at: string;
+          id: string;
+          org_id: string;
+          project_id: string;
+          task_id: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          org_id: string;
+          project_id: string;
+          task_id?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          org_id?: string;
+          project_id?: string;
+          task_id?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_favourites_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_favourites_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_favourites_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "project_tasks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_favourites_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_favourites_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       timesheets: {
         Row: {
           approved_at: string | null;
@@ -2753,6 +2817,7 @@ export type Database = {
       cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
       checkin_removed_paths: { Args: { p_checkin_id: string }; Returns: string[] };
+      copy_week_manual_entries: { Args: { p_entry_ids: string[]; p_week: string }; Returns: Json };
       create_enrollment_token: {
         Args: { p_label: string };
         Returns: {
@@ -3163,6 +3228,10 @@ export type Database = {
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
       set_team_members: { Args: { p_team_id: string; p_user_ids: string[] }; Returns: undefined };
       set_team_policy: { Args: { p_policy: Json; p_team_id: string }; Returns: Json };
+      set_timesheet_favourite: {
+        Args: { p_pinned: boolean; p_project_id: string; p_task_id: string };
+        Returns: boolean;
+      };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
       split_manual_entry: { Args: { p_at: string; p_id: string }; Returns: string };
       stuck_segment_days: {

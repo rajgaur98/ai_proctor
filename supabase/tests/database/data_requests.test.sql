@@ -154,6 +154,9 @@ begin
   select '00000000-0000-4000-8000-000000000001', 'Project ' || slug returning id into v_project;
   insert into public.project_members (project_id, user_id, org_id)
   values (v_project, u, '00000000-0000-4000-8000-000000000001');
+  -- #264: a favourite row of their week grid.
+  insert into public.timesheet_favourites (user_id, org_id, project_id)
+  values (u, '00000000-0000-4000-8000-000000000001', v_project);
   insert into public.dirty_days (user_id, day) values (u, current_date) on conflict do nothing;
   -- #67: a late clock-in, the digest setting, a digest sent to them and one about them.
   insert into public.late_clock_ins (org_id, user_id, clock_session_id, day, shift_start,

@@ -7,6 +7,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
 import {
+  clearErinFavourites,
   ERIN,
   ERIN_EMAIL,
   ERIN_ZONE,
@@ -79,6 +80,8 @@ test("week grid: Erin adds time from a cell, the totals count it, and it locks",
   const day = days[2] ?? week;
   const label = dayName(day);
   const start = DateTime.fromISO(`${day}T13:00`, { zone: ERIN_ZONE });
+  // Pinned rows (#264) would be rows of this week too.
+  await clearErinFavourites();
 
   await signIn(page, ERIN_EMAIL, /\/me$/);
   await page.goto(`/timesheets/${ERIN}?week=${week}`);
