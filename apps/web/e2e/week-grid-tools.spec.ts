@@ -293,6 +293,8 @@ test("week grid: Erin quick-adds time and copies last week with only the keyboar
   await expect(grid).toBeVisible();
 
   // Quick add: Enter opens the form, typed fields, the day and project by their names.
+  // Afternoon times: CI's browser has a 12-hour clock, where a typed "0900" leaves AM/PM
+  // unset and the field empty; "1300" becomes 1 PM there and 13:00 on a 24-hour one.
   const quickAdd = page.getByRole("button", { name: "Quick add" });
   await pressUntilFocused(page, quickAdd);
   await page.keyboard.press("Enter");
@@ -302,9 +304,9 @@ test("week grid: Erin quick-adds time and copies last week with only the keyboar
   await page.keyboard.type(dayName(days[1] ?? week));
   await expect(quick.getByLabel("Day")).toHaveValue(days[1] ?? week);
   await pressUntilFocused(page, quick.getByLabel("Start"));
-  await page.keyboard.type("0900");
+  await page.keyboard.type("1300");
   await pressUntilFocused(page, quick.getByLabel("End"));
-  await page.keyboard.type("1030");
+  await page.keyboard.type("1430");
   await pressUntilFocused(page, quick.getByLabel("Project"));
   await page.keyboard.type("Internal");
   await expect(quick.getByLabel("Project")).toHaveValue(INTERNAL);
@@ -314,7 +316,7 @@ test("week grid: Erin quick-adds time and copies last week with only the keyboar
   // Enter in a field sends it.
   await page.keyboard.press("Enter");
   await expect(quick.getByRole("status")).toHaveText(
-    `Asked for 09:00–10:30 on ${dayName(days[1] ?? week)}.`,
+    `Asked for 13:00–14:30 on ${dayName(days[1] ?? week)}.`,
   );
   await expect(
     grid.getByRole("gridcell", { name: new RegExp(`^Internal, ${dayName(days[1] ?? week)}:`) }),
@@ -329,16 +331,16 @@ test("week grid: Erin quick-adds time and copies last week with only the keyboar
   // Back to Day, then forward into Start: Shift+Tab into a time field lands on its minutes.
   await pressUntilFocused(page, quick.getByLabel("Day"), "Shift+Tab");
   await pressUntilFocused(page, quick.getByLabel("Start"));
-  await page.keyboard.type("1100");
+  await page.keyboard.type("1500");
   await pressUntilFocused(page, quick.getByLabel("End"));
-  await page.keyboard.type("1200");
+  await page.keyboard.type("1600");
   await pressUntilFocused(page, quick.getByLabel("Reason"));
   await page.keyboard.type(`${reason} again`);
   const addTime = quick.getByRole("button", { name: "Add time" });
   await pressUntilFocused(page, addTime);
   await page.keyboard.press("Enter");
   await expect(quick.getByRole("status")).toHaveText(
-    `Asked for 11:00–12:00 on ${dayName(days[1] ?? week)}.`,
+    `Asked for 15:00–16:00 on ${dayName(days[1] ?? week)}.`,
   );
   await expect(addTime).toBeFocused();
 
