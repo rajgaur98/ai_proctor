@@ -32,12 +32,13 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #265 review comments per row and entry, lock banner (#297)
     - #264 copy last week, favourite rows, quick add (#298)
     - #295 fix: it-rebuild-segments failed in the hour after LA midnight (#296)
-  - In progress: #299 comment buttons on the grid's rows and entries.
+    - #299 comment buttons on the grid's rows and entries (#301)
+    - #267 keyboard, axe and query budget for the grid and day list (#302)
+  - In progress: none. Every unblocked issue is merged.
   - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
-- **Open PRs:** none yet for #299.
+- **Open PRs:** none.
 - **Next:**
-  - #267 keyboard, axe and query budget for the grid and day list (last, after #299).
-  - Then the hosted Supabase project (staging) for Pages previews and backups.
+  - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
 - **Device checks for Raj (one session, bundled `.app` from main):**
   1. Domains: Chromium (Brave, Chrome) and Safari with Accessibility granted (#114).
