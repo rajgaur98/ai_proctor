@@ -177,6 +177,7 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     views,
     notifications,
     lateClockIns,
+    favourites,
     editors,
     orgRow,
   ] = await Promise.all([
@@ -234,6 +235,8 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     scoped("notifications", ["created_at", "id"]),
     // SHF-06 (#67): one row per late shift occurrence, as stored (seconds, not minutes).
     scoped("late_clock_ins", ["shift_start", "id"]),
+    // #264 (TS-34): the rows they pinned to their week grid.
+    scoped("timesheet_favourites", ["created_at", "id"]),
     // Who made each edit, by name (the employee can't read their manager's row). The
     // admin path looks the names up below, for the editors that appear.
     mode === "self"
@@ -299,6 +302,7 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     "capture-views": views.data as Row[],
     notifications,
     "late-clock-ins": lateClockIns,
+    "timesheet-favourites": favourites,
   };
 
   // Images still inside the retention window, from the person's own check-ins.

@@ -5,8 +5,11 @@
 // dialog, so the manual-entry rules apply (TS-07..09, TS-24): the database checks them all
 // again. Tracked time is read-only. Editable while the week is a draft or returned (TS-30);
 // everyone else sees it read-only. Keyboard: arrows move between cells, Enter or Space
-// opens one, Escape closes it.
-import { useQuery } from "@tanstack/react-query";
+// opens one, Escape closes it. #264 (TS-34): the employee pins rows from their header
+// (favourites, kept server-side, so every week starts with them), and on a week they can
+// change adds time with quick add or copies last week's rows, and its manual entries if
+// they ask (WeekGridTools).
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
@@ -23,10 +26,13 @@ import {
   tasksQuery,
 } from "../projects/projectData";
 import { TaskSelect } from "../projects/TaskSelect";
+import { canLogTo, isFavourite, shownFavourites } from "./copyWeek";
 import { trackedRuns } from "./dayList";
+import { favouritesQuery, setFavourite } from "./gridData";
 import { allowedProjects } from "./reassign";
 import { type BreakdownRow, formatDuration } from "./summary";
 import { EditDialog, weekSegmentsQuery } from "./WeekDayList";
+import { CopyWeekDialog, QuickAdd } from "./WeekGridTools";
 import {
   type GridAssignment,
   type GridPosition,
@@ -34,7 +40,7 @@ import {
   moveInGrid,
   weekGrid,
 } from "./weekGridModel";
-import { dayLabel, weekDays } from "./weeks";
+import { addWeeks, dayLabel, weekDays } from "./weeks";
 
 const dialogClass =
   "m-auto w-[min(480px,calc(100vw-32px))] rounded-xl border border-line bg-panel p-6 text-ink backdrop:bg-black/30";
@@ -66,6 +72,7 @@ export function WeekGrid({
   enabled,
   loading,
   canEdit,
+  isSelf,
   onChanged,
 }: {
   userId: string;
@@ -81,6 +88,8 @@ export function WeekGrid({
   loading: boolean;
   /** The viewer is the employee and the week is a draft or returned. */
   canEdit: boolean;
+  /** The viewer is the employee: their pinned rows show, and they pin and unpin. */
+  isSelf: boolean;
   onChanged: () => Promise<void>;
 }) {
   const projectsQ = useQuery(projectsQuery);
@@ -91,9 +100,21 @@ export function WeekGrid({
   const days = weekDays(week);
   const today = DateTime.now().setZone(zone).toISODate() ?? "";
   const mine = allowedProjects(projects, userId);
+  const queryClient = useQueryClient();
+  const favouritesQ = useQuery({ ...favouritesQuery, enabled: isSelf });
+  const favourites = isSelf ? (favouritesQ.data ?? []) : [];
+  // A row the person can log new time to: a project of theirs and an active task of it.
+  const loggable = (a: GridAssignment) => canLogTo(a, mine, tasks);
+  const pinned = (a: GridAssignment) => isFavourite(favourites, a);
+  const pin = useMutation({
+    mutationFn: ({ a, on }: { a: GridAssignment; on: boolean }) => setFavourite(a, on),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: favouritesQuery.queryKey }),
+  });
 
   // Rows the employee added, per week; they need no time yet, so they live here only.
+  // Pinned rows are on every week.
   const [added, setAdded] = useState<Record<string, GridAssignment[]>>({});
+  const extraRows = (rows: GridAssignment[]) => [...shownFavourites(favourites, loggable), ...rows];
   const label = (a: GridAssignment) =>
     a.projectId
       ? assignmentLabel(
@@ -101,7 +122,7 @@ export function WeekGrid({
           a.taskId ? (tasks.find((t) => t.id === a.taskId)?.name ?? "Task") : null,
         )
       : "Unassigned";
-  const grid = weekGrid(days, breakdown, entries, zone, added[week] ?? [], label);
+  const grid = weekGrid(days, breakdown, entries, zone, extraRows(added[week] ?? []), label);
   const canLog = (a: GridAssignment) =>
     a.projectId === null || mine.some((p) => p.id === a.projectId);
 
@@ -123,6 +144,9 @@ export function WeekGrid({
   const requestRef = useRef<HTMLDialogElement>(null);
   const editRef = useRef<HTMLDialogElement>(null);
   const addRowRef = useRef<HTMLDialogElement>(null);
+  const copyRef = useRef<HTMLDialogElement>(null);
+  const [copying, setCopying] = useState(false);
+  const [quickAdd, setQuickAdd] = useState(false);
   const [open, setOpen] = useState<{ key: string; day: string } | null>(null);
   const [requestTarget, setRequestTarget] = useState<{
     day: string;
@@ -140,6 +164,9 @@ export function WeekGrid({
   useEffect(() => {
     if (editTarget && !editRef.current?.open) editRef.current?.showModal();
   }, [editTarget]);
+  useEffect(() => {
+    if (copying && !copyRef.current?.open) copyRef.current?.showModal();
+  }, [copying]);
 
   const openRow = open ? grid.rows.find((r) => r.key === open.key) : undefined;
   const openCell = openRow?.cells.find((c) => c.day === open?.day);
@@ -174,23 +201,55 @@ export function WeekGrid({
             Week grid
           </h2>
           {canEdit && (
-            <Button
-              variant="secondary"
-              className="ml-auto h-9"
-              disabled={mine.length === 0}
-              onClick={() => addRowRef.current?.showModal()}
-            >
-              Add a row
-            </Button>
+            <div className="ml-auto flex flex-wrap justify-end gap-2">
+              <Button
+                variant="secondary"
+                className="h-9"
+                aria-expanded={quickAdd}
+                aria-controls="week-grid-quick-add"
+                disabled={days[0] === undefined || days[0] > today}
+                onClick={() => setQuickAdd((q) => !q)}
+              >
+                Quick add
+              </Button>
+              <Button variant="secondary" className="h-9" onClick={() => setCopying(true)}>
+                Copy last week
+              </Button>
+              <Button
+                variant="secondary"
+                className="h-9"
+                disabled={mine.length === 0}
+                onClick={() => addRowRef.current?.showModal()}
+              >
+                Add a row
+              </Button>
+            </div>
           )}
         </div>
         <p id="week-grid-help" className="text-[13px] text-ink2">
           Each cell shows tracked time, then manual time; pending time isn't counted until it's
           approved. Tracked time is read-only.
-          {canEdit && " Open a cell to add manual time with a start and end, or to edit it."} Arrow
-          keys move between cells and Enter opens one.
+          {canEdit && " Open a cell to add manual time with a start and end, or to edit it."}
+          {isSelf && " Pin a row to have it on every week."} Arrow keys move between cells and Enter
+          opens one.
         </p>
       </div>
+      {pin.error && (
+        <p role="alert" className="text-sm text-warnink">
+          {pin.error.message}
+        </p>
+      )}
+      {canEdit && quickAdd && (
+        <QuickAdd
+          // A new week starts a new form, on one of its own days.
+          key={week}
+          zone={zone}
+          days={days.filter((d) => d <= today)}
+          projects={mine}
+          tasks={tasks}
+          onAdded={onChanged}
+        />
+      )}
       {loading ? (
         <p className="text-sm text-ink2">Loading…</p>
       ) : (
@@ -222,8 +281,27 @@ export function WeekGrid({
                 const name = label(row);
                 return (
                   <tr key={row.key} className="border-b border-line align-top">
-                    <th scope="row" className="px-4 py-2.5 text-left font-medium">
-                      {name}
+                    <th
+                      scope="row"
+                      // Named by the row alone, not its pin button too.
+                      aria-label={name}
+                      className="px-4 py-2.5 text-left font-medium"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="mr-auto">{name}</span>
+                        {isSelf && row.projectId !== null && (pinned(row) || loggable(row)) && (
+                          <PinButton
+                            name={name}
+                            pinned={pinned(row)}
+                            onClick={() =>
+                              pin.mutate({
+                                a: { projectId: row.projectId, taskId: row.taskId },
+                                on: !pinned(row),
+                              })
+                            }
+                          />
+                        )}
+                      </div>
                     </th>
                     {row.cells.map((cell, c) => (
                       <td
@@ -432,17 +510,62 @@ export function WeekGrid({
               const rows = [...(added[week] ?? []), a];
               setAdded((all) => ({ ...all, [week]: rows }));
               // Then focus the row's cell for today (or the week's first day).
-              const row = weekGrid(days, breakdown, entries, zone, rows, label).rows.findIndex(
-                (r) => r.projectId === a.projectId && r.taskId === a.taskId,
-              );
+              const row = weekGrid(
+                days,
+                breakdown,
+                entries,
+                zone,
+                extraRows(rows),
+                label,
+              ).rows.findIndex((r) => r.projectId === a.projectId && r.taskId === a.taskId);
               const pos = { row, col: Math.max(days.indexOf(today), 0) };
               setActive(pos);
               setFocusNext(pos);
             }}
           />
+          <CopyWeekDialog
+            dialogRef={copyRef}
+            open={copying}
+            userId={userId}
+            week={week}
+            zone={zone}
+            lastWeekAdded={added[addWeeks(week, -1)] ?? []}
+            label={label}
+            canLog={loggable}
+            onCopyRows={(rows) =>
+              setAdded((all) => ({ ...all, [week]: [...(all[week] ?? []), ...rows] }))
+            }
+            onChanged={onChanged}
+            onClose={() => setCopying(false)}
+          />
         </>
       )}
     </section>
+  );
+}
+
+/** Pins or unpins a row: a star toggle, pressed (filled) while the row is pinned. */
+function PinButton({
+  name,
+  pinned,
+  onClick,
+}: {
+  name: string;
+  pinned: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`Pin ${name}`}
+      aria-pressed={pinned}
+      title={pinned ? "Pinned to every week: select to unpin" : "Pin to every week"}
+      onClick={onClick}
+      className={cn(
+        "flex h-6 w-6 flex-none items-center justify-center rounded-md text-[15px] leading-none hover:bg-sunk",
+        pinned ? "text-acctext before:content-['★']" : "text-ink3 before:content-['☆']",
+      )}
+    />
   );
 }
 

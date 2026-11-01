@@ -80,6 +80,24 @@ export async function reopenApprovedWeeks(userId: string) {
   }
 }
 
+/**
+ * Unpins every row Erin pinned to her week grid (#264): pinned rows are on every week, so
+ * a spec that pins puts them back, and a spec that counts the grid's rows starts clean.
+ */
+export async function clearErinFavourites() {
+  const erin = await clientFor(ERIN_EMAIL);
+  const { data, error } = await erin.from("timesheet_favourites").select("project_id, task_id");
+  if (error) throw error;
+  for (const f of data) {
+    const r = await erin.rpc("set_timesheet_favourite", {
+      p_project_id: f.project_id,
+      p_task_id: f.task_id as string,
+      p_pinned: false,
+    });
+    if (r.error) throw r.error;
+  }
+}
+
 /** Erin submits her current week (call `resetErinWeeks` first). Returns the sheet's id. */
 export async function submitErinWeek(): Promise<string> {
   const erin = await clientFor(ERIN_EMAIL);

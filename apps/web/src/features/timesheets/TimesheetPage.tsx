@@ -632,6 +632,7 @@ export function TimesheetPage() {
           enabled={fresh}
           loading={!fresh || breakdown.isPending || entries.isPending}
           canEdit={canEditNotes}
+          isSelf={isSelf}
           onChanged={refreshAfterRebuild}
         />
       ) : (

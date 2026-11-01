@@ -2,7 +2,6 @@
 // added. Pending entries are shown but not counted; the direct manager approves or
 // rejects them (or their active delegate does), and the employee can withdraw a pending one.
 // An entry can carry a task of its project and a "work done" note (#254, PRJ-05, TS-24).
-import { ManualEntryRequest } from "@ai-proctor/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useId, useRef, useState } from "react";
@@ -20,6 +19,7 @@ import {
   type ManualEntry,
   requestEntry,
 } from "./entryData";
+import { manualRequest } from "./manualRequest";
 
 const statusStyle: Record<EntryStatus, { label: string; className: string }> = {
   pending: {
@@ -270,30 +270,12 @@ export function RequestDialog({
 
   function submit() {
     setProblem(null);
-    const at = (time: string) => DateTime.fromISO(`${form.day}T${time}`, { zone });
-    const start = at(form.start);
-    const end = at(form.end);
-    if (!start.isValid || !end.isValid) {
-      setProblem("Choose a day, a start and an end.");
+    const checked = manualRequest(form, zone, DateTime.now());
+    if ("problem" in checked) {
+      setProblem(checked.problem);
       return;
     }
-    if (end > DateTime.now()) {
-      setProblem("The entry can't end in the future.");
-      return;
-    }
-    const parsed = ManualEntryRequest.safeParse({
-      start_at: start.toISO(),
-      end_at: end.toISO(),
-      project_id: form.projectId || null,
-      task_id: (form.projectId && form.taskId) || null,
-      reason: form.reason,
-      note: form.note,
-    });
-    if (!parsed.success) {
-      setProblem(parsed.error.issues[0]?.message ?? "Check the fields.");
-      return;
-    }
-    send.mutate(parsed.data);
+    send.mutate(checked.request);
   }
 
   return (
