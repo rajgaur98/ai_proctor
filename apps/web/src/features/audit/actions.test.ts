@@ -13,6 +13,24 @@ describe("actionLabel", () => {
 });
 
 describe("summarize", () => {
+  it("reads a timesheet comment (#265): where it is and its length", () => {
+    expect(actionLabel("timesheet.commented")).toBe("Commented on a timesheet");
+    expect(
+      summarize(
+        "timesheet.commented",
+        { target: "row", period_start: "2026-10-19", length: 27, comment_id: "c" },
+        nameOf,
+      ),
+    ).toBe("On a row · week of 2026-10-19 · 27 characters");
+    expect(
+      summarize(
+        "timesheet.commented",
+        { target: "entry", period_start: "2026-10-19", length: 1 },
+        nameOf,
+      ),
+    ).toBe("On a manual entry · week of 2026-10-19 · 1 character");
+  });
+
   it("reads team changes", () => {
     expect(
       summarize(

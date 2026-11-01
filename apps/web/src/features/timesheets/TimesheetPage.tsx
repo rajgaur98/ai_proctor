@@ -7,7 +7,8 @@
 // project and task (PRJ-05), and each day has a "work done" note (TS-25) that the employee
 // writes on a draft or returned week and the manager reads while reviewing. #266: the week's
 // billable and non-billable totals and totals by client, project and task, with overtime
-// next to them (TS-29, TS-19).
+// next to them (TS-29, TS-19). #265: a banner says who submitted or approved a locked week and
+// when, and the employee and reviewers comment on the week's rows and manual entries (TS-33).
 import { ReturnComment, TimesheetReason } from "@ai-proctor/contracts";
 import {
   billingCatalog,
@@ -25,6 +26,8 @@ import { supabase } from "../../lib/supabase";
 import { viewerZone } from "../../lib/time";
 import { dayEntriesQuery, type ManualEntry, updateEntryDetails } from "../day/entryData";
 import { assignmentLabel, clientsQuery, projectsQuery, tasksQuery } from "../projects/projectData";
+import { CommentsPanel } from "./CommentsPanel";
+import { EntryComments } from "./CommentThread";
 import {
   AdjustDialog,
   type AdjustTarget,
@@ -36,6 +39,7 @@ import {
   type ReassignTarget,
 } from "./dialogs";
 import { FlaggedSegments } from "./FlaggedSegments";
+import { LockBanner } from "./LockBanner";
 import { OvertimeNote, WorkedTime } from "./Overtime";
 import { ProjectTime } from "./ProjectTime";
 import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
@@ -415,6 +419,7 @@ export function TimesheetPage() {
         </div>
       </div>
 
+      {sheet.data && <LockBanner sheet={sheet.data} employeeName={name} viewerId={profile.id} />}
       {status === "returned" && sheet.data?.comment && (
         <p
           role="status"
@@ -609,6 +614,15 @@ export function TimesheetPage() {
         canEdit={canEditNotes}
         onChanged={refreshAfterRebuild}
         personName={name}
+        entryExtra={(entry, entryName) => (
+          <EntryComments
+            timesheetId={sheet.data?.id ?? ""}
+            entryId={entry.id}
+            viewerId={profile.id}
+            canPost={isSelf || canDecide}
+            label={entryName}
+          />
+        )}
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -702,6 +716,15 @@ export function TimesheetPage() {
           )}
         </div>
       </div>
+      <CommentsPanel
+        timesheetId={sheet.data?.id ?? ""}
+        viewerId={profile.id}
+        canPost={isSelf || canDecide}
+        rows={taskSplit(summary.total.byTask)}
+        entries={entryList}
+        zone={zone}
+        assignment={assignment}
+      />
 
       {canReopen && sheet.data && (
         <NoteDialog

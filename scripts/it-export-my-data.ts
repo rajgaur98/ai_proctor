@@ -250,6 +250,7 @@ try {
     "manual-entries",
     "timesheets",
     "timesheet-edits",
+    "timesheet-comments",
     "activity-samples",
     "notice-acknowledgements",
     "capture-views",
