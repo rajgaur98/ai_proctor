@@ -4,7 +4,9 @@ import {
   commentRows,
   commentsFor,
   rowCommentCount,
+  rowCommentsName,
   rowKey,
+  rowThreadCounts,
   type SheetComment,
 } from "./comments";
 
@@ -132,5 +134,43 @@ describe("authorLabel", () => {
     expect(authorLabel(reply, ERIN)).toBe("You");
     expect(authorLabel(reply, MAX)).toBe("Erin Employee");
     expect(authorLabel({ ...design, authorId: null, authorName: null }, ERIN)).toBe("Someone");
+  });
+});
+
+describe("rowThreadCounts", () => {
+  const all = [unassigned, revamp, design, reply, onEntry, onMoved, onGone];
+
+  it("counts each row's own thread, not its entries'", () => {
+    const counts = rowThreadCounts(all);
+    expect(counts.get(rowKey(null, null))).toBe(1);
+    expect(counts.get(rowKey("p1", null))).toBe(1);
+    expect(counts.get(rowKey("p1", "t-design"))).toBe(2);
+    expect(counts.get(rowKey("p2", null))).toBeUndefined();
+    expect([...counts.values()].reduce((a, b) => a + b, 0)).toBe(4);
+  });
+
+  it("agrees with the row's thread", () => {
+    for (const [projectId, taskId] of [
+      [null, null],
+      ["p1", null],
+      ["p1", "t-design"],
+    ] as const) {
+      expect(rowThreadCounts(all).get(rowKey(projectId, taskId)) ?? 0).toBe(
+        commentsFor(all, { kind: "row", projectId, taskId }).length,
+      );
+    }
+  });
+
+  it("is empty with no comments", () => {
+    expect(rowThreadCounts([]).size).toBe(0);
+  });
+});
+
+describe("rowCommentsName", () => {
+  it("names the row and the count", () => {
+    expect(rowCommentsName("Website revamp · Design", 2)).toBe(
+      "Comments on Website revamp · Design, 2",
+    );
+    expect(rowCommentsName("Unassigned", 0)).toBe("Comments on Unassigned, 0");
   });
 });

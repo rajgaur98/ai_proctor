@@ -118,6 +118,25 @@ export function commentRows<E extends EntryLike>(
   return [...out.values()];
 }
 
+/**
+ * How many comments each row's own thread has, by `rowKey`: the count on the grid's row
+ * comment button (#299). Entry comments aren't counted; they show on the entry, in its cell.
+ */
+export function rowThreadCounts(comments: SheetComment[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const c of comments) {
+    if (c.target !== "row") continue;
+    const key = rowKey(c.projectId, c.taskId);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** The row comment button's accessible name: "Comments on Website revamp · Design, 2". */
+export function rowCommentsName(row: string, count: number): string {
+  return `Comments on ${row}, ${count}`;
+}
+
 /** How many comments a row has, on itself and on its entries. */
 export function rowCommentCount(row: CommentRow<unknown>): number {
   return row.comments.length + row.entries.reduce((n, t) => n + t.comments.length, 0);
