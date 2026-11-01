@@ -181,6 +181,48 @@ const CASES: Case[] = [
     note: null,
     target: { page: "week", userId: LUCAS, week: "2026-10-12" },
   },
+  {
+    kind: "timesheet.commented",
+    payload: {
+      timesheet_id: "t1",
+      period_start: "2026-10-19",
+      employee_id: ERIN,
+      employee_name: "Erin Park",
+      comment_id: "c1",
+      target: "row",
+      project_id: "p1",
+      task_id: null,
+      manual_entry_id: null,
+      by: "m",
+      by_name: "Max Manager",
+      excerpt: "Was this the checkout work?",
+      to: "employee",
+    },
+    text: "Max Manager commented on your week of 19 Oct",
+    note: "Comment: Was this the checkout work?",
+    target: { page: "week", userId: ERIN, week: "2026-10-19" },
+  },
+  {
+    kind: "timesheet.commented",
+    payload: {
+      timesheet_id: "t1",
+      period_start: "2026-10-19",
+      employee_id: LUCAS,
+      employee_name: "Lucas Martin",
+      comment_id: "c2",
+      target: "entry",
+      project_id: null,
+      task_id: null,
+      manual_entry_id: "e1",
+      by: LUCAS,
+      by_name: "Lucas Martin",
+      excerpt: "It was the client call",
+      to: "reviewer",
+    },
+    text: "Lucas Martin commented on their week of 19 Oct",
+    note: "Comment: It was the client call",
+    target: { page: "week", userId: LUCAS, week: "2026-10-19" },
+  },
 ];
 
 describe("notifications", () => {
@@ -206,6 +248,7 @@ describe("notifications", () => {
         "timesheet.approval_reminder",
         "timesheet.escalation",
         "timesheet.late_data",
+        "timesheet.commented",
       ]),
     );
   });

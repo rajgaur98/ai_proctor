@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(78);
+select plan(80);
 
 \set org '''00000000-0000-4000-8000-000000000001'''
 \set org2 '''00000000-0000-4000-8000-000000000002'''
@@ -135,6 +135,11 @@ begin
   -- #254: a work note for the day, which they wrote.
   insert into public.timesheet_day_notes (user_id, day, org_id, timesheet_id, note, updated_by)
   values (u, current_date, '00000000-0000-4000-8000-000000000001', v_ts, 'Wrote the spec', u);
+  -- #265: a comment their manager left on a row of that week.
+  insert into public.timesheet_comments (org_id, timesheet_id, user_id, target, author_id,
+    author_name, body)
+  values ('00000000-0000-4000-8000-000000000001', v_ts, u, 'row',
+          '00000000-0000-4000-8000-0000000000b1', 'Max Manager', 'Which client?');
   insert into public.notifications (org_id, user_id, kind)
   values ('00000000-0000-4000-8000-000000000001', u, 'timesheet.returned');
   insert into public.anticheat_flags (org_id, user_id, day, kind)
@@ -200,6 +205,11 @@ update public.time_segments set excluded = true, excluded_by = :erin, excluded_r
 where user_id = :lucas;
 insert into public.timesheet_edits (org_id, timesheet_id, user_id, editor_id, kind, start_at, end_at, reason)
 select :org, t.id, :lucas, :erin, 'exclude', now() - interval '3 hours', now() - interval '2 hours', 'by erin'
+from public.timesheets t where t.user_id = :lucas;
+-- #265: and she commented on his week.
+insert into public.timesheet_comments (org_id, timesheet_id, user_id, target, author_id,
+  author_name, body)
+select :org, t.id, :lucas, 'row', :erin, 'Erin Employee', 'Looks right'
 from public.timesheets t where t.user_id = :lucas;
 insert into public.notices (org_id, version, region, body, collection, published_by)
 select org_id, 2, region, body, collection, :erin from public.notices
@@ -549,6 +559,15 @@ select is(
 select is(
   (select count(*)::int from public.timesheet_edits where user_id = :lucas), 2,
   'and his other edit is untouched'
+);
+select is(
+  (select counts ->> 'timesheet_comments' from result), '1',
+  'the comments on her own weeks are removed and counted (#265)'
+);
+select is(
+  (select count(*)::int from public.timesheet_comments
+   where user_id = :lucas and author_id is null and author_name = 'Erin Employee'),
+  1, 'her comment on his week stays, with no author id (it is his record)'
 );
 select is(
   (select count(*)::int from public.notices where version = 2 and published_by is null), 1,

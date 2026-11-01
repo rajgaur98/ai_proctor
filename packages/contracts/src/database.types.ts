@@ -2207,6 +2207,116 @@ export type Database = {
           },
         ];
       };
+      timesheet_comments: {
+        Row: {
+          author_id: string | null;
+          author_name: string | null;
+          body: string;
+          created_at: string;
+          id: string;
+          manual_entry_id: string | null;
+          org_id: string;
+          project_id: string | null;
+          target: string;
+          task_id: string | null;
+          timesheet_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          author_id?: string | null;
+          author_name?: string | null;
+          body: string;
+          created_at?: string;
+          id?: string;
+          manual_entry_id?: string | null;
+          org_id: string;
+          project_id?: string | null;
+          target: string;
+          task_id?: string | null;
+          timesheet_id: string;
+          user_id: string;
+        };
+        Update: {
+          author_id?: string | null;
+          author_name?: string | null;
+          body?: string;
+          created_at?: string;
+          id?: string;
+          manual_entry_id?: string | null;
+          org_id?: string;
+          project_id?: string | null;
+          target?: string;
+          task_id?: string | null;
+          timesheet_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_comments_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_manual_entry_id_fkey";
+            columns: ["manual_entry_id"];
+            isOneToOne: false;
+            referencedRelation: "manual_entries";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "project_tasks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_timesheet_id_fkey";
+            columns: ["timesheet_id"];
+            isOneToOne: false;
+            referencedRelation: "timesheets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "timesheet_comments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       timesheet_day_notes: {
         Row: {
           day: string;
@@ -2778,6 +2888,16 @@ export type Database = {
         };
         Returns: undefined;
       };
+      add_timesheet_comment: {
+        Args: {
+          p_body: string;
+          p_manual_entry_id?: string;
+          p_project_id?: string;
+          p_task_id?: string;
+          p_timesheet_id: string;
+        };
+        Returns: string;
+      };
       adjust_time: {
         Args: {
           p_end_at: string;
@@ -3248,6 +3368,7 @@ export type Database = {
         }[];
       };
       submit_timesheet: { Args: { p_id: string }; Returns: string };
+      timesheet_approver_name: { Args: { p_id: string }; Returns: string };
       timesheet_assignment_totals: {
         Args: { p_from: string; p_to: string };
         Returns: {

@@ -26,6 +26,7 @@ export const actionLabels: Record<string, string> = {
   "enrollment_token.used": "Enrolled a device",
   "import.applied": "Imported data",
   "checkin.miss_reason_set": "Set a miss reason",
+  "timesheet.commented": "Commented on a timesheet",
 };
 
 /** Actions offered in the filter, in the order above. */
@@ -135,6 +136,17 @@ export function summarize(
       const remark = (v: unknown) =>
         typeof v === "number" && v > 0 ? `remark ${plural(v, "character")}` : "no remark";
       return `${pick(m.from_kind)} (${remark(m.from_note_length)}) → ${pick(m.to_kind)} (${remark(m.to_note_length)})`;
+    }
+    case "timesheet.commented": {
+      // #265: where the comment is and its length (its words stay with the timesheet).
+      const week = text(m.period_start);
+      return [
+        m.target === "entry" ? "On a manual entry" : "On a row",
+        week ? `week of ${week}` : null,
+        typeof m.length === "number" ? plural(m.length, "character") : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
     }
     default:
       return Object.keys(m).length ? JSON.stringify(m) : "—";

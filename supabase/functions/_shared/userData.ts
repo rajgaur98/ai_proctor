@@ -170,6 +170,7 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     manualEntries,
     timesheets,
     dayNotes,
+    comments,
     edits,
     activity,
     acks,
@@ -206,6 +207,9 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     scoped("timesheets", ["period_start", "id"]),
     // #254 (TS-25): what the person wrote about each day.
     scoped("timesheet_day_notes", ["day"]),
+    // #265 (TS-33): the comments on their weeks, theirs and their reviewers', with the
+    // author's name as it was written.
+    scoped("timesheet_comments", ["created_at", "id"]),
     // 'keep' is a manager's private review decision, not an edit: never in an export
     // (the employee can't read it; row-level security hides it from them).
     fetchAll((from, to) =>
@@ -276,6 +280,7 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     "manual-entries": manualEntries,
     timesheets,
     "timesheet-day-notes": dayNotes,
+    "timesheet-comments": comments,
     "timesheet-edits": edits.map((e) => ({
       ...e,
       editor_name:

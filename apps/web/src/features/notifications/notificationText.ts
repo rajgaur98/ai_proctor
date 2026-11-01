@@ -3,7 +3,8 @@
 // (weekly_timesheets, delegation), timesheet.reassigned, delegation.assigned / ended (also
 // when a manager or delegate is deactivated or demoted, #147), the reminders
 // (timesheet.submit_reminder / approval_reminder / escalation) and
-// timesheet.late_data (late_events).
+// timesheet.late_data (late_events), and timesheet.commented (#265, timesheet_comments): to the
+// employee when a reviewer comments, to the reviewers when the employee does.
 import type { Json } from "@ai-proctor/contracts";
 import { DateTime } from "luxon";
 
@@ -103,6 +104,10 @@ export function notificationText(kind: string, payload: Json): string {
       return `${weekOf(payload, `${str(payload, "employee_name") ?? "Someone"}'s`)} has waited 5 days for approval`;
     case "timesheet.late_data":
       return `${weekOf(payload, `${str(payload, "employee_name") ?? "Someone"}'s`)} has new data after approval`;
+    case "timesheet.commented":
+      return str(payload, "to") === "reviewer"
+        ? `${str(payload, "by_name") ?? "Someone"} commented on ${weekOf(payload, "their")}`
+        : `${str(payload, "by_name") ?? "Your manager"} commented on ${weekOf(payload)}`;
     default:
       return "New notification";
   }
@@ -123,6 +128,10 @@ export function notificationNote(kind: string, payload: Json): string | null {
     case "timesheet.escalation": {
       const manager = str(payload, "manager_name");
       return manager === null ? null : `Manager: ${manager}`;
+    }
+    case "timesheet.commented": {
+      const excerpt = str(payload, "excerpt");
+      return excerpt === null ? null : `Comment: ${excerpt}`;
     }
     default:
       return null;
@@ -149,7 +158,8 @@ export function notificationTarget(
     case "timesheet.submit_reminder":
     case "timesheet.approval_reminder":
     case "timesheet.escalation":
-    case "timesheet.late_data": {
+    case "timesheet.late_data":
+    case "timesheet.commented": {
       const week = str(payload, "period_start");
       return week !== null && DateTime.fromISO(week).isValid
         ? { page: "week", userId: str(payload, "employee_id") ?? viewerId, week }
