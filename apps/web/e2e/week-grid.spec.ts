@@ -3,7 +3,7 @@
 // approved the row, day and week totals count it; once she submits the week the grid is
 // read-only. Order-independent: the week is one nobody has touched, picked per run.
 import { weekOf } from "@ai-proctor/core";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
 import {
@@ -13,6 +13,7 @@ import {
   ERIN_ZONE,
   expectNoA11yViolations,
   MANAGER_EMAIL,
+  pressUntilFocused,
   rebuildSegments,
   weekDays,
 } from "./helpers";
@@ -214,4 +215,167 @@ test("week grid: Erin adds time from a cell, the totals count it, and it locks",
   await expectNoA11yViolations(page);
   await page.keyboard.press("Escape");
   await expect(cellDialog).toBeHidden();
+});
+
+/**
+ * Presses `key` until the focus leaves the grid, failing if another cell takes it on the
+ * way: the grid is one tab stop (its row headers' buttons aren't cells).
+ */
+async function tabOutOf(page: Page, grid: Locator, key: "Tab" | "Shift+Tab") {
+  for (let i = 0; i < 10; i++) {
+    await page.keyboard.press(key);
+    const where = await grid.evaluate((g) => {
+      const at = document.activeElement;
+      return at && g.contains(at) ? at.tagName : "out";
+    });
+    if (where === "out") return;
+    expect(where, "another cell took the focus").not.toBe("TD");
+  }
+  throw new Error("the focus didn't leave the grid");
+}
+
+// #267: the same with only the keyboard. Tab reaches the grid, which is one tab stop, and
+// leaves it; the arrows, Home and End move between cells; Enter opens one, and an entry is
+// added from it; Escape gives the focus back to the cell. axe runs on the empty week, with
+// each dialog open, and on the manager's view of the week.
+test("week grid: Erin adds time from a cell with only the keyboard", async ({ page, browser }) => {
+  test.setTimeout(150_000);
+  const reason = `Keyboard entry ${Date.now()}`;
+  const week = await freshWeek();
+  const days = weekDays(week);
+  const monday = days[0] ?? week;
+  const day = days[2] ?? week;
+  const label = dayName(day);
+  await clearErinFavourites();
+
+  await signIn(page, ERIN_EMAIL, /\/me$/);
+  await page.goto(`/timesheets/${ERIN}?week=${week}`);
+  // The empty week, day by day.
+  await expect(
+    page.getByRole("region", { name: "Days", exact: true }).getByText("No time."),
+  ).toHaveCount(7);
+  await expectNoA11yViolations(page);
+
+  // From the top of the page, Tab to the view switch and choose the grid.
+  const gridView = page.getByRole("button", { name: "Grid", exact: true });
+  await pressUntilFocused(page, gridView, "Tab", 120);
+  await page.keyboard.press("Enter");
+  await expect(gridView).toHaveAttribute("aria-pressed", "true");
+  const grid = page.getByRole("grid", { name: "Week grid" });
+  await expect(grid.locator("tbody").getByRole("rowheader")).toHaveText(["Unassigned"]);
+  await expectNoA11yViolations(page);
+  const cell = (row: string, d: string) =>
+    grid.getByRole("gridcell", { name: new RegExp(`^${row}, ${dayName(d)}:`) });
+
+  // Tab goes on into the grid, to its first cell: the only cell in the tab order.
+  await pressUntilFocused(page, cell("Unassigned", monday));
+  await expect(grid.locator('td[tabindex="0"]')).toHaveCount(1);
+
+  // Back to "Add a row", and add one from the keyboard: the project by typing its name.
+  const addRowButton = page.getByRole("button", { name: "Add a row" });
+  await pressUntilFocused(page, addRowButton, "Shift+Tab");
+  await page.keyboard.press("Enter");
+  const addRow = page.getByRole("dialog", { name: "Add a row" });
+  await expect(addRow.getByLabel("Project")).toBeFocused();
+  await page.keyboard.type("Website");
+  await expect(addRow.getByLabel("Project")).toHaveValue(REVAMP);
+  await pressUntilFocused(page, addRow.getByRole("button", { name: "Add row" }));
+  await page.keyboard.press("Enter");
+  await expect(addRow).toBeHidden();
+  await expect(cell("Website revamp", monday)).toBeFocused();
+
+  // Tab leaves the grid without stopping on another cell, and Shift+Tab comes back to the
+  // cell it left.
+  await tabOutOf(page, grid, "Tab");
+  await pressUntilFocused(page, cell("Website revamp", monday), "Shift+Tab", 10);
+
+  // End and Home go to the row's last and first day; the arrows move a cell at a time.
+  await page.keyboard.press("End");
+  await expect(cell("Website revamp", days[6] ?? week)).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(cell("Website revamp", monday)).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(cell("Website revamp", day)).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(cell("Unassigned", day)).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(cell("Website revamp", day)).toBeFocused();
+
+  // Enter opens the cell; from it, Add entry asks for the time. Typed, not picked.
+  await page.keyboard.press("Enter");
+  const cellDialog = page.getByRole("dialog", { name: `Website revamp · ${label}` });
+  await expect(cellDialog).toBeVisible();
+  await expectNoA11yViolations(page);
+  const addEntry = cellDialog.getByRole("button", { name: "Add entry" });
+  await pressUntilFocused(page, addEntry);
+  await page.keyboard.press("Enter");
+  const request = page.getByRole("dialog", { name: "Request manual time" });
+  await expect(request.getByLabel("Date")).toHaveValue(day);
+  await expect(request.getByLabel("Project")).toHaveValue(REVAMP);
+  await pressUntilFocused(page, request.getByLabel("Start"));
+  await page.keyboard.type("1300");
+  await pressUntilFocused(page, request.getByLabel("End"));
+  await page.keyboard.type("1500");
+  await pressUntilFocused(page, request.getByLabel("Reason"));
+  await page.keyboard.type(reason);
+  await expectNoA11yViolations(page);
+  await pressUntilFocused(page, request.getByRole("button", { name: "Send request" }));
+  await page.keyboard.press("Enter");
+  await expect(request).toBeHidden();
+
+  // Back in the cell, on Add entry, with the new entry listed.
+  await expect(cellDialog.getByRole("listitem")).toContainText("Pending, not counted");
+  await expect(cellDialog.getByRole("listitem")).toContainText("2 h 00 min");
+  await expect(addEntry).toBeFocused();
+  await expectNoA11yViolations(page);
+
+  // One the database refuses (it overlaps that entry): the dialog says why and keeps the
+  // focus on Send request; Escape closes it, back on Add entry.
+  await page.keyboard.press("Enter");
+  await pressUntilFocused(page, request.getByLabel("Start"));
+  await page.keyboard.type("1400");
+  await pressUntilFocused(page, request.getByLabel("End"));
+  await page.keyboard.type("1600");
+  await pressUntilFocused(page, request.getByLabel("Reason"));
+  await page.keyboard.type(`${reason} overlap`);
+  await pressUntilFocused(page, request.getByRole("button", { name: "Send request" }));
+  await page.keyboard.press("Enter");
+  await expect(request.getByRole("alert")).toBeVisible();
+  await expect(request.getByRole("button", { name: "Send request" })).toBeFocused();
+  await expectNoA11yViolations(page);
+  await page.keyboard.press("Escape");
+  await expect(request).toBeHidden();
+  await expect(addEntry).toBeFocused();
+
+  // Escape closes the cell and gives the focus back to it.
+  await page.keyboard.press("Escape");
+  await expect(cellDialog).toBeHidden();
+  await expect(cell("Website revamp", day)).toBeFocused();
+  await expect(cell("Website revamp", day)).toHaveAccessibleName(
+    `Website revamp, ${label}: 0 min tracked, 0 min manual, 2 h 00 min pending`,
+  );
+
+  // The manager's view of the same week: read-only, in both views.
+  // A context of its own: axe needs one made with newContext.
+  const managerContext = await browser.newContext();
+  const manager = await managerContext.newPage();
+  await signIn(manager, MANAGER_EMAIL, /\/team$/);
+  await manager.goto(`/timesheets/${ERIN}?week=${week}`);
+  const managerDays = manager.getByRole("region", { name: "Days", exact: true });
+  await expect(
+    managerDays.getByRole("listitem").filter({ hasText: "Website revamp" }),
+  ).toContainText("Manual · pending, not counted");
+  await expect(managerDays.getByRole("button", { name: /^Edit / })).toHaveCount(0);
+  await expectNoA11yViolations(manager);
+  await manager.getByRole("button", { name: "Grid", exact: true }).click();
+  const managerGrid = manager.getByRole("grid", { name: "Week grid" });
+  await expect(
+    managerGrid.getByRole("gridcell", { name: new RegExp(`^Website revamp, ${label}:`) }),
+  ).toHaveAccessibleName(
+    `Website revamp, ${label}: 0 min tracked, 0 min manual, 2 h 00 min pending`,
+  );
+  await expect(manager.getByRole("button", { name: "Add a row" })).toHaveCount(0);
+  await expectNoA11yViolations(manager);
+  await managerContext.close();
 });

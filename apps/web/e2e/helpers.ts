@@ -1,8 +1,9 @@
 // Shared e2e setup for the seeded Acme org. Specs share the seed users and the local
 // database keeps every earlier run, so each spec creates what it reads and puts shared
 // state (Erin's week) back where it needs it: it must pass alone and after any other (#195).
+import { weekOf } from "@ai-proctor/core";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { DateTime } from "luxon";
 import { agentFor, clientFor } from "./agent";
 
@@ -25,6 +26,51 @@ export function weekDays(week: string): string[] {
 /** Erin's today, in her time zone. */
 export function erinToday(): string {
   return DateTime.now().setZone(ERIN_ZONE).toISODate() ?? "";
+}
+
+/**
+ * A past week of Erin's nobody has touched (no segments, manual entries or timesheet),
+ * picked per run because the local database keeps every earlier run. `weeks` asks for
+ * that many such weeks in a row and returns the last of them.
+ */
+export async function freshErinWeek(weeks = 1): Promise<string> {
+  const manager = await clientFor(MANAGER_EMAIL);
+  for (let i = 0; i < 80; i++) {
+    const day =
+      DateTime.now()
+        .setZone(ERIN_ZONE)
+        .minus({ days: 400 + ((Date.now() + i * 29) % 900) })
+        .toISODate() ?? "";
+    const week = weekOf(day, "monday");
+    const first =
+      DateTime.fromISO(week)
+        .minus({ days: 7 * (weeks - 1) })
+        .toISODate() ?? week;
+    const last = weekDays(week).at(-1) ?? week;
+    const [segments, entries, sheets] = await Promise.all([
+      manager
+        .from("time_segments")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", ERIN)
+        .gte("day", first)
+        .lte("day", last),
+      manager
+        .from("manual_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", ERIN)
+        .gte("start_at", DateTime.fromISO(first, { zone: ERIN_ZONE }).minus({ days: 1 }).toISO())
+        .lte("start_at", DateTime.fromISO(last, { zone: ERIN_ZONE }).plus({ days: 2 }).toISO()),
+      manager
+        .from("timesheets")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", ERIN)
+        .gte("period_start", first)
+        .lte("period_start", week),
+    ]);
+    for (const r of [segments, entries, sheets]) if (r.error) throw r.error;
+    if (segments.count === 0 && entries.count === 0 && sheets.count === 0) return week;
+  }
+  throw new Error("no fresh week found for Erin");
 }
 
 /**
@@ -202,6 +248,20 @@ export async function removeTeam(id: string) {
   const admin = await clientFor("admin@acme.test");
   const { error } = await admin.rpc("delete_team", { p_team_id: id });
   if (error) throw error;
+}
+
+/**
+ * Presses `key` (Tab, or Shift+Tab to go back) until `target` has the focus, as someone on a
+ * keyboard would, and fails if it doesn't get there in `max` presses. A time field takes a
+ * press per part (hours, minutes).
+ */
+export async function pressUntilFocused(page: Page, target: Locator, key = "Tab", max = 40) {
+  await expect(target).toBeVisible();
+  for (let i = 0; i < max; i++) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press(key);
+  }
+  await expect(target).toBeFocused();
 }
 
 /** Runs axe (WCAG 2 A/AA, 2.1 AA) on the page and fails on any violation. */

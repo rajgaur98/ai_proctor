@@ -64,13 +64,12 @@ import {
   reopenWeek,
   returnWeek,
   saveDayNote,
-  segmentsQuery,
   submitWeek,
   timesheetQuery,
   weekMissesQuery,
   weekStartQuery,
 } from "./timesheetData";
-import { WeekDayList } from "./WeekDayList";
+import { WeekDayList, weekSegmentsQuery } from "./WeekDayList";
 import { WeekGrid } from "./WeekGrid";
 import { addWeeks, weekDays, weekLabel, weekStartOf } from "./weeks";
 
@@ -163,9 +162,12 @@ export function TimesheetPage() {
   const breakdown = useQuery({ ...breakdownQuery(userId, week), enabled: fresh });
   const flagged = useQuery({ ...flaggedQuery(userId, week), enabled: fresh });
   const isSelfView = userId === profile.id;
+  // The employee's Unassigned list (PRJ-03/04) reads the same counted segments as the day
+  // list and grid: one read of the week (#267).
   const segments = useQuery({
-    ...segmentsQuery(userId, week),
+    ...weekSegmentsQuery(userId, week),
     enabled: fresh && isSelfView,
+    select: (rows) => rows.map((s) => ({ ...s, counted: true })),
   });
   const edits = useQuery({ ...editsQuery(sheet.data?.id ?? ""), enabled: !!sheet.data });
   const canDecideQ = useQuery(canDecideQuery(userId));

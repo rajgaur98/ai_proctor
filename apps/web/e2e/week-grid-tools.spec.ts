@@ -14,6 +14,7 @@ import {
   ERIN_ZONE,
   expectNoA11yViolations,
   MANAGER_EMAIL,
+  pressUntilFocused,
   weekDays,
 } from "./helpers";
 
@@ -262,4 +263,115 @@ test("week grid: Erin copies last week's rows, then its hours, one skipped", asy
   expect(
     DateTime.fromISO(after[0]?.start_at ?? "", { zone: ERIN_ZONE }).toFormat("yyyy-MM-dd HH:mm"),
   ).toBe(`${days[0]} 10:00`);
+});
+
+// #267: quick add and copy last week with only the keyboard, axe with each open.
+test("week grid: Erin quick-adds time and copies last week with only the keyboard", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const week = await freshWeekPair();
+  const lastWeek = DateTime.fromISO(week).minus({ days: 7 }).toISODate() ?? week;
+  const days = weekDays(week);
+  const reason = `Keyboard quick add ${Date.now()}`;
+  const erin = await clientFor(ERIN_EMAIL);
+  const lastMonday = DateTime.fromISO(`${lastWeek}T10:00`, { zone: ERIN_ZONE });
+  const r = await erin.rpc("request_manual_entry", {
+    p_start_at: lastMonday.toISO() ?? "",
+    p_end_at: lastMonday.plus({ hours: 1 }).toISO() ?? "",
+    p_project_id: REVAMP,
+    p_reason: "Standup",
+  });
+  if (r.error) throw r.error;
+
+  await signIn(page, ERIN_EMAIL, /\/me$/);
+  await page.goto(`/timesheets/${ERIN}?week=${week}`);
+  const gridView = page.getByRole("button", { name: "Grid", exact: true });
+  await pressUntilFocused(page, gridView, "Tab", 120);
+  await page.keyboard.press("Enter");
+  const grid = page.getByRole("grid", { name: "Week grid" });
+  await expect(grid).toBeVisible();
+
+  // Quick add: Enter opens the form, typed fields, the day and project by their names.
+  // Afternoon times: CI's browser has a 12-hour clock, where a typed "0900" leaves AM/PM
+  // unset and the field empty; "1300" becomes 1 PM there and 13:00 on a 24-hour one.
+  const quickAdd = page.getByRole("button", { name: "Quick add" });
+  await pressUntilFocused(page, quickAdd);
+  await page.keyboard.press("Enter");
+  await expect(quickAdd).toHaveAttribute("aria-expanded", "true");
+  const quick = page.getByRole("region", { name: "Quick add" });
+  await pressUntilFocused(page, quick.getByLabel("Day"));
+  await page.keyboard.type(dayName(days[1] ?? week));
+  await expect(quick.getByLabel("Day")).toHaveValue(days[1] ?? week);
+  await pressUntilFocused(page, quick.getByLabel("Start"));
+  await page.keyboard.type("1300");
+  await pressUntilFocused(page, quick.getByLabel("End"));
+  await page.keyboard.type("1430");
+  await pressUntilFocused(page, quick.getByLabel("Project"));
+  await page.keyboard.type("Internal");
+  await expect(quick.getByLabel("Project")).toHaveValue(INTERNAL);
+  await pressUntilFocused(page, quick.getByLabel("Reason"));
+  await page.keyboard.type(reason);
+  await expectNoA11yViolations(page);
+  // Enter in a field sends it.
+  await page.keyboard.press("Enter");
+  await expect(quick.getByRole("status")).toHaveText(
+    `Asked for 13:00–14:30 on ${dayName(days[1] ?? week)}.`,
+  );
+  await expect(
+    grid.getByRole("gridcell", { name: new RegExp(`^Internal, ${dayName(days[1] ?? week)}:`) }),
+  ).toHaveAccessibleName(
+    `Internal, ${dayName(days[1] ?? week)}: 0 min tracked, 0 min manual, 1 h 30 min pending`,
+  );
+  // The focus stays in the form, ready for the next one.
+  await expect(quick.getByLabel("Reason")).toBeFocused();
+  await expectNoA11yViolations(page);
+
+  // The next one sent from Add time: it's disabled while sending, and the focus comes back.
+  // Back to Day, then forward into Start: Shift+Tab into a time field lands on its minutes.
+  await pressUntilFocused(page, quick.getByLabel("Day"), "Shift+Tab");
+  await pressUntilFocused(page, quick.getByLabel("Start"));
+  await page.keyboard.type("1500");
+  await pressUntilFocused(page, quick.getByLabel("End"));
+  await page.keyboard.type("1600");
+  await pressUntilFocused(page, quick.getByLabel("Reason"));
+  await page.keyboard.type(`${reason} again`);
+  const addTime = quick.getByRole("button", { name: "Add time" });
+  await pressUntilFocused(page, addTime);
+  await page.keyboard.press("Enter");
+  await expect(quick.getByRole("status")).toHaveText(
+    `Asked for 15:00–16:00 on ${dayName(days[1] ?? week)}.`,
+  );
+  await expect(addTime).toBeFocused();
+
+  // Copy last week, with its hours: Space ticks the box, Enter copies, Done closes, and the
+  // focus is back on the button that opened it.
+  const copyButton = page.getByRole("button", { name: "Copy last week" });
+  await pressUntilFocused(page, copyButton, "Shift+Tab");
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Copy last week" });
+  await pressUntilFocused(page, dialog.getByLabel("Include hours"));
+  await page.keyboard.press("Space");
+  await expect(dialog.getByLabel("Include hours")).toBeChecked();
+  await expect(
+    dialog.getByRole("list", { name: "Entries to copy" }).getByRole("listitem"),
+  ).toHaveCount(1);
+  await expectNoA11yViolations(page);
+  await pressUntilFocused(page, dialog.getByRole("button", { name: "Copy", exact: true }));
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("status")).toContainText("Copied 1 of 1 manual entry.");
+  // The summary replaces the form, Copy with it: the focus moves to Done, not lost.
+  const done = dialog.getByRole("button", { name: "Done" });
+  await expect(done).toBeFocused();
+  await expectNoA11yViolations(page);
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect(copyButton).toBeFocused();
+  await expect(
+    grid.getByRole("gridcell", {
+      name: new RegExp(`^Website revamp, ${dayName(days[0] ?? week)}:`),
+    }),
+  ).toHaveAccessibleName(
+    `Website revamp, ${dayName(days[0] ?? week)}: 0 min tracked, 0 min manual, 1 h 00 min pending`,
+  );
 });

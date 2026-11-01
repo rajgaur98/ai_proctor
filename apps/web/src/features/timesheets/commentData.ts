@@ -21,6 +21,9 @@ function explain(message: string): string {
 export const sheetCommentsQuery = (timesheetId: string) =>
   queryOptions({
     queryKey: ["timesheet-comments", timesheetId],
+    // Threads mount as their rows and entries load, after this read may have finished; fresh
+    // for a while so each doesn't read the week's comments again (#267). Posting reloads them.
+    staleTime: 60_000,
     queryFn: async (): Promise<SheetComment[]> => {
       const { data, error } = await supabase
         .from("timesheet_comments")
