@@ -67,6 +67,7 @@ import {
   weekStartQuery,
 } from "./timesheetData";
 import { WeekDayList } from "./WeekDayList";
+import { WeekGrid } from "./WeekGrid";
 import { addWeeks, weekDays, weekLabel, weekStartOf } from "./weeks";
 
 // Pages made by router.tsx's page() aren't in the typed route tree (same as the nav).
@@ -101,6 +102,8 @@ export function TimesheetPage() {
   const [projectTarget, setProjectTarget] = useState<FlaggedSegment | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
   const [reassignTarget, setReassignTarget] = useState<ReassignTarget | null>(null);
+  // #262: the week as a project/task grid, or day by day.
+  const [view, setView] = useState<"grid" | "days">("days");
   // A target is set while its dialog is open (the dialogs clear it when they close), and
   // the dialog opens once the target is rendered into it.
   useEffect(() => {
@@ -600,16 +603,44 @@ export function TimesheetPage() {
         exportAs={{ page: "timesheet-totals", filters: { person: name, week } }}
       />
       <OvertimeNote overtime={overtime} />
-      <WeekDayList
-        userId={userId}
-        week={week}
-        zone={zone}
-        entries={entryList}
-        enabled={fresh}
-        canEdit={canEditNotes}
-        onChanged={refreshAfterRebuild}
-        personName={name}
-      />
+      <fieldset className="m-0 flex gap-2 border-0 p-0">
+        <legend className="sr-only">Show the week as</legend>
+        {(["grid", "days"] as const).map((v) => (
+          <Button
+            key={v}
+            variant="secondary"
+            className={`h-10 ${view === v ? "border-acc bg-accsoft text-acctext" : ""}`}
+            aria-pressed={view === v}
+            onClick={() => setView(v)}
+          >
+            {v === "grid" ? "Grid" : "Days"}
+          </Button>
+        ))}
+      </fieldset>
+      {view === "grid" ? (
+        <WeekGrid
+          userId={userId}
+          week={week}
+          zone={zone}
+          breakdown={breakdown.data ?? []}
+          entries={entryList}
+          enabled={fresh}
+          loading={!fresh || breakdown.isPending || entries.isPending}
+          canEdit={canEditNotes}
+          onChanged={refreshAfterRebuild}
+        />
+      ) : (
+        <WeekDayList
+          userId={userId}
+          week={week}
+          zone={zone}
+          entries={entryList}
+          enabled={fresh}
+          canEdit={canEditNotes}
+          onChanged={refreshAfterRebuild}
+          personName={name}
+        />
+      )}
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         {canDecide ? (
