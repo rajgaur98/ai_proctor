@@ -215,25 +215,48 @@ function EntryRow({
   );
 }
 
-function RequestDialog({
+/**
+ * The employee asks for manual time. #262: the week grid opens it from a cell with
+ * `target`, which prefills the day, project and task (a new target resets the form);
+ * `onClose` runs when it closes.
+ */
+export function RequestDialog({
   dialogRef,
   userId,
   zone,
   date,
   onRequested,
+  target,
+  onClose,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
   userId: string;
   zone: string;
   date: string;
   onRequested: () => void;
+  target?: { day: string; projectId: string | null; taskId: string | null } | null;
+  onClose?: () => void;
 }) {
   const projects = useQuery(projectsQuery);
   const tasks = useQuery(tasksQuery).data ?? [];
   const mine = (projects.data ?? []).filter((p) => !p.archived && p.memberIds.includes(userId));
-  const blank = { day: date, start: "", end: "", projectId: "", taskId: "", reason: "", note: "" };
+  const blank = {
+    day: target?.day ?? date,
+    start: "",
+    end: "",
+    projectId: target?.projectId ?? "",
+    taskId: target?.taskId ?? "",
+    reason: "",
+    note: "",
+  };
   const [form, setForm] = useState(blank);
   const [problem, setProblem] = useState<string | null>(null);
+  const [shown, setShown] = useState(target);
+  if (shown !== target) {
+    setShown(target);
+    setForm(blank);
+    setProblem(null);
+  }
   const set = (patch: Partial<typeof blank>) => setForm((f) => ({ ...f, ...patch }));
 
   const send = useMutation({
@@ -278,6 +301,11 @@ function RequestDialog({
       ref={dialogRef}
       aria-labelledby="manual-entry-title"
       className="m-auto w-[min(480px,calc(100vw-32px))] rounded-xl border border-line bg-panel p-6 text-ink backdrop:bg-black/30"
+      onClose={() => {
+        setProblem(null);
+        send.reset();
+        onClose?.();
+      }}
     >
       <form
         method="dialog"
