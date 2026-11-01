@@ -12,6 +12,7 @@ import {
   ERIN_ZONE,
   expectNoA11yViolations,
   MANAGER_EMAIL,
+  pressUntilFocused,
   weekDays,
 } from "./helpers";
 
@@ -181,5 +182,118 @@ test("day list: Erin splits an entry, merges it back, duplicates and edits it", 
       name: `Edit ${hm(copyStart)}–${hm(copyStart.plus({ minutes: 150 }))} on ${copyLabel}`,
     }),
   ).toBeVisible();
+  await expectNoA11yViolations(page);
+});
+
+// #267: the same with only the keyboard, from the top of the page: edit, split (and a save
+// the database refuses), merge and duplicate, each dialog opened with Enter and its fields
+// typed, the focus where the person left it after each, and axe with each dialog open and
+// once the week is locked. The day list adds no entries (the grid and the day page do).
+test("day list: Erin edits, splits, merges and duplicates an entry with only the keyboard", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const stamp = Date.now();
+  const note = `Keyboard ${stamp}`;
+  const week = weekOf(await freshDay(), "monday");
+  const days = weekDays(week);
+  const day = days[2] ?? week;
+  const copyDay = days[3] ?? week;
+  const label = dayName(day);
+  const at = (t: string, d = day) => DateTime.fromISO(`${d}T${t}`, { zone: ERIN_ZONE });
+  const span = (from: string, to: string, d = day) =>
+    `${hm(at(from, d))}–${hm(at(to, d))} on ${dayName(d)}`;
+  const erin = await clientFor(ERIN_EMAIL);
+  const requested = await erin.rpc("request_manual_entry", {
+    p_start_at: at("13:00").toISO() ?? "",
+    p_end_at: at("15:00").toISO() ?? "",
+    p_project_id: REVAMP,
+    p_reason: `Workshop ${stamp}`,
+    p_note: note,
+  });
+  if (requested.error) throw requested.error;
+
+  await signIn(page, ERIN_EMAIL, /\/me$/);
+  await page.goto(`/timesheets/${ERIN}?week=${week}`);
+  const theDay = page
+    .getByRole("region", { name: "Days", exact: true })
+    .getByRole("region", { name: label, exact: true });
+  const button = (action: string, name: string) =>
+    theDay.getByRole("button", { name: `${action} ${name}`, exact: true });
+
+  // Edit: Tab from the top of the page to it, Enter, type a later end, save.
+  await pressUntilFocused(page, button("Edit", span("13:00", "15:00")), "Tab", 150);
+  await page.keyboard.press("Enter");
+  const edit = page.getByRole("dialog", { name: "Edit entry" });
+  await expect(edit.getByLabel("Start")).toBeFocused();
+  await expectNoA11yViolations(page);
+  await pressUntilFocused(page, edit.getByLabel("End"));
+  await page.keyboard.type("1530");
+  await pressUntilFocused(page, edit.getByRole("button", { name: "Save entry" }));
+  await page.keyboard.press("Enter");
+  await expect(edit).toBeHidden();
+  // The focus is back on the entry's Edit, now named for the new times.
+  await expect(button("Edit", span("13:00", "15:30"))).toBeFocused();
+
+  // Split at 14:00: the field starts on the middle, Enter in it splits.
+  await pressUntilFocused(page, button("Split", span("13:00", "15:30")));
+  await page.keyboard.press("Enter");
+  const split = page.getByRole("dialog", { name: "Split entry" });
+  await expect(split.getByLabel("Split at")).toBeFocused();
+  await page.keyboard.type("1400");
+  await expectNoA11yViolations(page);
+  await page.keyboard.press("Enter");
+  await expect(split).toBeHidden();
+  await expect(button("Edit", span("14:00", "15:30"))).toBeVisible();
+  await expect(button("Split", span("13:00", "14:00"))).toBeFocused();
+
+  // A save the database refuses (the first part would overlap the second): the dialog says
+  // why and keeps the focus on Save entry; Escape closes it, back on Edit.
+  await pressUntilFocused(page, button("Edit", span("13:00", "14:00")), "Shift+Tab");
+  await page.keyboard.press("Enter");
+  await pressUntilFocused(page, edit.getByLabel("End"));
+  await page.keyboard.type("1430");
+  await pressUntilFocused(page, edit.getByRole("button", { name: "Save entry" }));
+  await page.keyboard.press("Enter");
+  await expect(edit.getByRole("alert")).toBeVisible();
+  await expect(edit.getByRole("button", { name: "Save entry" })).toBeFocused();
+  await expectNoA11yViolations(page);
+  await page.keyboard.press("Escape");
+  await expect(edit).toBeHidden();
+  await expect(button("Edit", span("13:00", "14:00"))).toBeFocused();
+
+  // Merge the parts back: the button goes with the second part, and the focus moves to the
+  // merged entry's Edit.
+  await pressUntilFocused(page, button("Merge", `${span("13:00", "14:00")} with the next entry`));
+  await page.keyboard.press("Enter");
+  await expect(button("Edit", span("13:00", "15:30"))).toBeFocused();
+  await expect(theDay.getByRole("button", { name: /^Merge / })).toHaveCount(0);
+
+  // Duplicate to the next day: the day the dialog starts on, as it is.
+  await pressUntilFocused(page, button("Duplicate", span("13:00", "15:30")));
+  await page.keyboard.press("Enter");
+  const duplicate = page.getByRole("dialog", { name: "Duplicate entry" });
+  await expect(duplicate.getByLabel("Day")).toBeFocused();
+  await expect(duplicate.getByLabel("Day")).toHaveValue(copyDay);
+  await expectNoA11yViolations(page);
+  await pressUntilFocused(page, duplicate.getByRole("button", { name: "Duplicate", exact: true }));
+  await page.keyboard.press("Enter");
+  await expect(duplicate).toBeHidden();
+  await expect(button("Duplicate", span("13:00", "15:30"))).toBeFocused();
+  const nextDay = page
+    .getByRole("region", { name: "Days", exact: true })
+    .getByRole("region", { name: dayName(copyDay), exact: true });
+  await expect(nextDay.getByRole("listitem").filter({ hasText: note })).toContainText(
+    "Manual · pending, not counted",
+  );
+
+  // Once submitted the week is locked: no changes offered, and still no axe violations.
+  const ensured = await erin.rpc("ensure_timesheet", { p_user_id: ERIN, p_period_start: week });
+  if (ensured.error) throw ensured.error;
+  const submitted = await erin.rpc("submit_timesheet", { p_id: ensured.data });
+  if (submitted.error) throw submitted.error;
+  await page.reload();
+  await expect(theDay.getByRole("listitem").filter({ hasText: note })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Edit|Split|Merge|Duplicate) / })).toHaveCount(0);
   await expectNoA11yViolations(page);
 });
