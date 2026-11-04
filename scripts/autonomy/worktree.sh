@@ -7,7 +7,7 @@
 #         main; a stacked issue names the branch below it), pnpm install, board
 #         card to "progress". --stack also starts the worktree's own Supabase
 #         stack (scripts/stack.sh up) and writes apps/web/.env.local.
-#         An existing branch for the issue (local or on origin) is reused.
+#         An existing unmerged branch for the issue (local or on origin) is reused.
 #   down  stops the worktree's stack, removes the worktree, deletes the local
 #         branch if it is merged. Refuses a dirty worktree unless --force.
 set -euo pipefail
@@ -32,8 +32,10 @@ if [ "$CMD" = up ]; then
     exit 0
   fi
   git -C "$MAIN" fetch -q origin
+  # Skip branches already merged into main: an old branch that happens to start
+  # with the same number (e.g. a docs PR named after the issue) isn't the work.
   BRANCH=$(git -C "$MAIN" for-each-ref --format='%(refname:lstrip=-1)' \
-    "refs/heads/$N-*" "refs/remotes/origin/$N-*" | head -1)
+    --no-merged origin/main "refs/heads/$N-*" "refs/remotes/origin/$N-*" | head -1)
   if [ -n "$BRANCH" ]; then
     if git -C "$MAIN" show-ref -q "refs/heads/$BRANCH"; then
       git -C "$MAIN" worktree add -q "$WT" "$BRANCH"
@@ -46,12 +48,14 @@ if [ "$CMD" = up ]; then
     BRANCH="$N-$SLUG"
     git -C "$MAIN" worktree add -q -b "$BRANCH" "$WT" "origin/$BASE"
   fi
+  # The card moves first: a failed install or stack start (set -e) shouldn't
+  # leave it in Backlog while the work goes on.
+  "$HERE/board.sh" "$N" progress >/dev/null && echo "BOARD #$N progress"
   (cd "$WT" && pnpm install --frozen-lockfile --silent)
   if [ "$STACK" = 1 ]; then
     (cd "$WT" && scripts/stack.sh up >/dev/null && scripts/stack.sh dotenv >/dev/null)
     echo "STACK up · $(cd "$WT" && scripts/stack.sh ports | head -1)"
   fi
-  "$HERE/board.sh" "$N" progress >/dev/null && echo "BOARD #$N progress"
   echo "WORKTREE up · $WT · branch $BRANCH · base $BASE"
 else
   FORCE=0; [ "${1:-}" = --force ] && FORCE=1
