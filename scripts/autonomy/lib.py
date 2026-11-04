@@ -42,7 +42,10 @@ OWNER_FILE = os.path.join(STATE_DIR, "owner.json")
 # What a state asks of the run. Actionable states keep the owner working;
 # waiting states let it stop until the wake-up looks again.
 ACTIONABLE = {"needs-work", "pr-failing", "pr-conflict", "behind-main", "ready-to-merge"}
-WAITING = {"pr-in-ci", "waiting-on-base"}
+WAITING = {"pr-in-ci", "waiting-on-base", "building", "waiting-on-issue"}
+# An issue without a PR whose worktree had an edit this recently is being built
+# by an implementer: the owner waits instead of starting it again.
+BUILDING_S = 45 * 60
 
 
 class GitHubError(Exception):
@@ -128,9 +131,15 @@ def open_issues(epics=EPICS):
                 "number": it["number"],
                 "title": it["title"],
                 "labels": [l["name"] for l in it.get("labels", [])],
+                "depends_on": depends_on(it.get("body") or ""),
                 "epic": epic,
             })
     return sorted(issues, key=lambda i: i["number"])
+
+
+def depends_on(body):
+    """Issue numbers named as "Depends on #N" in an issue body."""
+    return sorted({int(n) for n in re.findall(r"(?i)depends on #(\d+)", body)})
 
 
 def open_prs():
@@ -224,15 +233,20 @@ NEXT_ACTION = {
     "ready-to-merge": "scripts/autonomy/merge.py {pr}",
     "pr-in-ci": "wait for CI",
     "waiting-on-base": "wait for #{base_pr} to merge",
+    "building": "wait for the implementer in {worktree}",
+    "waiting-on-issue": "wait for #{dep} (depends on it)",
     "blocked": "skip (Blocked on Raj)",
 }
 
 
-def rows(issues, prs, behind_of, branches=()):
+def rows(issues, prs, behind_of, branches=(), building=None):
     """One row per open issue, plus one per open PR that belongs to no listed issue.
 
     behind_of(pr) -> int|None is called only for PRs based on main with green CI.
+    building: {issue: worktree path} for issues an implementer is working on.
     """
+    building = building or {}
+    open_numbers = {i["number"] for i in issues}
     heads = {p["headRefName"]: p for p in prs}
     by_issue = {}
     for p in prs:
@@ -267,6 +281,15 @@ def rows(issues, prs, behind_of, branches=()):
                         "next": NEXT_ACTION["blocked"]})
             continue
         linked = sorted(by_issue.get(n, []), key=lambda p: p["number"])
+        open_deps = [d for d in it.get("depends_on", []) if d in open_numbers]
+        if not linked and n not in building and open_deps:
+            out.append({"issue": n, "title": it["title"], "state": "waiting-on-issue", "pr": None,
+                        "next": NEXT_ACTION["waiting-on-issue"].format(dep=open_deps[0])})
+            continue
+        if not linked and n in building:
+            out.append({"issue": n, "title": it["title"], "state": "building", "pr": None,
+                        "next": NEXT_ACTION["building"].format(worktree=building[n])})
+            continue
         if not linked:
             branch = next((b for b in branches if b.startswith(f"{n}-")), None)
             out.append({"issue": n, "title": it["title"], "state": "needs-work", "pr": None,
@@ -285,6 +308,30 @@ def fingerprint(rows_):
     return "|".join(f"{r.get('issue')}:{r.get('pr')}:{r['state']}" for r in rows_)
 
 
+def building_worktrees(numbers, now=None):
+    """{issue: path} for ../ai_proctor-<issue> worktrees with a changed file
+    (tracked or new) modified in the last BUILDING_S seconds."""
+    now = now or time.time()
+    parent = os.path.dirname(_main_checkout())
+    found = {}
+    for n in numbers:
+        wt = os.path.join(parent, f"ai_proctor-{n}")
+        if not os.path.isdir(wt):
+            continue
+        st = subprocess.run(["git", "status", "--porcelain", "-uall"],
+                            capture_output=True, text=True, cwd=wt).stdout
+        mtimes = []
+        for line in st.splitlines():
+            path = os.path.join(wt, line[3:].split(" -> ")[-1])
+            try:
+                mtimes.append(os.path.getmtime(path))
+            except OSError:
+                pass
+        if mtimes and now - max(mtimes) < BUILDING_S:
+            found[n] = wt
+    return found
+
+
 def collect(epics=EPICS):
     """Read GitHub and return rows. Raises GitHubError when it can't."""
     issues = open_issues(epics)
@@ -293,4 +340,6 @@ def collect(epics=EPICS):
         branches = remote_branches()
     except GitHubError:
         branches = []
-    return rows(issues, prs, lambda p: behind_by("main", p["headRefOid"]), branches)
+    linked = {n for p in prs for n in issue_numbers_of(p)}
+    building = building_worktrees(i["number"] for i in issues if i["number"] not in linked)
+    return rows(issues, prs, lambda p: behind_by("main", p["headRefOid"]), branches, building)
