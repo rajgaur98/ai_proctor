@@ -2,7 +2,7 @@
 
 Living status file. Update it in the same PR as the work.
 
-_Last updated: 1 Nov 2026. M0–M2 built and merged; M3–M5 next._
+_Last updated: 4 Nov 2026. M0–M2 built and merged; M3–M5 next._
 
 ## Now / Next
 
@@ -37,6 +37,7 @@ Read this first after a restart or a context compaction. Update it with every PR
   - In progress: none. Every unblocked issue is merged.
   - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
 - **Open PRs:** none.
+- **Added 4 Nov (from the competitor comparison: Hubstaff, Toggl, Clockify, Insightful, Apploye, ActivTrak, Time Doctor, DeskTime):** P1 issues under #62, with PRD sections: #304 time off (LV-01..07), #305 insights page (INS-01..06), #306 public API and webhooks (API-01..06), #307 MCP server (API-07/08), #308 seat map at scale (DSH-11). Backlog, not started; their defaults are listed in each issue.
 - **Next:**
   - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
