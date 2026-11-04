@@ -97,3 +97,10 @@ body {
   outline: 2px solid var(--acc);
   outline-offset: 2px;
 }
+
+/* The seat map's chairs and tables sit in a zoomed layer (DSH-11): keep the focus ring
+   the same size on screen at any zoom. */
+.seat-layer :focus-visible {
+  outline-width: calc(2px / var(--k, 1));
+  outline-offset: calc(2px / var(--k, 1));
+}

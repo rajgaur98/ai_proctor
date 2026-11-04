@@ -106,19 +106,37 @@ const indexRoute = createRoute({
   },
 });
 
+/** Sends anyone whose role doesn't have `path` in their nav to their own home. */
+function navGate(path: string) {
+  return ({ context }: { context: { profile: Profile } }) => {
+    if (!navFor(context.profile.role).some((l) => l.to === path)) {
+      throw redirect({ to: homeFor(context.profile.role) });
+    }
+  };
+}
+
 /** A page only its roles can open; others go to their own home. */
 function page(path: string, title: string, issue: number, component?: () => React.JSX.Element) {
   return createRoute({
     getParentRoute: () => appRoute,
     path,
-    beforeLoad: ({ context }) => {
-      if (!navFor(context.profile.role).some((l) => l.to === path)) {
-        throw redirect({ to: homeFor(context.profile.role) });
-      }
-    },
+    beforeLoad: navGate(path),
     component: component ?? (() => <Placeholder title={title} issue={issue} />),
   });
 }
+
+/** The live team (#32). `?team=<id>` picks a team: the list narrows to it and the seat map
+ * opens zoomed on it (DSH-11, #308). */
+const teamRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/team",
+  beforeLoad: navGate("/team"),
+  validateSearch: (search: Record<string, unknown>): { team?: string } =>
+    typeof search.team === "string" && /^[0-9a-f-]{36}$/i.test(search.team)
+      ? { team: search.team }
+      : {},
+  component: LiveTeam,
+});
 
 /** One employee's day (#33); reached from the live grid. Employees open only their own. */
 const dayRoute = createRoute({
@@ -201,7 +219,7 @@ const routeTree = rootRoute.addChildren([
   mfaRoute,
   appRoute.addChildren([
     indexRoute,
-    page("/team", "Live team", 32, LiveTeam),
+    teamRoute,
     dayRoute,
     myDayRoute,
     page("/timesheets", "Timesheets", 43, Timesheets),

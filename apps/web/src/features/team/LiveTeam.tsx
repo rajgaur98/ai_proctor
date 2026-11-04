@@ -1,6 +1,7 @@
-// DSH-01/02 live grid, from the Claude Design TeamGrid screen; DSH-09 seat view (#251).
+// DSH-01/02 live grid, from the Claude Design TeamGrid screen; DSH-09 seat view (#251) and
+// its canvas for large orgs (DSH-11, #308).
 import { useQuery } from "@tanstack/react-query";
-import { Link, useRouteContext } from "@tanstack/react-router";
+import { getRouteApi, Link, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ExportButton } from "../../components/ExportButton";
 import { type PresenceStatus, StatusChip, statusStyle } from "../../components/StatusChip";
@@ -23,9 +24,12 @@ import {
 } from "./grid";
 import { SeatMap } from "./SeatMap";
 import { liveTeamTable } from "./teamExport";
-import { useLivePresence } from "./useLivePresence";
+import { useLivePresence, withRecentChanges } from "./useLivePresence";
 
 const queryKey = ["team_live"];
+const route = getRouteApi("/_app/team");
+/** The API returns at most this many rows a request (`max_rows`), so big orgs read in pages. */
+const PAGE = 1000;
 
 type View = "list" | "seats";
 
@@ -46,6 +50,20 @@ function saveView(key: string, view: View) {
   }
 }
 
+/** Whether the screen is at least laptop width: narrower, the seats show as the list (DSH-09). */
+function useWide(): boolean {
+  const query = "(min-width: 768px)";
+  const [wide, setWide] = useState(() => window.matchMedia?.(query).matches ?? true);
+  useEffect(() => {
+    const m = window.matchMedia?.(query);
+    if (!m) return;
+    const on = () => setWide(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
 function useNow(everyMs: number) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -62,22 +80,44 @@ export function LiveTeam() {
   const [status, setStatus] = useState<PresenceStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("status");
-  const [team, setTeam] = useState("");
+  // The team is in the address (`?team=`), so a link opens on it (DSH-11).
+  const team = route.useSearch().team ?? "";
+  const navigate = route.useNavigate();
+  const setTeam = (id: string) => navigate({ search: id ? { team: id } : {}, replace: true });
+  const [findStep, setFindStep] = useState(0);
+  const wide = useWide();
   const viewKey = `ai-proctor:team-view:${profile.id}`;
   const [view, setView] = useState<View>(() => readView(viewKey));
   const chooseView = (v: View) => {
     setView(v);
     saveView(viewKey, v);
   };
-  const teams = useQuery(teamsQuery).data ?? [];
+  const teamsRead = useQuery(teamsQuery);
+  const teams = teamsRead.data ?? [];
 
   const { data, error, isPending, dataUpdatedAt } = useQuery({
     queryKey,
     queryFn: async () => {
-      const { data, error } = await supabase.from("team_live").select("*");
-      if (error) throw error;
-      // The viewer's own row isn't part of their team view.
-      return data.filter((r) => r.user_id !== profile.id);
+      // One request for most orgs; a page per thousand people for big ones (DSH-11).
+      const started = Date.now();
+      const all: TeamRow[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from("team_live")
+          .select("*")
+          .order("user_id")
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all.push(...data);
+        if (data.length < PAGE) break;
+      }
+      // The viewer's own row isn't part of their team view; live changes that came in while
+      // reading are applied on top.
+      return withRecentChanges(
+        queryKey,
+        started,
+        all.filter((r) => r.user_id !== profile.id),
+      );
     },
   });
 
@@ -98,6 +138,7 @@ export function LiveTeam() {
   const seated = useMemo(() => filterRows(rows, status, search), [rows, status, search]);
   const zone = viewerZone();
   const seats = view === "seats";
+  const seatMap = seats && wide;
 
   const list = (
     <div className="overflow-hidden rounded-xl border border-line bg-panel">
@@ -260,41 +301,53 @@ export function LiveTeam() {
             <option value="last_checkin">Last check-in</option>
           </select>
         </label>
+        {/* On the seat map it finds a team or person and zooms there, rather than hiding
+            everyone else (DSH-11); Enter goes to the next match. */}
         <input
           type="search"
-          aria-label="Search people"
-          placeholder="Search people"
+          aria-label={seatMap ? "Find a team or person" : "Search people"}
+          placeholder={seatMap ? "Find a team or person" : "Search people"}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (seatMap && e.key === "Enter") {
+              e.preventDefault();
+              setFindStep((n) => n + 1);
+            }
+          }}
           className="h-10 w-full rounded-[9px] border border-line2 bg-panel px-3 text-[13.5px] md:ml-auto md:w-[280px]"
         />
       </div>
 
-      {seats ? (
-        <>
-          {/* Phones keep the list (#251); the seats need a laptop-width screen. */}
-          <div className="md:hidden">{list}</div>
-          <div className="hidden overflow-hidden rounded-xl border border-line bg-panel md:block">
-            {error ? (
-              <p role="alert" className="p-6 text-sm text-warnink">
-                Couldn't load the team: {error.message}
-              </p>
-            ) : isPending ? (
-              <p className="p-6 text-sm text-ink2">Loading…</p>
-            ) : seated.length === 0 ? (
-              <Empty filtered={rows.length > 0} />
-            ) : (
-              <SeatMap
-                rows={seated}
-                teams={teams}
-                teamId={team}
-                zone={zone}
-                now={now}
-                projectName={projectName}
-              />
-            )}
-          </div>
-        </>
+      {/* Phones keep the list (#251); the seats need a laptop-width screen. */}
+      {seatMap ? (
+        <div className="overflow-hidden rounded-xl border border-line bg-panel">
+          {error ? (
+            <p role="alert" className="p-6 text-sm text-warnink">
+              Couldn't load the team: {error.message}
+            </p>
+          ) : isPending || teamsRead.isPending ? (
+            // The tables are laid out by team, so the teams come first.
+            <p className="p-6 text-sm text-ink2">Loading…</p>
+          ) : !data?.length ? (
+            <Empty filtered={false} />
+          ) : (
+            // The whole org: a picked team, status or search zooms or fades, never hides,
+            // so the map never moves under the viewer (DSH-11).
+            <SeatMap
+              rows={data}
+              teams={teams}
+              teamId={team}
+              status={status}
+              search={search}
+              findStep={findStep}
+              storageKey={`ai-proctor:seat-view:${profile.id}`}
+              zone={zone}
+              now={now}
+              projectName={projectName}
+            />
+          )}
+        </div>
       ) : (
         list
       )}
