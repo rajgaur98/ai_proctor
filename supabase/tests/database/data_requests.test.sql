@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(80);
+select plan(82);
 
 \set org '''00000000-0000-4000-8000-000000000001'''
 \set org2 '''00000000-0000-4000-8000-000000000002'''
@@ -140,6 +140,14 @@ begin
     author_name, body)
   values ('00000000-0000-4000-8000-000000000001', v_ts, u, 'row',
           '00000000-0000-4000-8000-0000000000b1', 'Max Manager', 'Which client?');
+  -- #304: a day of time off they asked for, approved by Max.
+  insert into public.leave_requests (org_id, user_id, leave_type_id, paid, kind, first_day,
+    last_day, start_at, end_at, timezone, status, decided_by, decided_by_name, decided_at)
+  select '00000000-0000-4000-8000-000000000001', u, t.id, t.paid, 'days', current_date + 30,
+    current_date + 30, now() + interval '30 days', now() + interval '31 days', 'UTC', 'approved',
+    '00000000-0000-4000-8000-0000000000b1', 'Max Manager', now()
+  from public.leave_types t
+  where t.org_id = '00000000-0000-4000-8000-000000000001' and t.name = 'Vacation';
   insert into public.notifications (org_id, user_id, kind)
   values ('00000000-0000-4000-8000-000000000001', u, 'timesheet.returned');
   insert into public.anticheat_flags (org_id, user_id, day, kind)
@@ -206,6 +214,9 @@ where user_id = :lucas;
 insert into public.timesheet_edits (org_id, timesheet_id, user_id, editor_id, kind, start_at, end_at, reason)
 select :org, t.id, :lucas, :erin, 'exclude', now() - interval '3 hours', now() - interval '2 hours', 'by erin'
 from public.timesheets t where t.user_id = :lucas;
+-- #304: and she decided his time off.
+update public.leave_requests set decided_by = :erin, decided_by_name = 'Erin Employee'
+where user_id = :lucas;
 -- #265: and she commented on his week.
 insert into public.timesheet_comments (org_id, timesheet_id, user_id, target, author_id,
   author_name, body)
@@ -568,6 +579,15 @@ select is(
   (select count(*)::int from public.timesheet_comments
    where user_id = :lucas and author_id is null and author_name = 'Erin Employee'),
   1, 'her comment on his week stays, with no author id (it is his record)'
+);
+select is(
+  (select counts ->> 'leave_requests' from result), '1',
+  'her time-off requests are removed and counted (#304)'
+);
+select ok(
+  (select decided_by is null and decided_by_name = 'Erin Employee'
+   from public.leave_requests where user_id = :lucas),
+  'his request she decided stays, with her name as written and no id (#304)'
 );
 select is(
   (select count(*)::int from public.notices where version = 2 and published_by is null), 1,

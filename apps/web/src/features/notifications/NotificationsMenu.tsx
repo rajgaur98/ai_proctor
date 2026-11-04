@@ -17,6 +17,7 @@ import { notificationNote, notificationTarget, notificationText } from "./notifi
 // The tabs are made by page() in the router, which doesn't give them a literal path type
 // (the top bar links them from a string the same way).
 const TIMESHEETS_TAB: string = "/timesheets";
+const TIME_OFF: string = "/time-off";
 
 function Inbox() {
   return (
@@ -167,6 +168,10 @@ function NotificationRow({
             onClick={onOpen}
             className={className}
           >
+            {body}
+          </Link>
+        ) : target.page === "time-off" ? (
+          <Link to={TIME_OFF} onClick={onOpen} className={className}>
             {body}
           </Link>
         ) : (

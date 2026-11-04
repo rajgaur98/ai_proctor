@@ -19,6 +19,8 @@ export const statusStyle: Record<PresenceStatus, { label: string; shape: Shape; 
   offline: { label: "Offline", shape: "ring", color: "var(--soffline)" },
   tamper: { label: "Capture blocked", shape: "diamond", color: "var(--stamper)" },
   off_shift: { label: "Off shift", shape: "dash", color: "var(--soff)" },
+  // LV-04: not clocked in on approved leave or a holiday that applies to them.
+  on_leave: { label: "On leave", shape: "dash", color: "var(--sbreak)" },
 };
 
 /** Tamper is one status; the reason is the detail the chip, timeline and alerts show. */

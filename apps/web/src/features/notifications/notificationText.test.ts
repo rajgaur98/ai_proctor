@@ -223,6 +223,71 @@ const CASES: Case[] = [
     note: "Comment: It was the client call",
     target: { page: "week", userId: LUCAS, week: "2026-10-19" },
   },
+  // #304 (LV-03): time off, both ways.
+  {
+    kind: "leave.requested",
+    payload: {
+      request_id: "r",
+      employee_id: ERIN,
+      employee_name: "Erin Employee",
+      type_name: "Vacation",
+      kind: "days",
+      first_day: "2026-11-16",
+      last_day: "2026-11-20",
+      start_at: "2026-11-16T08:00:00+00:00",
+      end_at: "2026-11-21T08:00:00+00:00",
+      timezone: "America/Los_Angeles",
+      note: "Family trip",
+    },
+    text: "Erin Employee asked for time off: Vacation, Mon 16 Nov – Fri 20 Nov 2026",
+    note: "Note: Family trip",
+    target: { page: "time-off" },
+  },
+  {
+    kind: "leave.approved",
+    payload: {
+      type_name: "Personal",
+      kind: "part_day",
+      first_day: "2026-12-04",
+      last_day: "2026-12-04",
+      start_at: "2026-12-04T21:00:00+00:00",
+      end_at: "2026-12-04T23:30:00+00:00",
+      timezone: "America/Los_Angeles",
+      by_name: "Max Manager",
+      note: "Enjoy",
+    },
+    text: "Your time off was approved: Personal, Fri 4 Dec 2026, 13:00–15:30 PST",
+    note: "By Max Manager: “Enjoy”",
+    target: { page: "time-off" },
+  },
+  {
+    kind: "leave.rejected",
+    payload: {
+      type_name: "Vacation",
+      kind: "days",
+      first_day: "2026-11-16",
+      last_day: "2026-11-16",
+      by_name: "Max Manager",
+      note: null,
+    },
+    text: "Your time off was declined: Vacation, Mon 16 Nov 2026",
+    note: "By Max Manager",
+    target: { page: "time-off" },
+  },
+  {
+    kind: "leave.cancelled",
+    payload: {
+      employee_name: "Erin Employee",
+      type_name: "Sick",
+      kind: "days",
+      first_day: "2026-11-16",
+      last_day: "2026-11-16",
+      was: "approved",
+    },
+    text: "Erin Employee cancelled time off: Sick, Mon 16 Nov 2026",
+    note: null,
+    target: { page: "time-off" },
+  },
 ];
 
 describe("notifications", () => {
@@ -249,6 +314,10 @@ describe("notifications", () => {
         "timesheet.escalation",
         "timesheet.late_data",
         "timesheet.commented",
+        "leave.requested",
+        "leave.approved",
+        "leave.rejected",
+        "leave.cancelled",
       ]),
     );
   });
