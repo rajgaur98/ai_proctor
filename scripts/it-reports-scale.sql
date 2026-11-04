@@ -1,7 +1,8 @@
 -- #156: how fast is report_rows for a big org? Seeds N synthetic people (default 500, the
 -- PRD pilot size, NFR-PERF-03) with `history` days (default 28) of segments, check-ins,
 -- shifts and clock sessions, runs the report as the owner and as a manager over a week and
--- over a month, prints the timings, and rolls everything back. Run it with
+-- over a month, and the Insights call (#305) the same way, prints the timings, and rolls
+-- everything back. Run it with
 -- scripts/it-reports-scale.sh.
 --   psql "$DB_URL" -X -v people=500 -v history=28 -f scripts/it-reports-scale.sql
 \set ON_ERROR_STOP on
@@ -114,6 +115,34 @@ select 'owner, 28 days' as scenario, * from (select pg_temp.act_as(:ada)) a,
   lateral pg_temp.time_report(current_date - 27, current_date);
 select 'manager, a week' as scenario, * from (select pg_temp.act_as(:max)) a,
   lateral pg_temp.time_report(date_trunc('week', current_date)::date - 7,
+    date_trunc('week', current_date)::date - 1);
+
+-- Insights (#305): the same people and history, one insights call (the range and the
+-- previous one of the same length, the series, projects and attendance), best of three.
+create function pg_temp.time_insights(p_from date, p_to date)
+returns table (people int, best_ms numeric)
+language plpgsql as $$
+declare
+  t timestamptz; best numeric := null; ms numeric; n int;
+begin
+  perform public.insights(p_from, p_to);
+  for i in 1..3 loop
+    t := clock_timestamp();
+    n := jsonb_array_length(public.insights(p_from, p_to) -> 'people');
+    ms := extract(epoch from clock_timestamp() - t) * 1000;
+    best := least(coalesce(best, ms), ms);
+  end loop;
+  return query select n, round(best, 1);
+end;
+$$;
+
+select 'insights: owner, a week' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_insights(date_trunc('week', current_date)::date - 7,
+    date_trunc('week', current_date)::date - 1);
+select 'insights: owner, 28 days' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_insights(current_date - 27, current_date);
+select 'insights: manager, a week' as scenario, * from (select pg_temp.act_as(:max)) a,
+  lateral pg_temp.time_insights(date_trunc('week', current_date)::date - 7,
     date_trunc('week', current_date)::date - 1);
 
 rollback;

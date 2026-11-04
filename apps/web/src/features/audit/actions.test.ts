@@ -85,6 +85,10 @@ describe("summarize", () => {
       ),
     ).toBe("Support · 1 setting");
     expect(actionLabel("team.policy_changed")).toBe("Changed a team's policy");
+    expect(
+      summarize("team.billable_target_changed", { name: "Web", from: null, to: 60 }, nameOf),
+    ).toBe("Web · None → 60%");
+    expect(actionLabel("team.billable_target_changed")).toBe("Changed a team's billable target");
   });
 
   it("reads role, manager and location changes", () => {

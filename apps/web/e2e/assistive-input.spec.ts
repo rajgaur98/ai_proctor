@@ -88,7 +88,7 @@ test("an admin marks someone as using assistive input, and it is audit-logged", 
       .click();
     await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
     await pickAction(page, "Changed assistive input");
-    await page.getByLabel("Target").selectOption({ label: "Lucas Martin" });
+    await page.getByLabel("Target", { exact: true }).selectOption({ label: "Lucas Martin" });
     const newest = page.locator("tbody tr").first();
     await expect(newest).toContainText("Changed assistive input");
     await expect(newest).toContainText("Ada Admin");
