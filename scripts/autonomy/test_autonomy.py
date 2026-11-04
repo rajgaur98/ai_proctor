@@ -95,6 +95,14 @@ class Rows(unittest.TestCase):
         s = self.states([], [pr(200, "docs-progress")])
         self.assertEqual(s[(None, 200)], "ready-to-merge")
 
+    def test_building_waits_until_a_pr_exists(self):
+        r = lib.rows([issue(7), issue(8)], [pr(108, "8-x")], lambda p: 0, (),
+                     {7: "/wt/7", 8: "/wt/8"})
+        s = {x["issue"]: x["state"] for x in r}
+        self.assertEqual(s[7], "building")
+        self.assertIn("building", lib.WAITING)
+        self.assertEqual(s[8], "ready-to-merge")
+
     def test_branch_without_pr_is_named(self):
         r = lib.rows([issue(7)], [], lambda p: 0, ["7-thing"])[0]
         self.assertEqual(r["next"], "continue on 7-thing")
