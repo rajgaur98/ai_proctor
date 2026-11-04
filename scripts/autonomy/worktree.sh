@@ -48,12 +48,14 @@ if [ "$CMD" = up ]; then
     BRANCH="$N-$SLUG"
     git -C "$MAIN" worktree add -q -b "$BRANCH" "$WT" "origin/$BASE"
   fi
+  # The card moves first: a failed install or stack start (set -e) shouldn't
+  # leave it in Backlog while the work goes on.
+  "$HERE/board.sh" "$N" progress >/dev/null && echo "BOARD #$N progress"
   (cd "$WT" && pnpm install --frozen-lockfile --silent)
   if [ "$STACK" = 1 ]; then
     (cd "$WT" && scripts/stack.sh up >/dev/null && scripts/stack.sh dotenv >/dev/null)
     echo "STACK up · $(cd "$WT" && scripts/stack.sh ports | head -1)"
   fi
-  "$HERE/board.sh" "$N" progress >/dev/null && echo "BOARD #$N progress"
   echo "WORKTREE up · $WT · branch $BRANCH · base $BASE"
 else
   FORCE=0; [ "${1:-}" = --force ] && FORCE=1

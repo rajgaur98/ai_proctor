@@ -38,6 +38,8 @@ STATE_DIR = os.environ.get("AI_PROCTOR_AUTONOMY_DIR") or os.path.join(
     _main_checkout(), ".claude", "autonomy")
 MODE_FILE = os.path.join(STATE_DIR, "mode")
 OWNER_FILE = os.path.join(STATE_DIR, "owner.json")
+# {issue: last tool call by an implementer in ../ai_proctor-<issue>} (heartbeat.py)
+ACTIVITY_FILE = os.path.join(STATE_DIR, "activity.json")
 
 # What a state asks of the run. Actionable states keep the owner working;
 # waiting states let it stop until the wake-up looks again.
@@ -46,6 +48,9 @@ WAITING = {"pr-in-ci", "waiting-on-base", "building", "waiting-on-issue"}
 # An issue without a PR whose worktree had an edit this recently is being built
 # by an implementer: the owner waits instead of starting it again.
 BUILDING_S = 45 * 60
+# ...or an implementer made a tool call in it this recently (it reads for a
+# while before its first edit).
+ACTIVE_S = 15 * 60
 
 
 class GitHubError(Exception):
@@ -99,6 +104,38 @@ def write_owner(owner):
     with open(tmp, "w") as f:
         json.dump(owner, f)
     os.replace(tmp, OWNER_FILE)
+
+
+def read_activity():
+    try:
+        with open(ACTIVITY_FILE) as f:
+            return {int(k): v for k, v in json.load(f).items()}
+    except (OSError, ValueError):
+        return {}
+
+
+def record_activity(issue, now):
+    act = read_activity()
+    act[issue] = now
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = ACTIVITY_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({str(k): v for k, v in act.items()}, f)
+    os.replace(tmp, ACTIVITY_FILE)
+
+
+WORKTREE_RE = re.compile(r"/ai_proctor-(\d+)(?:/|\b)")
+
+
+def worktree_issue(hook):
+    """The issue whose ../ai_proctor-<n> worktree a tool call works in, or None:
+    from its file path, path, command, or else the call's cwd."""
+    ti = hook.get("tool_input") or {}
+    for text in (ti.get("file_path"), ti.get("path"), ti.get("command"), hook.get("cwd")):
+        m = WORKTREE_RE.search(text or "")
+        if m:
+            return int(m.group(1))
+    return None
 
 
 def owner_live(owner, now=None):
@@ -308,15 +345,20 @@ def fingerprint(rows_):
     return "|".join(f"{r.get('issue')}:{r.get('pr')}:{r['state']}" for r in rows_)
 
 
-def building_worktrees(numbers, now=None):
-    """{issue: path} for ../ai_proctor-<issue> worktrees with a changed file
-    (tracked or new) modified in the last BUILDING_S seconds."""
+def building_worktrees(numbers, now=None, activity=None):
+    """{issue: path} for ../ai_proctor-<issue> worktrees an implementer is on: a
+    tool call in it in the last ACTIVE_S seconds, or a changed file (tracked or
+    new) modified in the last BUILDING_S seconds."""
     now = now or time.time()
+    activity = read_activity() if activity is None else activity
     parent = os.path.dirname(_main_checkout())
     found = {}
     for n in numbers:
         wt = os.path.join(parent, f"ai_proctor-{n}")
         if not os.path.isdir(wt):
+            continue
+        if now - activity.get(n, 0) < ACTIVE_S:
+            found[n] = wt
             continue
         st = subprocess.run(["git", "status", "--porcelain", "-uall"],
                             capture_output=True, text=True, cwd=wt).stdout
