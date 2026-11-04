@@ -5,6 +5,8 @@
 // duplicates it to another day (a new request). The database checks every rule again:
 // whose entry, the week's state, overlaps, and approval (TS-08). #265: each manual entry can
 // carry extra content under it (the page puts the entry's comment thread there, TS-33).
+// #319 (LV-05): a day with approved leave or a holiday says so under its heading, with the
+// hours it counts (not worked time).
 import { ManualEntryRequest, WorkNote } from "@ai-proctor/contracts";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -39,6 +41,7 @@ import {
   type TrackedSegment,
   weekDayList,
 } from "./dayList";
+import { type DayLeave, leaveLabel } from "./leave";
 import { dayListTable } from "./sheetExport";
 import { formatDuration } from "./summary";
 import { dayLabel, weekDays } from "./weeks";
@@ -96,6 +99,7 @@ export function WeekDayList({
   week,
   zone,
   entries,
+  leave,
   enabled,
   canEdit,
   onChanged,
@@ -110,6 +114,8 @@ export function WeekDayList({
   zone: string;
   /** The week's manual entries (the page already reads them). */
   entries: ManualEntry[];
+  /** LV-05: the week's leave by day (the page already reads it). */
+  leave?: ReadonlyMap<string, DayLeave>;
   /** Read the segments once the page's rebuild has finished. */
   enabled: boolean;
   /** The viewer is the employee and the week is a draft or returned. */
@@ -216,6 +222,7 @@ export function WeekDayList({
           >
             {dayLabel(day)}
           </h3>
+          {leave?.get(day) && <LeaveLine leave={leave.get(day) as DayLeave} />}
           {items.length === 0 ? (
             <p className="py-2.5 text-[13px] text-ink3">
               {!enabled || segments.isPending ? "Loading…" : "No time."}
@@ -296,6 +303,18 @@ export function WeekDayList({
         </>
       )}
     </section>
+  );
+}
+
+/** A day's leave: what it is and the hours it counts, apart from worked time. */
+function LeaveLine({ leave }: { leave: DayLeave }) {
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-2 border-b border-line py-2.5 text-[13px]">
+      <span className="font-medium">Leave</span>
+      <span className="text-ink2">{leaveLabel(leave)}</span>
+      <span className="font-mono text-ink2">{formatDuration(leave.seconds)}</span>
+      <span className="text-xs text-ink3">not worked time</span>
+    </p>
   );
 }
 

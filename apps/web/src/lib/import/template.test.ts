@@ -57,6 +57,7 @@ describe("import templates", () => {
       "projects",
       "shifts",
       "time_entries",
+      "holidays",
     ];
     for (const kind of kinds) {
       // The people template's example is a new person; the others refer to existing ones.

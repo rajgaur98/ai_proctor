@@ -46,6 +46,7 @@ function listRow(extra: Partial<ListRow>): ListRow {
     flaggedS: 0,
     excludedS: 0,
     assigned: [],
+    leaveS: 0,
     ...extra,
   };
 }
@@ -69,6 +70,7 @@ describe("sheetListTable", () => {
           lateDataCount: 2,
           lateDataAt: "2026-10-26T09:00:00Z",
           workedS: 3600,
+          leaveS: 8 * 3600,
         }),
       ],
       "2026-10-19",
@@ -78,8 +80,9 @@ describe("sheetListTable", () => {
     );
     expect(table.header).toEqual(SHEET_LIST_HEADER);
     expect(table.rows).toEqual([
-      ["Erin Employee", "2026-10-19", "Submitted", "No", 41.01, 30, 11.01, 0.5, "Yes"],
-      ["Ada Admin", "2026-10-19", "Approved", "Yes", 1, 0, 0, 0, "No"],
+      ["Erin Employee", "2026-10-19", "Submitted", "No", 41.01, 30, 11.01, 0.5, 0, "Yes"],
+      // LV-05: leave apart; it doesn't count toward the weekly threshold.
+      ["Ada Admin", "2026-10-19", "Approved", "Yes", 1, 0, 0, 0, 8, "No"],
     ]);
   });
 

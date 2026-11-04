@@ -22,6 +22,8 @@ export interface ReportRow {
   breakS: number;
   pauseS: number;
   manualS: number;
+  /** LV-06: paid leave and holidays in the span (the timesheet's Leave row); not worked. */
+  leaveS: number;
   checkinsShown: number;
   checkinsPassed: number;
   checkinsMissed: number;
@@ -48,6 +50,8 @@ export interface DbReportRow {
   break_s: number;
   pause_s: number;
   manual_s: number;
+  /** Absent from a database older than #319: read as none. */
+  leave_s?: number;
   checkins_shown: number;
   checkins_passed: number;
   checkins_missed: number;
@@ -80,6 +84,7 @@ export function fromDbReportRow(r: DbReportRow): ReportRow {
     breakS: Number(r.break_s),
     pauseS: Number(r.pause_s),
     manualS: Number(r.manual_s),
+    leaveS: Number(r.leave_s ?? 0),
     checkinsShown: Number(r.checkins_shown),
     checkinsPassed: Number(r.checkins_passed),
     checkinsMissed: Number(r.checkins_missed),
@@ -141,6 +146,7 @@ export function secondsFromSegments(segments: ExportSegment[]): ReportSeconds {
 /** The team: every count added up, the rate recomputed from the counts. */
 export interface ReportTotals extends ReportSeconds {
   people: number;
+  leaveS: number;
   checkinsShown: number;
   checkinsPassed: number;
   checkinsMissed: number;
@@ -164,6 +170,7 @@ export function teamTotals(
     breakS: 0,
     pauseS: 0,
     manualS: 0,
+    leaveS: 0,
     checkinsShown: 0,
     checkinsPassed: 0,
     checkinsMissed: 0,
@@ -181,6 +188,7 @@ export function teamTotals(
     total.breakS += r.breakS;
     total.pauseS += r.pauseS;
     total.manualS += r.manualS;
+    total.leaveS += r.leaveS;
     total.checkinsShown += r.checkinsShown;
     total.checkinsPassed += r.checkinsPassed;
     total.checkinsMissed += r.checkinsMissed;
