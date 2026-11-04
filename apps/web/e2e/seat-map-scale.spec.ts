@@ -1,9 +1,10 @@
 // DSH-11 (#308): the seat map with thousands of people. Runs only from
 // scripts/it-seat-map-scale.sh, which seeds SEAT_MAP_SCALE synthetic people reporting to Max
 // Manager (in teams of 3 to 130), runs this and removes them. Checks the team page's reads
-// (a page per thousand people, nothing twice), that only what's on screen is in the DOM, the
-// frame rate while panning and zooming at each level of detail, and that live status updates
-// change chairs without a new layout. Prints what it measured.
+// (a page per thousand people, nothing twice) and that it loads in under 1.5 s (#322), that
+// only what's on screen is in the DOM, the frame rate while panning and zooming at each level
+// of detail, and that live status updates change chairs without a new layout. Prints what it
+// measured.
 import { execFileSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 import { MANAGER_EMAIL } from "./helpers";
@@ -111,6 +112,9 @@ test("the seat map stays smooth with thousands of people", async ({ page }) => {
   expect(teamReads.length).toBeGreaterThanOrEqual(Math.ceil(PEOPLE / 1000));
   expect(teamReads.length).toBeLessThanOrEqual(Math.ceil((PEOPLE + 50) / 1000));
   expect(reads.filter((r, i) => reads.indexOf(r) !== i)).toEqual([]);
+  // #322: the live rows resolve who Max can see once, and the pages after the first are read
+  // together, so the page is up in well under the 5.5 s it took.
+  expect(loadMs).toBeLessThan(1500);
 
   // Everyone fits; zoomed out, each table is one stop in the DOM, not a chair per person.
   await page.getByRole("button", { name: "Fit all" }).click();

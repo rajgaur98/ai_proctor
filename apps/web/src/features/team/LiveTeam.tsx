@@ -98,18 +98,24 @@ export function LiveTeam() {
   const { data, error, isPending, dataUpdatedAt } = useQuery({
     queryKey,
     queryFn: async () => {
-      // One request for most orgs; a page per thousand people for big ones (DSH-11).
+      // One request for most orgs; a page per thousand people for big ones (DSH-11). The
+      // first page brings the count, so the rest are read at once rather than one after
+      // another (#322). Someone added in between shows on the next refetch.
       const started = Date.now();
-      const all: TeamRow[] = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await supabase
+      const page = (from: number) =>
+        supabase
           .from("team_live")
-          .select("*")
+          .select("*", from === 0 ? { count: "exact" } : undefined)
           .order("user_id")
           .range(from, from + PAGE - 1);
+      const first = await page(0);
+      if (first.error) throw first.error;
+      const rest: ReturnType<typeof page>[] = [];
+      for (let from = PAGE; from < (first.count ?? 0); from += PAGE) rest.push(page(from));
+      const all: TeamRow[] = [...first.data];
+      for (const { data, error } of await Promise.all(rest)) {
         if (error) throw error;
         all.push(...data);
-        if (data.length < PAGE) break;
       }
       // The viewer's own row isn't part of their team view; live changes that came in while
       // reading are applied on top.
