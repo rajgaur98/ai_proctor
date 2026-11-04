@@ -186,6 +186,31 @@ describe("summarize", () => {
     expect(summarize("enrollment_token.revoked", {}, nameOf)).toBe("—");
   });
 
+  it("reads API keys and API requests (#306) by key name and prefix, never the key", () => {
+    const key = { key_id: "k1", key_name: "Payroll sync", prefix: "aip_AbCd" };
+    expect(actionLabel("api.read")).toBe("Read through the API");
+    expect(
+      summarize(
+        "api_key.created",
+        { key_id: "k1", name: "Payroll sync", prefix: "aip_AbCd", scopes: ["people:read"] },
+        nameOf,
+      ),
+    ).toBe("Payroll sync · aip_AbCd… · people:read");
+    expect(summarize("api_key.revoked", { name: "Payroll sync", prefix: "aip_AbCd" }, nameOf)).toBe(
+      "Payroll sync · aip_AbCd…",
+    );
+    expect(
+      summarize(
+        "api.read",
+        { ...key, operation: "people.list", row_count: 3, filters: { active: "true" } },
+        nameOf,
+      ),
+    ).toBe("people.list · 3 rows · active: true · key Payroll sync · aip_AbCd…");
+    expect(summarize("api.write", { ...key, operation: "clients.create" }, nameOf)).toBe(
+      "clients.create · key Payroll sync · aip_AbCd…",
+    );
+  });
+
   it("shows unknown metadata as JSON and nothing as a dash", () => {
     expect(summarize("timesheet.approved", { week: "2026-W10" }, nameOf)).toBe(
       '{"week":"2026-W10"}',
