@@ -1,7 +1,7 @@
-// Settings → Import (#256, ORG-03..08, PRJ-01, SHF-01; #282, TS-31): owners and admins add
-// or update people, teams, clients, projects and shifts, and add manual time entries, from
-// a spreadsheet. Pick what to import, download the template if needed, choose a CSV or
-// .xlsx file, read the row-by-row preview, then import. Nothing changes until Import is
+// Settings → Import (#256, ORG-03..08, PRJ-01, SHF-01; #282, TS-31; #319, LV-02): owners
+// and admins add or update people, teams, clients, projects, shifts and holidays, and add
+// manual time entries, from a spreadsheet. Pick what to import, download the template if
+// needed, choose a CSV or .xlsx file, read the row-by-row preview, then import. Nothing changes until Import is
 // pressed, and then all of it or none of it does. After an import the same file is checked again, so every row it
 // changed reads "Unchanged".
 
@@ -56,6 +56,12 @@ const KINDS: { kind: ImportKind; label: string; about: string }[] = [
     label: "Time entries",
     about:
       "Add manual time entries, one row per entry, with times in each person's time zone. Each one needs approval as if the person had asked for it, unless they need none. Matched on email, start and end; existing entries are never changed.",
+  },
+  {
+    kind: "holidays",
+    label: "Holidays",
+    about:
+      "Add holidays for everyone or for one work location, matched on date and place. A holiday already there is renamed.",
   },
 ];
 
@@ -174,9 +180,9 @@ export function ImportPage() {
         <p className="text-xs font-medium text-ink3">Settings</p>
         <h1 className="text-2xl font-semibold tracking-[-0.025em]">Import</h1>
         <p className="mt-1 max-w-[620px] text-[13.5px] text-ink2">
-          Add or update {profile.orgName}'s people, teams, clients, projects and shifts, and add
-          time entries, from a spreadsheet. Nothing changes until you import, and if any row fails
-          nothing is imported.
+          Add or update {profile.orgName}'s people, teams, clients, projects, shifts and holidays,
+          and add time entries, from a spreadsheet. Nothing changes until you import, and if any row
+          fails nothing is imported.
         </p>
       </div>
 

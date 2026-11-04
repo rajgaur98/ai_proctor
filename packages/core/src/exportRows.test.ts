@@ -11,7 +11,11 @@ import {
   exportHeader,
   exportXlsx,
   formatTable,
+  fromDbLeaveDay,
   fromDbRow,
+  LEAVE_ROW,
+  type LeaveDay,
+  leaveWhat,
   sumSegments,
   WEEKLY_SHEET_NAME,
   XLSX_SHEET_NAMES,
@@ -89,6 +93,7 @@ describe("totals", () => {
       manual: 1800,
       billable: 3600 + 600,
       nonBillable: 1800,
+      leave: 0,
     });
   });
 });
@@ -195,14 +200,14 @@ describe("views", () => {
     ]);
   });
 
-  it("ends with Status and Approver columns, then Work done in the per-day view", () => {
+  it("ends with Status and Approver columns, then Time off and Work done in the per-day view", () => {
     const daily = formatTable(buildExport("daily", segs));
-    expect(daily[0]?.slice(-3)).toEqual(["Status", "Approver", "Work done"]);
-    expect(daily.at(-2)?.slice(-3)).toEqual(["approved", "Max Manager", ""]);
-    for (const view of ["project", "segments"] as const) {
-      const lines = formatTable(buildExport(view, segs));
-      expect(lines[0]?.slice(-2)).toEqual(["Status", "Approver"]);
-    }
+    expect(daily[0]?.slice(-4)).toEqual(["Status", "Approver", "Time off", "Work done"]);
+    expect(daily.at(-2)?.slice(-4)).toEqual(["approved", "Max Manager", "", ""]);
+    const project = formatTable(buildExport("project", segs));
+    expect(project[0]?.slice(-2)).toEqual(["Status", "Approver"]);
+    const segments = formatTable(buildExport("segments", segs));
+    expect(segments[0]?.slice(-3)).toEqual(["Status", "Approver", "Time off"]);
   });
 
   // #254 (PRJ-05): a row per task within the project, the task's billable flag; time
@@ -386,8 +391,8 @@ describe("export properties", () => {
         const lines = formatTable(buildExport(view, segs));
         const total = sumSegments(segs);
         const last = lines.at(-1) ?? [];
-        const trailing = view === "daily" ? 1 : 0;
-        const worked = last.length - 2 - trailing - 14;
+        const trailing = view === "daily" ? 2 : view === "segments" ? 1 : 0;
+        const worked = last.length - 2 - trailing - 16;
         expect(last[worked]).toBe(decimalHours(total.worked));
         expect(last[worked + 1]).toBe(clockHours(total.worked));
         // Every line has the header's width.
@@ -551,5 +556,107 @@ describe("XLSX export (#65, TS-19)", () => {
   it("keeps formula-looking names as plain text", () => {
     const [sheet] = readXlsx(exportXlsx("daily", [seg({ employee: "=Evil, Inc" })]));
     expect(sheet?.rows[1]?.[0]?.value).toBe("=Evil, Inc");
+  });
+});
+
+// #319 (LV-05/06): leave has its own column, apart from worked time.
+describe("leave", () => {
+  const leave = (over: Partial<LeaveDay> = {}): LeaveDay => ({
+    userId: "u1",
+    employee: "Erin Employee",
+    email: "erin@acme.test",
+    timezone: "America/Los_Angeles",
+    day: "2026-03-17",
+    seconds: 28800,
+    what: "Vacation",
+    status: "approved",
+    approver: "Max Manager",
+    ...over,
+  });
+  const segs = [
+    seg({ seconds: 7200 }),
+    seg({ day: "2026-03-17", startLocal: "2026-03-17 09:00:00", seconds: 3600 }),
+  ];
+  const col = (view: ExportView, name: string) => exportHeader(view).indexOf(name);
+
+  it("names what a day's leave is", () => {
+    expect(
+      leaveWhat([
+        { name: "Thanksgiving", paid: true, holiday: true, part_day: false },
+        { name: "Unpaid", paid: false, holiday: false, part_day: false },
+        { name: "Sick", paid: true, holiday: false, part_day: true },
+      ]),
+    ).toBe("Thanksgiving (holiday); Unpaid (unpaid); Sick (part day)");
+    expect(
+      fromDbLeaveDay({
+        user_id: "u1",
+        employee: "Erin Employee",
+        email: "erin@acme.test",
+        timezone: "UTC",
+        day: "2026-03-17",
+        seconds: 3600,
+        items: [{ name: "Vacation", paid: true, holiday: false, part_day: false }],
+        status: "draft",
+        approver: null,
+      }),
+    ).toMatchObject({ userId: "u1", seconds: 3600, what: "Vacation", status: "draft" });
+  });
+
+  it("daily: leave joins the person's day, or is a day of its own; never worked time", () => {
+    const lines = formatTable(
+      buildExport(
+        "daily",
+        segs,
+        [],
+        [leave(), leave({ day: "2026-03-18", seconds: 0, what: "Unpaid (unpaid)" })],
+      ),
+    );
+    const leaveH = col("daily", "Leave (h)");
+    const worked = col("daily", "Worked (h)");
+    const timeOff = col("daily", "Time off");
+    expect(lines.slice(1, -1).map((l) => [l[2], l[worked], l[leaveH], l[timeOff]])).toEqual([
+      ["2026-03-16", "2.00", "0.00", ""],
+      ["2026-03-17", "1.00", "8.00", "Vacation"],
+      ["2026-03-18", "0.00", "0.00", "Unpaid (unpaid)"],
+    ]);
+    expect(lines.at(-1)?.[worked]).toBe("3.00");
+    expect(lines.at(-1)?.[leaveH]).toBe("8.00");
+    expect(lines.at(-1)?.[leaveH + 1]).toBe("8:00");
+  });
+
+  it("project: one Leave row per person after their projects", () => {
+    const lines = formatTable(
+      buildExport("project", segs, [], [leave(), leave({ day: "2026-03-18" })]),
+    );
+    const leaveH = col("project", "Leave (h)");
+    expect(
+      lines.slice(1, -1).map((l) => [l[3], l[col("project", "Worked (h)")], l[leaveH]]),
+    ).toEqual([
+      ["Website revamp", "3.00", "0.00"],
+      [LEAVE_ROW, "0.00", "16.00"],
+    ]);
+  });
+
+  it("segments: a row per leave day, type leave, with what it is", () => {
+    const lines = formatTable(buildExport("segments", segs, [], [leave()]));
+    const row = lines.find((l) => l[6] === "leave");
+    expect(row?.[2]).toBe("2026-03-17");
+    expect(row?.[col("segments", "Leave (h)")]).toBe("8.00");
+    expect(row?.at(-1)).toBe("Vacation");
+    expect(lines).toHaveLength(1 + 3 + 1);
+  });
+
+  it("the XLSX has the same Leave column and doesn't count it as overtime", () => {
+    const file = exportXlsx("daily", segs, {
+      overtime: { dailyHours: 4, weeklyHours: 5 },
+      leave: [leave()],
+    });
+    const sheets = readXlsx(file);
+    const sheet = sheets[0];
+    const header = sheet?.rows[0]?.map((c) => c.value);
+    const leaveH = header?.indexOf("Leave (h)") ?? -1;
+    expect(sheet?.rows[2]?.[leaveH]?.value).toBe(8);
+    // Weekly worked is 3 h: leave doesn't push it over the 5 h threshold.
+    expect(sheets[1]?.rows[1]?.[3]?.value).toBe(3);
   });
 });

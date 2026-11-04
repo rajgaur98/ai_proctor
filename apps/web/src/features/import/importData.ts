@@ -19,7 +19,7 @@ export type ImportData = Omit<ImportContext, "me" | "defaults" | "time"> & {
 export const importContextQuery = queryOptions({
   queryKey: ["import-context"],
   queryFn: async (): Promise<ImportData> => {
-    const [users, teams, clients, projects, members, shifts, tasks] = await Promise.all([
+    const [users, teams, clients, projects, members, shifts, tasks, holidays] = await Promise.all([
       supabase
         .from("users")
         .select(
@@ -31,8 +31,9 @@ export const importContextQuery = queryOptions({
       supabase.from("project_members").select("project_id, user_id"),
       supabase.from("shifts").select("user_id, days, start_time, end_time, timezone"),
       supabase.from("project_tasks").select("project_id, name, archived"),
+      supabase.from("holidays").select("day, name, country, state"),
     ]);
-    for (const r of [users, teams, clients, projects, members, shifts, tasks]) {
+    for (const r of [users, teams, clients, projects, members, shifts, tasks, holidays]) {
       if (r.error) throw r.error;
     }
     const emailOf = new Map((users.data ?? []).map((u) => [u.id, u.email.toLowerCase()]));
@@ -81,6 +82,12 @@ export const importContextQuery = queryOptions({
             ]
           : [];
       }),
+      holidays: (holidays.data ?? []).map((h) => ({
+        day: h.day,
+        name: h.name,
+        country: h.country,
+        state: h.state,
+      })),
       tasks: (tasks.data ?? []).flatMap((t) => {
         const p = projectOf.get(t.project_id);
         return p
