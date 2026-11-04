@@ -13,6 +13,38 @@ describe("actionLabel", () => {
 });
 
 describe("summarize", () => {
+  it("reads time off (#304) without the note's words", () => {
+    expect(actionLabel("leave.requested")).toBe("Requested time off");
+    expect(
+      summarize(
+        "leave.requested",
+        {
+          type_name: "Unpaid",
+          paid: false,
+          kind: "days",
+          first_day: "2026-11-16",
+          last_day: "2026-11-17",
+          note_length: 11,
+        },
+        nameOf,
+      ),
+    ).toBe("Unpaid · unpaid · Mon 16 Nov – Tue 17 Nov 2026 · note 11 characters");
+    expect(
+      summarize(
+        "holiday.added",
+        { name: "Thanksgiving", day: "2026-11-26", country: "US", state: null },
+        nameOf,
+      ),
+    ).toBe("Thanksgiving · 2026-11-26 · US");
+    expect(
+      summarize(
+        "leave_type.changed",
+        { name: "Sick", changed: { paid: {}, archived: {} } },
+        nameOf,
+      ),
+    ).toBe("Sick · changed paid, archived");
+  });
+
   it("reads a timesheet comment (#265): where it is and its length", () => {
     expect(actionLabel("timesheet.commented")).toBe("Commented on a timesheet");
     expect(

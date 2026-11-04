@@ -185,6 +185,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | # | Status | Rule |
 |---|---|---|
 | 1 | ⚫ **Off shift** | Not clocked in |
+| 1a | ⚫ **On leave** | Not clocked in, on an approved leave or a holiday that applies to them (LV-04). Clocked in, the rules below apply as usual |
 | 2 | ⚠️ **Tamper** | Agent killed/blocked during clock-in, capture permission missing, or heartbeat gap with device online elsewhere |
 | 3 | ⚫ **Offline** | Clocked in, no heartbeat for > 3 min |
 | 4 | 🔵 **On break** | Break active |

@@ -53,6 +53,14 @@ describe("summarize", () => {
   });
 });
 
+describe("on leave (LV-04)", () => {
+  it("is neither on shift nor expected today, and sorts last", () => {
+    const withLeave = [...rows, row("Maya", "on_leave")];
+    expect(summarize(withLeave)).toMatchObject({ onShift: 4, scheduled: 4 });
+    expect(sortRows(withLeave, "status").at(-1)?.full_name).toBe("Maya");
+  });
+});
+
 describe("sortRows", () => {
   it("puts what needs attention first when sorting by status", () => {
     expect(sortRows(rows, "status").map((r) => r.full_name)).toEqual([

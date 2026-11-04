@@ -3,6 +3,7 @@
 // back to the raw name and the metadata as JSON.
 import type { Json } from "@ai-proctor/contracts";
 import { reasonLabel } from "../day/checkinText";
+import { holidayPlace, leaveWhen } from "../timeoff/leaveText";
 
 export const actionLabels: Record<string, string> = {
   "member.invited": "Invited a member",
@@ -27,6 +28,15 @@ export const actionLabels: Record<string, string> = {
   "import.applied": "Imported data",
   "checkin.miss_reason_set": "Set a miss reason",
   "timesheet.commented": "Commented on a timesheet",
+  "leave_type.created": "Added a leave type",
+  "leave_type.changed": "Changed a leave type",
+  "holiday.added": "Added a holiday",
+  "holiday.changed": "Changed a holiday",
+  "holiday.removed": "Removed a holiday",
+  "leave.requested": "Requested time off",
+  "leave.approved": "Approved time off",
+  "leave.rejected": "Declined time off",
+  "leave.cancelled": "Cancelled time off",
 };
 
 /** Actions offered in the filter, in the order above. */
@@ -54,6 +64,28 @@ const count = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
 const tokenName = (m: Meta): string => {
   const prefix = text(m.prefix);
   return [text(m.label), prefix ? `${prefix}…` : null].filter(Boolean).join(" · ") || "—";
+};
+
+/** "Vacation · Mon 16 Nov 2026" from a time-off row (#304); the note's length, never its words. */
+const leave = (m: Meta): string => {
+  const when = leaveWhen({
+    kind: text(m.kind) ?? "days",
+    firstDay: text(m.first_day) ?? "",
+    lastDay: text(m.last_day) ?? "",
+    startAt: text(m.start_at) ?? "",
+    endAt: text(m.end_at) ?? "",
+    timezone: text(m.timezone) ?? "UTC",
+  });
+  const noteLength = typeof m.note_length === "number" ? m.note_length : 0;
+  return [
+    text(m.type_name),
+    m.paid === false ? "unpaid" : null,
+    when || null,
+    noteLength > 0 ? `note ${plural(noteLength, "character")}` : null,
+    m.auto_approved === true ? "approved at once (no manager)" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 };
 
 /** `nameOf` turns a user id into a name (or something short when it's unknown). */
@@ -148,6 +180,25 @@ export function summarize(
         .filter(Boolean)
         .join(" · ");
     }
+    case "leave_type.created":
+      return `${text(m.name) ?? "—"} · ${m.paid === false ? "Unpaid" : "Paid"}`;
+    case "leave_type.changed": {
+      const changed = m.changed && typeof m.changed === "object" ? Object.keys(m.changed) : [];
+      return [text(m.name) ?? "—", changed.length ? `changed ${changed.join(", ")}` : null]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    case "holiday.added":
+    case "holiday.changed":
+    case "holiday.removed":
+      return [text(m.name) ?? "—", text(m.day), holidayPlace(text(m.country), text(m.state))]
+        .filter(Boolean)
+        .join(" · ");
+    case "leave.requested":
+    case "leave.approved":
+    case "leave.rejected":
+    case "leave.cancelled":
+      return leave(m) || "—";
     default:
       return Object.keys(m).length ? JSON.stringify(m) : "—";
   }
