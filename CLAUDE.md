@@ -38,7 +38,6 @@ If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > 
 - Two PRs that are green alone can break main together (one adds a struct field, the other a test that builds the struct). Before merging, merge current `main` into the branch, run the checks it touches, and push so CI runs on that result. Merge one PR at a time. Every DB PR regenerates `database.types.ts`, so on a conflict regenerate it from the merged migrations rather than hand-merging.
 - Before pushing: lint, typecheck, unit tests, and a self-review of the diff. CI must be green.
 - Windows code (no Windows machine yet) gets the `needs-device-test` label and a manual test checklist in the PR body; it must still compile and pass tests on the Windows CI runner. Keep going.
-- Never put model names in commits, PRs or code.
 - When blocked on a decision only Raj can make, add it to "Blocked on Raj" in `docs/progress.md` with the exact question, then move to the next unblocked issue.
 
 ## Autonomous runs
