@@ -293,7 +293,7 @@ select pg_temp.act_as(:ada);
 select throws_ok($$ select * from public.webhook_claim(10) $$, '42501', null,
   'a signed-in person can''t claim deliveries');
 
-create temp table claimed (id uuid, url text, secret text, payload jsonb, event_type text,
+create temp table claimed (id uuid, url text, secret text, previous_secret text, payload jsonb, event_type text,
   event_id uuid, attempt int, allow_private boolean) on commit drop;
 grant all on claimed to service_role;
 select pg_temp.as_service();

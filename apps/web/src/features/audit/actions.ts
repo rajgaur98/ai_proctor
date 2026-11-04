@@ -38,6 +38,8 @@ export const actionLabels: Record<string, string> = {
   "webhook.deleted": "Deleted a webhook endpoint",
   "webhook.secret_rotated": "Rotated a webhook secret",
   "webhook.disabled": "Turned off a failing webhook endpoint",
+  "webhook.test_sent": "Sent a webhook test event",
+  "webhook.redelivered": "Redelivered a webhook event",
   "leave_type.created": "Added a leave type",
   "leave_type.changed": "Changed a leave type",
   "holiday.added": "Added a holiday",
@@ -245,7 +247,10 @@ export function summarize(
     case "webhook.changed":
       return [text(m.host), webhookChange(m.changed)].filter(Boolean).join(" · ") || "—";
     case "webhook.secret_rotated":
+    case "webhook.test_sent":
       return text(m.host) ?? "—";
+    case "webhook.redelivered":
+      return [text(m.host), text(m.event_type)].filter(Boolean).join(" · ") || "—";
     case "webhook.disabled":
       return (
         [

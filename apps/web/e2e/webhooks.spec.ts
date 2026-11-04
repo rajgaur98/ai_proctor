@@ -1,7 +1,8 @@
-// Settings → API → Webhooks (#320, API-06): an admin adds an endpoint and sees its signing
-// secret once, turns it off, rotates the secret, reads the (empty) delivery log and deletes
-// it. The spec makes its own endpoint (unique URL) and deletes it, so it passes alone and
-// after any other spec. Delivery itself is covered by scripts/it-webhooks.ts.
+// Settings → API → Webhooks (#320, #335; API-06): an admin adds an endpoint and sees its signing
+// secret once, sends it a test event and finds it in the delivery log, tries to redeliver,
+// turns it off, rotates the secret (the previous one signs for 24 hours more) and deletes it.
+// The spec makes its own endpoint (unique URL) and deletes it, so it passes alone and after
+// any other spec. Delivery itself is covered by scripts/it-webhooks.ts.
 import { expect, type Page, test } from "@playwright/test";
 import { expectNoA11yViolations, pressUntilFocused } from "./helpers";
 
@@ -57,6 +58,31 @@ test("an admin adds a webhook endpoint, sees the secret once, rotates it and del
   await expect(row).toContainText("No events yet");
   expect(await page.content()).not.toContain(secret);
 
+  // Send a test event (#335): queued, and in this endpoint's delivery log.
+  // The e2e stack sends nothing (no Vault secrets for the deliver job), so the log is shown as
+  // if the test event had failed for good, to reach Redeliver; the server refuses it, since
+  // the event is really still waiting. Redelivery itself is covered by it-webhooks.ts.
+  await page.route("**/rest/v1/rpc/list_webhook_deliveries*", async (route) => {
+    const response = await route.fetch();
+    const rows = (await response.json()) as Record<string, unknown>[];
+    await route.fulfill({
+      response,
+      json: rows.map((r) => ({ ...r, status: "failed", attempts: 7, next_attempt_at: null })),
+    });
+  });
+  await row.getByRole("button", { name: `Send a test event to ${url}` }).click();
+  await expect(page.getByText(`Test event queued for ${url}.`)).toBeVisible();
+  await page.getByLabel("Endpoint", { exact: true }).selectOption({ label: url });
+  const log = page.getByRole("table", { name: "Webhook deliveries" });
+  const ping = log.getByRole("row").filter({ hasText: "Test event" });
+  await expect(ping).toHaveCount(1);
+  await expectNoA11yViolations(page);
+  await ping.getByRole("button", { name: "Redeliver Test event" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Couldn't redeliver" })).toHaveText(
+    "Couldn't redeliver: That event is still waiting to go out to this endpoint.",
+  );
+  await page.unroute("**/rest/v1/rpc/list_webhook_deliveries*");
+
   // Turn it off.
   await row.getByRole("button", { name: `Edit ${url}` }).click();
   const edit = page.getByRole("dialog", { name: "Edit endpoint" });
@@ -66,6 +92,10 @@ test("an admin adds a webhook endpoint, sees the secret once, rotates it and del
   await edit.getByRole("button", { name: "Save" }).click();
   await expect(edit).toBeHidden();
   await expect(row).toContainText("Off");
+  await row.getByRole("button", { name: `Send a test event to ${url}` }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "test event" })).toHaveText(
+    "Couldn't send the test event: The endpoint is off. Turn it on first.",
+  );
 
   // Rotate: a new secret, shown once.
   await row.getByRole("button", { name: `Rotate the secret of ${url}` }).click();
@@ -77,10 +107,7 @@ test("an admin adds a webhook endpoint, sees the secret once, rotates it and del
   expect(await fresh.inputValue()).not.toBe(secret);
   await rotate.getByRole("button", { name: "Done" }).click();
   await expect(rotate).toBeHidden();
-
-  // Its delivery log is empty.
-  await page.getByLabel("Endpoint", { exact: true }).selectOption({ label: url });
-  await expect(page.getByText("No deliveries in the last 30 days.")).toBeVisible();
+  await expect(row).toContainText("Previous secret also signs until");
 
   // Delete.
   await row.getByRole("button", { name: `Delete ${url}` }).click();

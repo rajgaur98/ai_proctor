@@ -68,6 +68,8 @@ jobs:
               - "pnpm-lock.yaml"
               - "scripts/integration.sh"
               - "scripts/it-*.sh"
+              - "scripts/it-*.ts"
+              - "scripts/webhook-pin-check.ts"
               - ".github/workflows/ci.yml"
             sync:
               - "apps/agent/src-tauri/core/**"

@@ -1,5 +1,5 @@
 // The OpenAPI 3.1 document of the public API v1 (#306, API-01), built from the route table,
-// with the webhook events (#320, API-06) under `webhooks`.
+// with the webhook events (#320, #335; API-06) under `webhooks`.
 // Served at GET /v1/openapi.json and committed as docs/api/openapi.json
 // (`pnpm api:openapi` writes it; `pnpm api:openapi --check` fails when it is stale).
 import { type Operation, operations, type Param, type ParamType } from "./routes.ts";
@@ -447,6 +447,12 @@ const webhookEvents: { type: string; summary: string; data: Schema }[] = [
     summary: "A time-off request was approved or declined",
     data: { $ref: "#/components/schemas/TimeOff" },
   },
+  {
+    type: "ping",
+    summary:
+      "A test event: an admin pressed Send test event for this endpoint (sent whatever events it chose)",
+    data: { $ref: "#/components/schemas/WebhookPing" },
+  },
 ];
 
 schemas.WebhookTimesheet = {
@@ -478,14 +484,19 @@ schemas.WebhookAlert = object(
   "A manager alert. The recipients are not included.",
 );
 
+schemas.WebhookPing = object(
+  { webhook_id: { ...id, description: "The endpoint the test was sent to." } },
+  "A test event (#335).",
+);
+
 const signatureHeaders = [
   ["X-AIProctor-Event", "The event type, e.g. timesheet.approved."],
-  ["X-AIProctor-Event-Id", "The event's id, the same in every retry: dedupe on it."],
+  ["X-AIProctor-Event-Id", "The event's id, the same in every retry and redelivery: dedupe on it."],
   ["X-AIProctor-Delivery", "This endpoint's delivery of the event."],
   ["X-AIProctor-Timestamp", "Unix seconds when this attempt was signed."],
   [
     "X-AIProctor-Signature",
-    "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+    "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
   ],
 ].map(([name, description]) => ({
   name,
@@ -504,8 +515,11 @@ function webhooks(): Record<string, Schema> {
           operationId: `webhook${e.type.replace(/(^|[._])(\w)/g, (_, __, c: string) => c.toUpperCase())}`,
           tags: ["Webhooks"],
           summary: e.summary,
-          description:
-            "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+          description: `${
+            e.type === "ping"
+              ? "Sent to one endpoint when an admin sends it a test event."
+              : "Sent to every enabled endpoint that subscribed to this event."
+          } A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, \`data\` keeps only ids and \`redacted\` is true.`,
           parameters: signatureHeaders,
           requestBody: {
             required: true,
