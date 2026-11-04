@@ -86,6 +86,10 @@ class Rows(unittest.TestCase):
         self.assertEqual(s[(7, None)], "needs-work")
         self.assertEqual(s[(9, None)], "blocked")
 
+    def test_pr_of_a_blocked_issue_is_blocked(self):
+        s = self.states([issue(9, ["blocked"])], [pr(109, "9-x", body="Closes #9")])
+        self.assertEqual(s, {(9, 109): "blocked"})
+
     def test_behind_main(self):
         self.assertEqual(self.states([issue(1)], [pr(101, "1-a")], behind=2)[(1, 101)], "behind-main")
 

@@ -43,6 +43,7 @@ const row = (over: Partial<ReportRow> = {}): ReportRow => ({
   breakS: 0,
   pauseS: 0,
   manualS: 0,
+  leaveS: 0,
   checkinsShown: 0,
   checkinsPassed: 0,
   checkinsMissed: 0,
@@ -138,6 +139,7 @@ describe("teamTotals", () => {
           lateClockIns: 1,
           anomalyFlags: 3,
           needsReview: 2,
+          leaveS: 28800,
         }),
         row({
           userId: "u2",
@@ -149,6 +151,7 @@ describe("teamTotals", () => {
           checkinsPassed: 0,
           checkinsMissed: 1,
           checkinsFailed: 1,
+          leaveS: 9000,
         }),
         row({ userId: "u3" }),
       ],
@@ -168,6 +171,8 @@ describe("teamTotals", () => {
       anomalyFlags: 3,
       needsReview: 2,
       medianResponseMs: 3000,
+      // LV-06: leave adds up apart from worked time.
+      leaveS: 37800,
     });
     // 9 of 12, not the mean of 90% and 0% and nothing.
     expect(t.responseRate).toBe(0.75);
@@ -228,6 +233,7 @@ describe("fromDbReportRow", () => {
       break_s: 900,
       pause_s: 900,
       manual_s: 3600,
+      leave_s: 28800,
       checkins_shown: 8,
       checkins_passed: 5,
       checkins_missed: 2,
@@ -248,6 +254,7 @@ describe("fromDbReportRow", () => {
       breakS: 900,
       pauseS: 900,
       manualS: 3600,
+      leaveS: 28800,
       checkinsShown: 8,
       checkinsPassed: 5,
       checkinsMissed: 2,
@@ -288,6 +295,6 @@ describe("fromDbReportRow", () => {
       anomaly_flags: 9,
       needs_review: 9,
     } satisfies DbReportRow;
-    expect(fromDbReportRow(old)).toMatchObject({ anomalyFlags: 0, needsReview: 0 });
+    expect(fromDbReportRow(old)).toMatchObject({ anomalyFlags: 0, needsReview: 0, leaveS: 0 });
   });
 });

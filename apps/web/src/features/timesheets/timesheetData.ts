@@ -10,6 +10,7 @@ import {
 import { queryOptions } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { supabase } from "../../lib/supabase";
+import { type DayLeave, leaveByUser, toLeaveItems } from "./leave";
 import type { WeekMiss } from "./misses";
 import type { BreakdownRow } from "./summary";
 import { weekDays, weekStartDay } from "./weeks";
@@ -167,6 +168,30 @@ export const breakdownQuery = (userId: string, weekStart: string) =>
     },
   });
 
+/**
+ * LV-05 (#319): the person's leave per day of the week (paid leave and holidays counted,
+ * unpaid listed with 0), apart from their worked time. Doesn't depend on the segments, so
+ * it needn't wait for the week's rebuild.
+ */
+export const weekLeaveQuery = (userId: string, weekStart: string) =>
+  queryOptions({
+    queryKey: ["timesheet-leave", userId, weekStart],
+    queryFn: async (): Promise<DayLeave[]> => {
+      const days = weekDays(weekStart);
+      const { data, error } = await supabase.rpc("timesheet_leave", {
+        p_from: days[0] ?? weekStart,
+        p_to: days[6] ?? weekStart,
+        p_user_id: userId,
+      });
+      if (error) throw error;
+      return data.map((r) => ({
+        day: r.day,
+        seconds: Number(r.seconds),
+        items: toLeaveItems(r.items),
+      }));
+    },
+  });
+
 /** TS-25 (#254): the person's work note per day of the week, by local day. */
 export const dayNotesQuery = (userId: string, weekStart: string) =>
   queryOptions({
@@ -316,6 +341,8 @@ export interface ListRow extends Timesheet {
   excludedS: number;
   /** Worked seconds by project and task (#266), for billable and the totals. */
   assigned: AssignedSeconds[];
+  /** LV-05 (#319): paid leave and holidays in the week, apart from worked time. */
+  leaveS: number;
 }
 
 /** The timesheets the viewer can see for a week, with totals (DSH-06, TS-29). */
@@ -325,17 +352,22 @@ export const weekListQuery = (weekStart: string) =>
     queryFn: async (): Promise<ListRow[]> => {
       const days = weekDays(weekStart);
       const range = { p_from: days[0] ?? weekStart, p_to: days[6] ?? weekStart };
-      const [sheets, totals, assigned] = await Promise.all([
+      const [sheets, totals, assigned, leave] = await Promise.all([
         supabase
           .from("timesheets")
           .select(`${sheetColumns}, users!timesheets_user_id_fkey(full_name, timezone)`)
           .eq("period_start", weekStart),
         supabase.rpc("timesheet_totals", range),
         supabase.rpc("timesheet_assignment_totals", range),
+        supabase.rpc("timesheet_leave", range),
       ]);
       if (sheets.error) throw sheets.error;
       if (totals.error) throw totals.error;
       if (assigned.error) throw assigned.error;
+      if (leave.error) throw leave.error;
+      const leaveOf = leaveByUser(
+        leave.data.map((l) => ({ userId: l.user_id, seconds: Number(l.seconds) })),
+      );
       const byUser = new Map(totals.data.map((t) => [t.user_id, t]));
       const assignedBy = new Map<string, AssignedSeconds[]>();
       for (const a of assigned.data) {
@@ -354,6 +386,7 @@ export const weekListQuery = (weekStart: string) =>
             flaggedS: t?.flagged_s ?? 0,
             excludedS: t?.excluded_s ?? 0,
             assigned: assignedBy.get(s.user_id) ?? [],
+            leaveS: leaveOf.get(s.user_id) ?? 0,
           };
         })
         .sort((a, b) => a.fullName.localeCompare(b.fullName));

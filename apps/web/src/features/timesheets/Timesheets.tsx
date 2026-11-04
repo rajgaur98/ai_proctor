@@ -183,6 +183,7 @@ export function Timesheets() {
                 <th className="font-medium">Billable</th>
                 <th className="font-medium">Non-billable</th>
                 <th className="font-medium">Flagged</th>
+                <th className="font-medium">Leave</th>
                 <th className="pr-5">
                   <span className="sr-only">Actions</span>
                 </th>
@@ -230,6 +231,10 @@ export function Timesheets() {
                     <td className="font-mono text-[13px]">
                       {r.flaggedS > 0 ? formatDuration(r.flaggedS) : "—"}
                     </td>
+                    <td className="font-mono text-[13px]">
+                      <span className="font-sans text-ink3 md:hidden">Leave </span>
+                      {r.leaveS > 0 ? formatDuration(r.leaveS) : "—"}
+                    </td>
                     <td className="md:pr-5 md:text-right">
                       <Link
                         to="/timesheets/$userId"
@@ -254,6 +259,7 @@ export function Timesheets() {
           title="Totals"
           description={`The ${rows.length} ${rows.length > 1 ? "timesheets" : "timesheet"} shown, ${weekLabel(week)}.`}
           totals={shownTotals}
+          leave={rows.reduce((sum, r) => sum + r.leaveS, 0)}
           names={totalsNames(clients.data ?? [], projects.data ?? [], tasks.data ?? [])}
           overtime={
             <OvertimeChips

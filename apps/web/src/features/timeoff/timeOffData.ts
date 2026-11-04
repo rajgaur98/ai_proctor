@@ -64,14 +64,34 @@ export const holidaysQuery = queryOptions({
   },
 });
 
-/** Requests overlapping `from`..`to` (open ends when omitted) the viewer may see. */
-export const leaveRequestsQuery = (from?: string, to?: string) =>
+/** LV-06: what the time-off list is narrowed to; empty or left out is no filter. */
+export interface LeaveFilters {
+  /** Requests whose days overlap `from`..`to` (open ends when empty). */
+  from?: string;
+  to?: string;
+  userId?: string;
+  teamId?: string;
+  status?: string;
+}
+
+/** Requests the viewer may see, narrowed by `f` (leave_requests_list). */
+export const leaveRequestsQuery = (f: LeaveFilters = {}) =>
   queryOptions({
-    queryKey: ["leave-requests", from ?? "", to ?? ""],
+    queryKey: [
+      "leave-requests",
+      f.from ?? "",
+      f.to ?? "",
+      f.userId ?? "",
+      f.teamId ?? "",
+      f.status ?? "",
+    ],
     queryFn: async (): Promise<LeaveRequest[]> => {
       const { data, error } = await supabase.rpc("leave_requests_list", {
-        ...(from ? { p_from: from } : {}),
-        ...(to ? { p_to: to } : {}),
+        ...(f.from ? { p_from: f.from } : {}),
+        ...(f.to ? { p_to: f.to } : {}),
+        ...(f.userId ? { p_user_id: f.userId } : {}),
+        ...(f.teamId ? { p_team_id: f.teamId } : {}),
+        ...(f.status ? { p_status: f.status } : {}),
       });
       if (error) throw new Error(explain(error.message));
       return data.map((r) => ({

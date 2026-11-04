@@ -61,6 +61,10 @@ const MESSAGES: Record<string, string> = {
   range_too_long: "An entry in the file is longer than 24 hours.",
   invalid_reason: "A reason in the file is empty or too long.",
   invalid_note: "A note in the file is too long.",
+  // Holidays (#319): save_holiday's refusals.
+  invalid_holiday: "A holiday in the file has a bad date, name or place.",
+  holiday_exists: "A holiday in the file now exists on that date for that place.",
+  holiday_not_found: "A holiday in the file has been deleted.",
 };
 
 /** What went wrong, in plain words, with the rows when the database named them. */

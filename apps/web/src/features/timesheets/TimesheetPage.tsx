@@ -9,6 +9,9 @@
 // billable and non-billable totals and totals by client, project and task, with overtime
 // next to them (TS-29, TS-19). #265: a banner says who submitted or approved a locked week and
 // when, and the employee and reviewers comment on the week's rows and manual entries (TS-33).
+// #319 (LV-05): approved leave and holidays show as Leave, apart from worked time and
+// overtime: in the header, a Leave column in the day table, the totals, the grid's Leave row
+// and the day list.
 import { ReturnComment, TimesheetReason } from "@ai-proctor/contracts";
 import {
   billingCatalog,
@@ -40,6 +43,7 @@ import {
 } from "./dialogs";
 import { FlaggedSegments } from "./FlaggedSegments";
 import { LockBanner } from "./LockBanner";
+import { leaveByDay, leaveLabel, leaveTotal } from "./leave";
 import { OvertimeNote, WorkedTime } from "./Overtime";
 import { ProjectTime } from "./ProjectTime";
 import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
@@ -66,6 +70,7 @@ import {
   saveDayNote,
   submitWeek,
   timesheetQuery,
+  weekLeaveQuery,
   weekMissesQuery,
   weekStartQuery,
 } from "./timesheetData";
@@ -190,6 +195,7 @@ export function TimesheetPage() {
   const tasks = useQuery(tasksQuery);
   const clients = useQuery(clientsQuery);
   const dayNotes = useQuery({ ...dayNotesQuery(userId, week), enabled: ready });
+  const leave = useQuery({ ...weekLeaveQuery(userId, week), enabled: ready });
   const editorIds = [...new Set((edits.data ?? []).map((e) => e.editorId).filter((id) => !!id))];
   const editors = useQuery({
     queryKey: ["timesheet-editors", editorIds],
@@ -214,6 +220,7 @@ export function TimesheetPage() {
         ["timesheet-edits"],
         ["manual-entries", userId],
         ["timesheet-day-notes", userId],
+        ["timesheet-leave", userId],
         ["timesheet-list"],
       ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     );
@@ -260,6 +267,10 @@ export function TimesheetPage() {
   const status = sheet.data?.status;
   const days = weekDays(week);
   const summary = summarizeWeek(breakdown.data ?? [], days);
+  // LV-05: leave by day; its own numbers, never added to worked time or overtime.
+  const leaveDays = leaveByDay(leave.data ?? []);
+  const leaveSeconds = leaveTotal(leaveDays, days);
+  const hasLeave = days.some((d) => leaveDays.has(d));
   const split = projectSplit(summary.total.byProject);
   const color = new Map(split.map((p, i) => [p.projectId, palette[i % palette.length] ?? ""]));
   color.set(null, "var(--line2)");
@@ -304,7 +315,12 @@ export function TimesheetPage() {
     : `Decide on ${blockers.join(" and ")} first`;
   const editable = canDecide && status !== undefined && status !== "approved";
   const loadError =
-    sheet.error ?? breakdown.error ?? flagged.error ?? entries.error ?? dayNotes.error;
+    sheet.error ??
+    breakdown.error ??
+    flagged.error ??
+    entries.error ??
+    dayNotes.error ??
+    leave.error;
   const canSubmit = isSelf && (status === "draft" || status === "returned") && week <= today;
   const listPath = profile.role === "employee" ? myTimesheetPath : timesheetsPath;
   const canReassign = canReassignWeek(isSelf, status);
@@ -354,6 +370,13 @@ export function TimesheetPage() {
                     {formatDuration(summary.total.excluded)}
                   </span>
                   <span className="text-ink2">excluded</span>
+                </>
+              )}
+              {hasLeave && (
+                <>
+                  <span className="text-ink3">·</span>
+                  <span className="font-mono font-medium">{formatDuration(leaveSeconds)}</span>
+                  <span className="text-ink2">leave</span>
                 </>
               )}
             </p>
@@ -469,6 +492,11 @@ export function TimesheetPage() {
               <th scope="col" className="font-medium">
                 Manual
               </th>
+              {hasLeave && (
+                <th scope="col" className="font-medium">
+                  Leave
+                </th>
+              )}
               <th scope="col" className="font-medium">
                 Project split
               </th>
@@ -482,6 +510,7 @@ export function TimesheetPage() {
               const parts = projectSplit(d.byProject);
               const total = parts.reduce((a, p) => a + p.seconds, 0);
               const note = notes.get(d.day) ?? "";
+              const dayLeave = leaveDays.get(d.day);
               return (
                 <tr key={d.day} className="min-h-14 border-b border-line align-middle">
                   <th scope="row" className="px-5 py-3 text-left font-medium whitespace-nowrap">
@@ -504,6 +533,18 @@ export function TimesheetPage() {
                   <td className="text-[13px] text-ink2">
                     {d.manual > 0 ? formatDuration(d.manual) : "—"}
                   </td>
+                  {hasLeave && (
+                    <td className="text-[13px] text-ink2">
+                      {dayLeave ? (
+                        <span className="flex flex-col">
+                          <span className="font-mono">{formatDuration(dayLeave.seconds)}</span>
+                          <span className="text-xs text-ink3">{leaveLabel(dayLeave)}</span>
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  )}
                   <td className="py-2">
                     {total > 0 && (
                       <div className="flex flex-col gap-1.5">
@@ -581,6 +622,7 @@ export function TimesheetPage() {
               <td className={mono}>{formatDuration(summary.total.flagged)}</td>
               <td className={mono}>{formatDuration(summary.total.breakTime)}</td>
               <td className={mono}>{formatDuration(summary.total.manual)}</td>
+              {hasLeave && <td className={mono}>{formatDuration(leaveSeconds)}</td>}
               <td className="py-3" colSpan={2}>
                 <ul className="flex flex-wrap gap-x-3.5 gap-y-1 pr-5 text-[12.5px] font-medium">
                   {split.map((p) => (
@@ -604,6 +646,7 @@ export function TimesheetPage() {
         title="Totals"
         description="Worked time this week, billable and by client, project and task."
         totals={totals}
+        leave={hasLeave ? leaveSeconds : undefined}
         names={totalsNames(clients.data ?? [], projects.data ?? [], tasks.data ?? [])}
         overtime={<OvertimeChips items={overtimeItems} />}
         loading={breakdown.isPending || projects.isPending || tasks.isPending || clients.isPending}
@@ -630,6 +673,7 @@ export function TimesheetPage() {
           week={week}
           zone={zone}
           breakdown={breakdown.data ?? []}
+          leave={leaveDays}
           entries={entryList}
           enabled={fresh}
           loading={!fresh || breakdown.isPending || entries.isPending}
@@ -646,6 +690,7 @@ export function TimesheetPage() {
           week={week}
           zone={zone}
           entries={entryList}
+          leave={leaveDays}
           enabled={fresh}
           canEdit={canEditNotes}
           onChanged={refreshAfterRebuild}

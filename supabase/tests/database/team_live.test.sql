@@ -51,7 +51,7 @@ select is((select count(*)::int from public.team_live), 1, 'an employee sees onl
 
 select set_config('role', 'anon', true);
 select set_config('request.jwt.claims', '', true);
-select is_empty('select 1 from public.team_live', 'anon sees nothing');
+select throws_ok('select 1 from public.team_live', '42501', null, 'anon cannot read it (#322)');
 
 select set_config('role', 'postgres', true);
 select * from finish();

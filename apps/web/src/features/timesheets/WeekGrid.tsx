@@ -10,7 +10,9 @@
 // change adds time with quick add or copies last week's rows, and its manual entries if
 // they ask (WeekGridTools). #299 (TS-33): each row header has a comment button with the
 // row's count that opens its thread, and the manual entries in a cell show theirs; the
-// employee and the people who review the week write, everyone else reads.
+// employee and the people who review the week write, everyone else reads. #319 (LV-05): a
+// read-only Leave row under the totals shows each day's approved leave and holidays; it is
+// not in the worked totals.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useEffect, useRef, useState } from "react";
@@ -34,6 +36,7 @@ import { rowCommentsName, rowKey, rowThreadCounts } from "./comments";
 import { canLogTo, isFavourite, shownFavourites } from "./copyWeek";
 import { trackedRuns } from "./dayList";
 import { favouritesQuery, setFavourite } from "./gridData";
+import { type DayLeave, leaveLabel, leaveTotal } from "./leave";
 import { allowedProjects } from "./reassign";
 import { type BreakdownRow, formatDuration } from "./summary";
 import { EditDialog, weekSegmentsQuery } from "./WeekDayList";
@@ -73,6 +76,7 @@ export function WeekGrid({
   week,
   zone,
   breakdown,
+  leave,
   entries,
   enabled,
   loading,
@@ -89,6 +93,8 @@ export function WeekGrid({
   zone: string;
   /** The week's seconds (the page already reads them, for its totals). */
   breakdown: BreakdownRow[];
+  /** LV-05: the week's leave by day (the page already reads it). */
+  leave: ReadonlyMap<string, DayLeave>;
   /** The week's manual entries (the page already reads them). */
   entries: ManualEntry[];
   /** Read the segments once the page's rebuild has finished. */
@@ -383,6 +389,38 @@ export function WeekGrid({
                   <Total sums={grid.total} />
                 </td>
               </tr>
+              {days.some((d) => leave.has(d)) && (
+                <tr className="border-t border-line">
+                  <th scope="row" className="px-4 py-2.5 text-left font-medium">
+                    Leave
+                    <span className="block text-xs font-normal text-ink3">Not in the total</span>
+                  </th>
+                  {days.map((d) => {
+                    const l = leave.get(d);
+                    return (
+                      <td
+                        key={d}
+                        className="px-2 py-2.5 align-top"
+                        aria-label={`Leave, ${dayLabel(d)}: ${l ? `${formatDuration(l.seconds)}, ${leaveLabel(l)}` : "none"}`}
+                      >
+                        {l ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-mono text-[13px]">
+                              {formatDuration(l.seconds)}
+                            </span>
+                            <span className="text-xs text-ink2">{leaveLabel(l)}</span>
+                          </div>
+                        ) : (
+                          <span className="text-ink3">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-2.5 font-mono text-[13px] font-semibold">
+                    {formatDuration(leaveTotal(leave, days))}
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>

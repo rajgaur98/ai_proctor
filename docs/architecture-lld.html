@@ -676,7 +676,7 @@ pub trait Platform: Send + Sync {
   <!-- 4. API -->
   <section id="api">
     <div class="sec-head"><span class="num">04</span><h2>API contract</h2></div>
-    <p>All writes are Postgres functions called through PostgREST (<code>POST /rest/v1/rpc/&lt;name&gt;</code>) with the caller's JWT. They are <code>SECURITY DEFINER</code>, validate everything themselves, and are the only way to change data. Reads go straight to tables and views through row-level security.</p>
+    <p>All writes are Postgres functions called through PostgREST (<code>POST /rest/v1/rpc/&lt;name&gt;</code>) with the caller's JWT. They are <code>SECURITY DEFINER</code>, validate everything themselves, and are the only way to change data. Reads go straight to tables and views through row-level security; the live grid's view applies the same rule once per read instead of per row (section 07).</p>
 
     <div class="table-wrap">
       <div class="tbl-title">Agent functions</div>
@@ -919,6 +919,8 @@ pub trait Platform: Send + Sync {
           <li>leave_types: org_id · name · paid · archived (never deleted)</li>
           <li>holidays: org_id · day · name · country · state (null: everyone)</li>
           <li>Decided by the direct manager or active delegate (<code>is_entry_decider</code>); <code>internal.on_leave_at</code> drives On leave, late clock-ins, alerts and the agent's <code>leave</code> spans (LV-01..04)</li>
+          <li><code>internal.leave_days</code> counts leave per person and local day (LV-05): paid whole days and holidays the hours of the shifts that start that day inside them, paid part days their span, each instant once; unpaid 0 but listed. Read by <code>timesheet_leave</code> (the week's Leave row, the Timesheets list), <code>timesheet_export_rows</code> (<code>leave</code>, the exports' Leave column) and <code>report_rows</code> (<code>leave_s</code>); never worked or overtime time (LV-06)</li>
+          <li>Holidays import through <code>import_apply</code> kind <code>holidays</code>, matched on date and place (LV-02)</li>
         </ul></div>
         <div class="t-card"><div class="name">clients · projects · project_members</div><ul>
           <li>clients: id · name</li>
@@ -1130,7 +1132,8 @@ with check (
             <tr><td><code>time_segments</code></td><td><code>can_view_user</code></td><td><code>rebuild-segments</code> only</td></tr>
             <tr><td><code>timesheets</code></td><td><code>can_view_user</code></td><td>Timesheet functions; approval needs manager or delegate</td></tr>
             <tr><td>Org policy</td><td>Everyone in the org</td><td>Owner, admin</td></tr>
-            <tr><td><code>teams</code> (and their overrides)</td><td>Owner, admin; anyone who can see a member (<code>can_view_user</code>)</td><td>Owner, admin, through the team functions</td></tr>
+            <tr><td><code>team_live</code> view (live grid, seat map)</td><td>Reads as its owner, filtered once to <code>internal.viewable_user_ids()</code>: the <code>can_view_user</code> rule as a set, so a 5,000-person org isn't checked row by row (#322); <code>security_barrier</code></td><td>None (read-only)</td></tr>
+            <tr><td><code>teams</code> (and their overrides)</td><td>Owner, admin; anyone who can see a member (<code>internal.viewable_team_ids()</code>, the same set)</td><td>Owner, admin, through the team functions</td></tr>
             <tr><td><code>audit_log</code></td><td>Owner, admin; employees see rows about themselves</td><td>Insert only, from functions; no update or delete grant</td></tr>
             <tr><td>Service-role key</td><td colspan="2">Held only by Edge Functions; never shipped in the agent or dashboard</td></tr>
           </tbody>

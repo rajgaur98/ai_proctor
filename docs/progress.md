@@ -34,10 +34,16 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #295 fix: it-rebuild-segments failed in the hour after LA midnight (#296)
     - #299 comment buttons on the grid's rows and entries (#301)
     - #267 keyboard, axe and query budget for the grid and day list (#302)
-  - In progress: none. Every unblocked issue is merged.
-- **Open PRs:** the autonomy change that adds #62 to the run.
-- **Added 4 Nov (from the competitor comparison: Hubstaff, Toggl, Clockify, Insightful, Apploye, ActivTrak, Time Doctor, DeskTime):** P1 issues under #62, with PRD sections: #304 time off (LV-01..07), #305 insights page (INS-01..06), #306 public API and webhooks (API-01..06), #307 MCP server (API-07/08), #308 seat map at scale (DSH-11). Their defaults are listed in each issue.
-- **5 Nov:** Raj put #62 in the autonomous run (`EPICS` in `scripts/autonomy/lib.py`). Order: #304 time off, #308 seat map and #306 public API in parallel (no shared files); then #305 insights (uses leave days from #304) and #307 MCP server (needs #306's keys and endpoints).
+  - In progress: none from 1 Nov; the 5 Nov run is below.
+- **5 Nov (autonomous run on #62):** Raj put #62 in the run (`EPICS` in `scripts/autonomy/lib.py`, #314). `next.py` shows an issue whose worktree an implementer is working in as `building`, and an issue whose body says "Depends on #N" as `waiting-on-issue` while #N is open (#315, #316).
+  - Merged:
+    - #308 seat map at scale: tables sized to their team, zoom/pan canvas, find, 60 fps with 5,000 people (#321)
+    - #304 time off part 1: leave types, holidays, requests and approval, On leave status, no late/offline alerts or auto clock-in on leave (#317)
+    - #306 public API v1 with API keys, OpenAPI spec and docs (#318)
+  - Open PRs: #324 (#322 Live team read at scale, ~5.5 s → ~0.3 s for 5,000 people).
+  - Being built: #305 insights, #319 time off part 2 (Leave row, exports, reports, list filters, holidays import), #307 MCP server.
+  - Queue: #320 webhooks + time-off endpoint (after the current three), #323 Live team List view windowing (after #322).
+  - Defaults taken are listed in each PR body; Raj can override any of them.
 - **Next:**
   - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
@@ -136,6 +142,7 @@ Answered by Raj on 20 Oct 2026.
 Format: `- #<issue>: <exact question or action needed>`
 
 - #12, #13, #14 (Windows halves), #56: a Windows VM (Raj is setting one up, 22 Oct). CI builds an unsigned Windows installer to install there; then the Windows checklists in each PR.
+- #307 (PR #330, built and green, not merged): an AI assistant's OAuth token is a full Supabase Auth session, so the assistant can change the person's password and enrol an MFA factor through `PUT /auth/v1/user` (Supabase's OAuth server has no scopes). Off per org by default; the consent page names the assistant and its return host. Which: (a) accept for the pilot; (b) accept and set `secure_password_change = true` (password changes need a recent sign-in, for everyone); (c) no OAuth for now, only short-lived tokens issued from the dashboard? Also the privacy lawyer review of the notice sentence about AI assistant access.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
 - 31 Oct defaults taken (Raj can change any of them):
   - #251: in_meeting, paused and idle show red on the seat map, although the "Active" tile counts them as active.
