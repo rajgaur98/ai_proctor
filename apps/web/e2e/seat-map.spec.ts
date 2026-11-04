@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import { agentFor } from "./agent";
 import { ERIN, ERIN_EMAIL, expectNoA11yViolations, MANAGER_EMAIL } from "./helpers";
 
-// DSH-09 (#251): the seat view recolours live and opens a person's day by keyboard.
+// DSH-09 (#251): the seat view recolours live, without laying the map out again (DSH-11,
+// #308), and opens a person's day by keyboard.
 test("the seat view shows Erin's status as text and colour, live, and opens her day", async ({
   page,
 }) => {
@@ -25,12 +26,15 @@ test("the seat view shows Erin's status as text and colour, live, and opens her 
   const active = page.getByRole("link", { name: /^Erin Employee, Active since \d\d:\d\d$/ });
   await expect(active).toBeVisible({ timeout: 10_000 });
   await expect(active).toHaveClass(/--sactive/);
+  const map = page.getByRole("region", { name: "Seat map" });
+  const layout = (await map.getAttribute("data-layout-version")) ?? "";
 
-  // A Realtime change recolours the seat without a reload.
+  // A Realtime change recolours the seat without a reload, and nobody moves.
   await erin("lock");
   const away = page.getByRole("link", { name: /^Erin Employee, Away · locked since \d\d:\d\d$/ });
   await expect(away).toBeVisible({ timeout: 10_000 });
   await expect(away).toHaveClass(/--stamper/);
+  await expect(map).toHaveAttribute("data-layout-version", layout);
 
   // Hover or focus shows the details; the status is text, not colour alone.
   await away.focus();

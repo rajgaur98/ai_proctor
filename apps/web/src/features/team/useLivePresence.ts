@@ -9,12 +9,29 @@ import { applyPresence, type TeamRow } from "./grid";
 
 export type LiveState = "connecting" | "live" | "reconnecting";
 
+type PresenceChange = Partial<Tables<"presence">> & { user_id: string };
+
+/** Changes from the last two minutes, per query. */
+const recent = new Map<string, { at: number; change: PresenceChange }[]>();
+const KEEP_MS = 120_000;
+
+/**
+ * Re-applies the changes that arrived since a fetch started (`since`, from Date.now()). A big
+ * team takes seconds to read (DSH-11), and a read that started before a change would
+ * otherwise put the old status back when it lands.
+ */
+export function withRecentChanges(queryKey: QueryKey, since: number, rows: TeamRow[]): TeamRow[] {
+  const list = recent.get(JSON.stringify(queryKey)) ?? [];
+  return list.filter((c) => c.at >= since).reduce((acc, c) => applyPresence(acc, c.change), rows);
+}
+
 export function useLivePresence(queryKey: QueryKey): LiveState {
   const queryClient = useQueryClient();
   const [state, setState] = useState<LiveState>("connecting");
 
   useEffect(() => {
     const refetch = () => queryClient.invalidateQueries({ queryKey });
+    const key = JSON.stringify(queryKey);
     let seenOnce = false;
 
     const channel = supabase
@@ -23,10 +40,14 @@ export function useLivePresence(queryKey: QueryKey): LiveState {
         "postgres_changes",
         { event: "*", schema: "public", table: "presence" },
         (msg: { new: Partial<Tables<"presence">> }) => {
-          const change = msg.new;
-          if (!change.user_id) return;
+          if (!msg.new.user_id) return;
+          const change = { ...msg.new, user_id: msg.new.user_id };
+          const at = Date.now();
+          const list = (recent.get(key) ?? []).filter((c) => at - c.at < KEEP_MS);
+          list.push({ at, change });
+          recent.set(key, list);
           queryClient.setQueryData<TeamRow[]>(queryKey, (rows) =>
-            rows ? applyPresence(rows, { ...change, user_id: change.user_id as string }) : rows,
+            rows ? applyPresence(rows, change) : rows,
           );
         },
       )
@@ -55,6 +76,7 @@ export function useLivePresence(queryKey: QueryKey): LiveState {
       document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(timer);
       supabase.removeChannel(channel);
+      recent.delete(key);
     };
   }, [queryClient, queryKey]);
 
