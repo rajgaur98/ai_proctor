@@ -8,7 +8,7 @@ open PR that belongs to none), read from GitHub.
 
 States (lib.ACTIONABLE keeps the owner working; lib.WAITING lets it stop):
   needs-work, pr-failing, pr-conflict, behind-main, ready-to-merge
-  pr-in-ci, waiting-on-base
+  pr-in-ci, waiting-on-base, building, waiting-on-issue
   blocked
 
 Exit codes: 0 ok, 2 GitHub couldn't be read.
@@ -19,6 +19,11 @@ import sys
 import time
 
 import lib
+
+
+ORDER = {s: i for i, s in enumerate(
+    ["ready-to-merge", "pr-failing", "pr-conflict", "behind-main", "needs-work",
+     "pr-in-ci", "waiting-on-base", "building", "waiting-on-issue", "blocked"])}
 
 
 def summary(rows):
@@ -67,10 +72,7 @@ def main(argv):
     else:
         act, wait, blocked = summary(rows)
         print(f"NEXT actionable={act} waiting={wait} blocked={blocked}")
-        order = {s: i for i, s in enumerate(
-            ["ready-to-merge", "pr-failing", "pr-conflict", "behind-main", "needs-work",
-             "pr-in-ci", "waiting-on-base", "blocked"])}
-        for r in sorted(rows, key=lambda r: (order[r["state"]], r.get("issue") or 10**6)):
+        for r in sorted(rows, key=lambda r: (ORDER[r["state"]], r.get("issue") or 10**6)):
             print(line(r))
     return 0
 
