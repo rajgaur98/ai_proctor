@@ -1,4 +1,4 @@
-// Integration check for webhooks (#320, API-06) against a local stack; see it-webhooks.sh,
+// Integration check for webhooks (#320, #335; API-06) against a local stack; see it-webhooks.sh,
 // which sets up the receiver (http://rest:3000/rpc/it_webhook_sink records what it gets,
 // .../it_webhook_fail answers 400) and the environment. Run it through `pnpm it:webhooks`.
 //
@@ -128,11 +128,19 @@ async function waitFor<T>(what: string, ms: number, probe: () => Promise<T | und
   }
 }
 
-function verify(r: Received, secret: string) {
+/** The v1= values of the signature header, in order (two during a rotation's grace period). */
+function signatures(r: Received): string[] {
+  return (r.headers["x-aiproctor-signature"] ?? "").split(",").map((v) => v.trim());
+}
+
+function signedWith(r: Received, secret: string) {
   const ts = r.headers["x-aiproctor-timestamp"] ?? "";
-  const sig = r.headers["x-aiproctor-signature"] ?? "";
-  const want = createHmac("sha256", secret).update(`${ts}.${r.body}`).digest("hex");
-  return sig === `v1=${want}`;
+  return `v1=${createHmac("sha256", secret).update(`${ts}.${r.body}`).digest("hex")}`;
+}
+
+/** As docs/api/v1.md tells receivers: any one of the values verifies. */
+function verify(r: Received, secret: string) {
+  return signatures(r).includes(signedWith(r, secret));
 }
 
 function checkRequest(r: Received, secret: string, type: string) {
@@ -143,6 +151,9 @@ function checkRequest(r: Received, secret: string, type: string) {
     "a fresh timestamp",
   );
   assert.equal(r.headers["content-type"], "application/json");
+  // The connection went to the address deliver-webhooks resolved (pin.ts), by IP, with the
+  // URL's own Host header.
+  assert.equal(r.headers.host, "rest:3000", "the original Host header");
   assert.equal(r.headers["x-aiproctor-event"], type);
   assert.equal(r.headers["x-aiproctor-event-id"], body.id, "the event id header is the body's id");
   assert.match(r.headers["x-aiproctor-delivery"] ?? "", /^[0-9a-f-]{36}$/);
@@ -308,6 +319,56 @@ try {
   data = checkRequest(alertRows[0] as Received, sink.secret, "alert.raised");
   assert.equal(data.kind, "offline");
 
+  // Test event (#335): a ping, queued and sent through the normal path ----------------------
+
+  const pingDelivery = await rpc<string>("send_test_webhook", admin, { p_id: sink.id });
+  const ping = await waitFor("the test event", 30_000, async () =>
+    (await received()).find((r) => r.headers["x-aiproctor-delivery"] === pingDelivery),
+  );
+  data = checkRequest(ping, sink.secret, "ping");
+  assert.deepEqual(data, { webhook_id: sink.id }, "a ping names its endpoint");
+  assert.equal(signatures(ping).length, 1, "one signature outside a rotation's grace period");
+  const pingRow = await waitFor("the test event in the log", 30_000, async () =>
+    (await rpc<Json[]>("list_webhook_deliveries", admin, { p_webhook_id: sink.id })).find(
+      (d) => d.id === pingDelivery && d.status === "delivered",
+    ),
+  );
+  assert.equal(pingRow.event_type, "ping");
+  const notAdmin = await rest("/rest/v1/rpc/send_test_webhook", manager, {
+    body: { p_id: sink.id },
+  });
+  assert.equal(notAdmin.status, 403, "a manager can't send a test event");
+
+  // Redeliver (#335): the same event again, as a new delivery -----------------------------------
+
+  const original = (
+    await rpc<Json[]>("list_webhook_deliveries", admin, { p_webhook_id: sink.id })
+  ).find((d) => d.event_type === "time_off.decided" && d.status === "delivered");
+  assert.ok(original, "the time-off event was delivered");
+  const again = await rpc<string>("redeliver_webhook", admin, { p_delivery_id: original.id });
+  assert.notEqual(again, original.id, "a new delivery id");
+  const resent = await waitFor("the redelivery", 30_000, async () =>
+    (await received()).find((r) => r.headers["x-aiproctor-delivery"] === again),
+  );
+  checkRequest(resent, sink.secret, "time_off.decided");
+  assert.equal(resent.headers["x-aiproctor-event-id"], original.event_id, "the same event id");
+  assert.equal(resent.body, decided.body, "the same event, byte for byte");
+  const againRow = await waitFor("the redelivery in the log", 30_000, async () =>
+    (await rpc<Json[]>("list_webhook_deliveries", admin, { p_webhook_id: sink.id })).find(
+      (d) => d.id === again && d.status === "delivered",
+    ),
+  );
+  assert.equal(againRow.redelivery_of, original.id, "the log links it to the original");
+  const pendingCopy = await rpc<string>("redeliver_webhook", admin, { p_delivery_id: original.id });
+  const twice = await rest("/rest/v1/rpc/redeliver_webhook", admin, {
+    body: { p_delivery_id: original.id },
+  });
+  assert.equal(twice.status, 400, "not while a copy of the event still waits");
+  assert.equal((twice.json as Json).message, "delivery_pending");
+  await waitFor("the second redelivery", 30_000, async () =>
+    (await received()).find((r) => r.headers["x-aiproctor-delivery"] === pendingCopy),
+  );
+
   // Deactivated: the failing endpoint now fails for good and is turned off --------------------
 
   await rpc("set_user_active", admin, { p_user_id: WANDA, p_active: false });
@@ -349,18 +410,56 @@ try {
     "the owner is notified",
   );
 
-  // Rotating: the next event is signed with the new secret ---------------------------------------
+  // Rotating (#335): for 24 hours both secrets sign, the new one first ---------------------------
 
   const rotated = await rpc<string>("rotate_webhook_secret", admin, { p_id: sink.id });
   assert.notEqual(rotated, sink.secret);
+  const graceUntil = (await rpc<Json[]>("list_webhooks", admin)).find(
+    (w) => w.id === sink.id,
+  )?.previous_secret_expires_at;
+  const graceMs = Date.parse(String(graceUntil)) - Date.now();
+  assert.ok(graceMs > 23.9 * 3600_000 && graceMs <= 24 * 3600_000, "a 24-hour grace period");
   await rpc("set_user_active", admin, { p_user_id: LUCAS, p_active: false });
-  await rpc("set_user_active", admin, { p_user_id: LUCAS, p_active: true });
   await deliverNow();
   const lucasOff = await waitFor("person.deactivated after rotating", 30_000, () =>
     find("person.deactivated", LUCAS),
   );
   checkRequest(lucasOff, rotated, "person.deactivated");
-  assert.ok(!verify(lucasOff, sink.secret), "the old secret no longer verifies");
+  assert.deepEqual(
+    signatures(lucasOff),
+    [signedWith(lucasOff, rotated), signedWith(lucasOff, sink.secret)],
+    "two values during the grace period: the new secret's, then the previous one's",
+  );
+  assert.ok(verify(lucasOff, sink.secret), "a receiver with the old secret still verifies");
+
+  // The grace period ends: the previous secret leaves Vault and only the new one signs.
+  sql(
+    `update public.webhooks set previous_secret_expires_at = now() - interval '1 second' where id = '${sink.id}'`,
+  );
+  assert.equal(sql("select internal.webhooks_end_grace()"), "1");
+  assert.equal(
+    sql(`select count(*) from vault.secrets where name = 'webhook_secret_prev:${sink.id}'`),
+    "0",
+    "the previous secret is removed from Vault",
+  );
+  await rpc("set_user_active", admin, { p_user_id: LUCAS, p_active: true });
+  const pingAfter = await rpc<string>("send_test_webhook", admin, { p_id: sink.id });
+  const afterGrace = await waitFor("a test event after the grace period", 30_000, async () =>
+    (await received()).find((r) => r.headers["x-aiproctor-delivery"] === pingAfter),
+  );
+  checkRequest(afterGrace, rotated, "ping");
+  assert.equal(signatures(afterGrace).length, 1, "one signature after the grace period");
+  assert.ok(!verify(afterGrace, sink.secret), "the old secret no longer verifies");
+
+  // An endpoint that is off takes no test event and no redelivery.
+  const offTest = await rest("/rest/v1/rpc/send_test_webhook", admin, {
+    body: { p_id: failing.id },
+  });
+  assert.equal((offTest.json as Json).message, "webhook_off", "no test event while it's off");
+  const offAgain = await rest("/rest/v1/rpc/redeliver_webhook", admin, {
+    body: { p_delivery_id: gaveUp?.id },
+  });
+  assert.equal((offAgain.json as Json).message, "webhook_off", "no redelivery while it's off");
 
   // Changing and turning back on.
   await rpc("update_webhook", admin, {
@@ -411,6 +510,40 @@ try {
       "refused: the host resolves to a private or local address",
       "and when its host resolves to one at delivery",
     );
+
+    // Over the internet (opt in: IT_WEBHOOKS_INTERNET=1): the pinned connection runs TLS for
+    // the host name, so a valid certificate is accepted and one for another name refused.
+    if (process.env.IT_WEBHOOKS_INTERNET === "1") {
+      const tls: Record<string, string> = {};
+      for (const target of ["https://example.com/", "https://wrong.host.badssl.com/"]) {
+        const [w] = await rpc<{ id: string }[]>("create_webhook", admin, {
+          p_url: target,
+          p_events: ["alert.raised"],
+        });
+        made.push(w.id);
+        tls[target] = await rpc<string>("send_test_webhook", admin, { p_id: w.id });
+      }
+      await deliverNow();
+      // Each test event is sent by whichever run claims it first (its own kick or ours).
+      const tried = (delivery: string) =>
+        waitFor(`the test event ${delivery}`, 30_000, async () =>
+          (await rpc<Json[]>("list_webhook_deliveries", admin, { p_limit: 500 })).find(
+            (d) => d.id === delivery && (d.response_status !== null || d.last_error !== null),
+          ),
+        );
+      const valid = await tried(tls["https://example.com/"] as string);
+      assert.equal(
+        typeof valid.response_status,
+        "number",
+        `example.com answered: ${valid.last_error}`,
+      );
+      const wrong = await tried(tls["https://wrong.host.badssl.com/"] as string);
+      assert.equal(
+        wrong.last_error,
+        "TLS failed: invalid peer certificate: NotValidForName",
+        "a certificate for another name is refused",
+      );
+    }
   } finally {
     sql(
       "select vault.update_secret(id, 'true') from vault.secrets where name = 'webhooks_allow_private_hosts'",
@@ -429,6 +562,8 @@ try {
         "webhook.secret_rotated",
         "webhook.disabled",
         "webhook.deleted",
+        "webhook.test_sent",
+        "webhook.redelivered",
       ],
       p_limit: 200,
     },
@@ -443,6 +578,22 @@ try {
     about("webhook.disabled", failing.id)?.actor_id,
     null,
     "turning off by the system too",
+  );
+  assert.equal(
+    audit.find((a) => a.action === "webhook.test_sent" && a.metadata.delivery_id === pingDelivery)
+      ?.actor_id,
+    ADA,
+    "a test event is audit-logged",
+  );
+  const redelivered = audit.find(
+    (a) => a.action === "webhook.redelivered" && a.metadata.delivery_id === again,
+  );
+  assert.equal(redelivered?.actor_id, ADA, "a redelivery is audit-logged");
+  assert.equal(redelivered?.metadata.redelivery_of, original.id);
+  assert.equal(redelivered?.metadata.host, "rest");
+  assert.ok(
+    about("webhook.secret_rotated", sink.id)?.metadata.previous_valid_until,
+    "a rotation records until when the previous secret signs",
   );
   assert.ok(!JSON.stringify(audit).includes(sink.secret), "never with the secret");
 

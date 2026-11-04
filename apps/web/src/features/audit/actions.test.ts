@@ -243,6 +243,19 @@ describe("summarize", () => {
       summarize("webhook.disabled", { host: "hooks.example.com", failed_deliveries: 5 }, nameOf),
     ).toBe("hooks.example.com · 5 failed events in a row");
     expect(summarize("webhook.deleted", {}, nameOf)).toBe("—");
+    // #335: a test event and a redelivery.
+    expect(actionLabel("webhook.test_sent")).toBe("Sent a webhook test event");
+    expect(summarize("webhook.test_sent", { host: "hooks.example.com" }, nameOf)).toBe(
+      "hooks.example.com",
+    );
+    expect(actionLabel("webhook.redelivered")).toBe("Redelivered a webhook event");
+    expect(
+      summarize(
+        "webhook.redelivered",
+        { host: "hooks.example.com", event_type: "time_off.decided", event_id: "e1" },
+        nameOf,
+      ),
+    ).toBe("hooks.example.com · time_off.decided");
   });
 
   it("shows unknown metadata as JSON and nothing as a dash", () => {

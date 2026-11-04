@@ -1,6 +1,7 @@
-// deliver-webhooks (#320; API-06): sends the webhook deliveries that are due. Called every
-// minute by the webhooks_kick cron job (internal.webhooks_kick, through pg_net) with the
-// service-role key as the bearer token; nobody else may call it.
+// deliver-webhooks (#320, #335; API-06): sends the webhook deliveries that are due. Called
+// every minute by the webhooks_kick cron job (internal.webhooks_kick, through pg_net), and at
+// once after an admin sends a test event or redelivers one, with the service-role key as the
+// bearer token; nobody else may call it.
 //
 // It claims due deliveries with webhook_claim (which counts the attempt and sets when the
 // next one is due), POSTs each to its endpoint and records the result with webhook_record
@@ -9,21 +10,26 @@
 // Each request:
 //   POST <endpoint URL>
 //   Content-Type: application/json
-//   X-AIProctor-Event: timesheet.approved         the event type
-//   X-AIProctor-Event-Id: <uuid>                   the same in every retry: dedupe on it
+//   X-AIProctor-Event: timesheet.approved         the event type (ping for a test event)
+//   X-AIProctor-Event-Id: <uuid>                   the same in every retry and redelivery: dedupe on it
 //   X-AIProctor-Delivery: <uuid>                   this endpoint's delivery of the event
 //   X-AIProctor-Timestamp: 1730800000              Unix seconds when this attempt was signed
 //   X-AIProctor-Signature: v1=<hex>                HMAC-SHA256(secret, "<timestamp>.<body>")
 //   body: { id, type, created_at, api_version, data }
+// For 24 hours after a rotation the signature header carries two values, "v1=<hex with the
+// new secret>,v1=<hex with the previous one>" (20261105800000_webhooks_test_redeliver_grace.sql).
 // A 2xx answer within 10 seconds is delivered; anything else (another status, a redirect,
-// a timeout, no connection) is a failed attempt. Response bodies are never kept.
+// a timeout, no connection, a TLS certificate that isn't valid for the host) is a failed
+// attempt. Response bodies are never read.
 //
-// Unless the stack allows private hosts (local only, webhook_claim's allow_private), the URL
-// must be https and its host must not resolve to a private, loopback or link-local address
-// (address.ts); redirects are not followed.
+// The connection is pinned (pin.ts): the host is resolved once, every address it resolves to
+// must be public (address.ts) unless the stack allows private hosts (local only, webhook_claim's
+// allow_private), and the request goes to that checked address with the original Host header
+// and TLS validated for the host name, so a name can't answer differently when we connect.
+// The URL must be https (http only on a local stack); redirects are not followed.
 // Reply: { claimed, delivered, failed }.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { blockedAddress } from "./address.ts";
+import { type Conn, type Net, type Outcome, postPinned } from "./pin.ts";
 
 const BATCH = 25;
 const CONCURRENCY = 5;
@@ -35,17 +41,12 @@ interface Claimed {
   id: string;
   url: string;
   secret: string | null;
+  previous_secret: string | null;
   payload: unknown;
   event_type: string;
   event_id: string;
   attempt: number;
   allow_private: boolean;
-}
-
-interface Outcome {
-  ok: boolean;
-  status: number | null;
-  error: string | null;
 }
 
 function reply(body: unknown, status = 200) {
@@ -75,46 +76,32 @@ async function hmacHex(secret: string, message: string): Promise<string> {
   return Array.from(new Uint8Array(mac), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Why the URL may not be called in production, or null when it may. fetch resolves the
- * host again, so a name that changes its answer between the two lookups (DNS rebinding) is
- * not caught here; the save-time check and https still apply. */
-async function refusal(url: URL): Promise<string | null> {
-  if (url.protocol !== "https:") return "the URL must use https";
-  const host = url.hostname.replace(/^\[|\]$/g, "");
-  if (/^[\d.]+$/.test(host) || host.includes(":")) {
-    return blockedAddress(host) ? "the host is a private or local address" : null;
-  }
-  const found: string[] = [];
-  for (const type of ["A", "AAAA"] as const) {
+const net: Net = {
+  resolve: (host, type) => Deno.resolveDns(host, type),
+  connect: (address, port) => Deno.connect({ hostname: address, port, transport: "tcp" }),
+  tls: async (conn, hostname) => {
+    const tls = await Deno.startTls(conn as Deno.TcpConn, { hostname });
     try {
-      found.push(...(await Deno.resolveDns(host, type)));
-    } catch {
-      // No records of this type.
+      await tls.handshake();
+    } catch (e) {
+      tls.close();
+      throw e;
     }
-  }
-  if (found.length === 0) return "the host name did not resolve";
-  return found.some(blockedAddress) ? "the host resolves to a private or local address" : null;
-}
+    return tls as Conn;
+  },
+};
 
 async function deliver(row: Claimed): Promise<Outcome> {
   if (!row.secret) return { ok: false, status: null, error: "no signing secret" };
-  let url: URL;
-  try {
-    url = new URL(row.url);
-  } catch {
-    return { ok: false, status: null, error: "not a URL" };
-  }
-  if (!row.allow_private) {
-    const why = await refusal(url);
-    if (why) return { ok: false, status: null, error: `refused: ${why}` };
-  }
-
   const body = JSON.stringify(row.payload);
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = await hmacHex(row.secret, `${timestamp}.${body}`);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
+  const signed = `${timestamp}.${body}`;
+  // The current secret first; the previous one too while its grace period lasts.
+  const signatures = [`v1=${await hmacHex(row.secret, signed)}`];
+  if (row.previous_secret) signatures.push(`v1=${await hmacHex(row.previous_secret, signed)}`);
+  return await postPinned(
+    {
+      url: row.url,
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "AIProctor-Webhooks/1.0",
@@ -122,29 +109,14 @@ async function deliver(row: Claimed): Promise<Outcome> {
         "X-AIProctor-Event-Id": row.event_id,
         "X-AIProctor-Delivery": row.id,
         "X-AIProctor-Timestamp": timestamp,
-        "X-AIProctor-Signature": `v1=${signature}`,
+        "X-AIProctor-Signature": signatures.join(","),
       },
       body,
-      redirect: "manual",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    await res.body?.cancel();
-    if (res.status >= 200 && res.status < 300) return { ok: true, status: res.status, error: null };
-    return {
-      ok: false,
-      status: res.status,
-      error:
-        res.status >= 300 && res.status < 400
-          ? `HTTP ${res.status} (redirects are not followed)`
-          : `HTTP ${res.status}`,
-    };
-  } catch (e) {
-    const name = e instanceof Error ? e.name : "";
-    if (name === "TimeoutError" || name === "AbortError") {
-      return { ok: false, status: null, error: `no answer within ${TIMEOUT_MS / 1000} seconds` };
-    }
-    return { ok: false, status: null, error: "could not connect" };
-  }
+      allowPrivate: row.allow_private,
+      timeoutMs: TIMEOUT_MS,
+    },
+    net,
+  );
 }
 
 Deno.serve(async (req) => {

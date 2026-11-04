@@ -1,10 +1,18 @@
 #!/bin/bash
-# Integration check for webhooks (#320, API-06): scripts/it-webhooks.ts. Endpoints made on the
-# dashboard RPCs, events from the real code paths (an invite, a timesheet submitted and
+# Integration check for webhooks (#320, #335; API-06): scripts/it-webhooks.ts. Endpoints made
+# on the dashboard RPCs, events from the real code paths (an invite, a timesheet submitted and
 # approved, a time-off decision, an alert, a deactivation), delivery by the deliver-webhooks
-# Edge Function (once through pg_cron + pg_net, then called directly), the signature checked
-# with the endpoint's secret, retries, an endpoint turned off after failing with the owner
-# notified, secret rotation, the delivery log, the production URL check, and the audit rows.
+# Edge Function (once through pg_cron + pg_net, then called directly) over a pinned
+# connection (the original Host header), the signature checked with the endpoint's secret,
+# retries, an endpoint turned off after failing with the owner notified, a test event, a
+# redelivery, secret rotation with both signatures during the grace period and one after it,
+# the delivery log, the production URL check, and the audit rows.
+#
+# First, scripts/webhook-pin-check.ts checks the pinned connection with a fake network: a
+# host whose DNS answer changes after the check (public, then private) is connected to at the
+# checked address only, and a connection that reports another address is refused.
+# IT_WEBHOOKS_INTERNET=1 also sends two test events over the internet: to example.com (a valid
+# certificate) and wrong.host.badssl.com (refused: the certificate is for another name).
 #
 # The receiver lives inside the stack, so the Edge runtime reaches it on any host (CI's
 # Linux runner has no host.docker.internal): two SQL functions this script adds for the run,
@@ -33,6 +41,8 @@ else
 fi
 [ -n "${API_URL:-}" ] || { echo "stack not running: scripts/stack.sh up" >&2; exit 1; }
 command -v psql >/dev/null || { echo "psql not found (brew install libpq)" >&2; exit 1; }
+
+node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webhook-pin-check.ts
 
 STACK_SH=$STACK_SH bash scripts/stack-secrets.sh >/dev/null
 

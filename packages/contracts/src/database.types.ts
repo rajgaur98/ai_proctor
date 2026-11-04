@@ -3072,6 +3072,7 @@ export type Database = {
           next_attempt_at: string;
           org_id: string;
           payload: NonNullable<Json>;
+          redelivery_of: string | null;
           response_status: number | null;
           status: string;
           subject_user_id: string | null;
@@ -3090,6 +3091,7 @@ export type Database = {
           next_attempt_at?: string;
           org_id: string;
           payload: NonNullable<Json>;
+          redelivery_of?: string | null;
           response_status?: number | null;
           status?: string;
           subject_user_id?: string | null;
@@ -3107,6 +3109,7 @@ export type Database = {
           next_attempt_at?: string;
           org_id?: string;
           payload?: NonNullable<Json>;
+          redelivery_of?: string | null;
           response_status?: number | null;
           status?: string;
           subject_user_id?: string | null;
@@ -3140,6 +3143,7 @@ export type Database = {
           failed_in_row: number;
           id: string;
           org_id: string;
+          previous_secret_expires_at: string | null;
           secret_rotated_at: string | null;
           updated_at: string;
           url: string;
@@ -3155,6 +3159,7 @@ export type Database = {
           failed_in_row?: number;
           id?: string;
           org_id: string;
+          previous_secret_expires_at?: string | null;
           secret_rotated_at?: string | null;
           updated_at?: string;
           url: string;
@@ -3169,6 +3174,7 @@ export type Database = {
           failed_in_row?: number;
           id?: string;
           org_id?: string;
+          previous_secret_expires_at?: string | null;
           secret_rotated_at?: string | null;
           updated_at?: string;
           url?: string;
@@ -3661,6 +3667,7 @@ export type Database = {
           last_attempt_at: string;
           last_error: string;
           next_attempt_at: string;
+          redelivery_of: string;
           response_status: number;
           status: string;
           url: string;
@@ -3681,6 +3688,7 @@ export type Database = {
           last_delivery_at: string;
           last_delivery_status: string;
           pending: number;
+          previous_secret_expires_at: string;
           secret_rotated_at: string;
           url: string;
         }[];
@@ -3782,6 +3790,7 @@ export type Database = {
         Args: { p_actor_id: string; p_counts: Json; p_user_id: string };
         Returns: undefined;
       };
+      redeliver_webhook: { Args: { p_delivery_id: string }; Returns: string };
       register_device: {
         Args: {
           agent_version: string;
@@ -3920,6 +3929,7 @@ export type Database = {
         }[];
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      send_test_webhook: { Args: { p_id: string }; Returns: string };
       set_approval_required: {
         Args: { p_required: boolean; p_user_id: string };
         Returns: undefined;
@@ -4076,6 +4086,7 @@ export type Database = {
           event_type: string;
           id: string;
           payload: Json;
+          previous_secret: string;
           secret: string;
           url: string;
         }[];

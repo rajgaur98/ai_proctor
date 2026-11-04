@@ -727,8 +727,9 @@ pub trait Platform: Send + Sync {
           <tr><td><code>confirm_dpia</code></td><td>Admin</td><td>EU-region org enabling webcam; audit-logged</td></tr>
           <tr><td><code>create_enrollment_token</code> / <code>revoke_enrollment_token</code> / <code>list_enrollment_tokens</code></td><td>Admin</td><td>MDM installs (#86): the token is returned once, only its SHA-256 is kept; revoking stops new enrollments, enrolled devices keep working; create, revoke and each enrollment audit-logged; MFA when the org requires it</td></tr>
           <tr><td><code>create_api_key</code> / <code>revoke_api_key</code> / <code>list_api_keys</code></td><td>Admin</td><td>Public API keys (#306, API-02): name, scopes per resource (read, write), optional expiry; the key is returned once, only its SHA-256 is kept; create and revoke audit-logged; MFA when the org requires it</td></tr>
-          <tr><td><code>create_webhook</code> / <code>update_webhook</code> / <code>delete_webhook</code> / <code>rotate_webhook_secret</code> / <code>list_webhooks</code> / <code>list_webhook_deliveries</code></td><td>Admin</td><td>Webhook endpoints (#320, API-06): an https URL (no private or local host) and the events it wants; the signing secret is returned on create and rotate only and kept in Vault; at most 10 per org; every change audit-logged (host, not the URL); MFA when the org requires it</td></tr>
-          <tr><td><code>webhook_claim</code> / <code>webhook_record</code></td><td>Service role (deliver-webhooks)</td><td>Hands out due deliveries with the URL and secret, counting the attempt and setting the next (1, 4, 16, 64, 256, 1024 min); records the result; after the 7th attempt a delivery has failed, and the 5th failed delivery in a row turns the endpoint off and notifies owners and admins</td></tr>
+          <tr><td><code>create_webhook</code> / <code>update_webhook</code> / <code>delete_webhook</code> / <code>rotate_webhook_secret</code> / <code>list_webhooks</code> / <code>list_webhook_deliveries</code></td><td>Admin</td><td>Webhook endpoints (#320, API-06): an https URL (no private or local host) and the events it wants; the signing secret is returned on create and rotate only and kept in Vault; a rotation keeps the replaced secret signing too for 24 hours (#335); at most 10 per org; every change audit-logged (host, not the URL); MFA when the org requires it</td></tr>
+          <tr><td><code>send_test_webhook</code> / <code>redeliver_webhook</code></td><td>Admin</td><td>#335 (API-06): queue a <code>ping</code> for one enabled endpoint (10 an hour), or a delivered/failed delivery's event again as a new delivery (same event id, <code>redelivery_of</code> set; not while a copy is pending); both audit-logged (<code>webhook.test_sent</code>, <code>webhook.redelivered</code>) and kick <code>deliver-webhooks</code> at once</td></tr>
+          <tr><td><code>webhook_claim</code> / <code>webhook_record</code></td><td>Service role (deliver-webhooks)</td><td>Hands out due deliveries with the URL and secret (and the previous secret during a rotation's 24-hour grace period), counting the attempt and setting the next (1, 4, 16, 64, 256, 1024 min); records the result; after the 7th attempt a delivery has failed, and the 5th failed delivery in a row turns the endpoint off and notifies owners and admins</td></tr>
           <tr><td><code>api_v1_authenticate</code> / <code>api_v1_call</code></td><td>Service role (api-v1)</td><td>The key (by hash), its creator still an active owner/admin, the per-key rate limit (120/min); then the scope, the operation run as the key's creator (<code>internal.api_dispatch</code>: can_view_user, the dashboard's write RPCs, the manual-entry rules) and an <code>api.read</code> / <code>api.write</code> audit row with the key, filters and row count</td></tr>
         </tbody>
       </table>
@@ -744,7 +745,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>capture-url</code></td><td>Dashboard</td><td>Access check, audit row, signed URLs valid 5 min</td></tr>
             <tr><td><code>export-timesheet</code></td><td>Dashboard</td><td>CSV or XLSX into a private exports bucket, signed link</td></tr>
             <tr><td><code>api-v1</code></td><td>API clients (org API key)</td><td>The public API v1 (#306): routes <code>/v1/...</code>, hashes the key, calls <code>api_v1_authenticate</code> and <code>api_v1_call</code>; serves the OpenAPI document (docs/api)</td></tr>
-            <tr><td><code>deliver-webhooks</code></td><td>Cron 1 min</td><td>POSTs due webhook deliveries (#320), signed with HMAC-SHA256 over <code>&lt;timestamp&gt;.&lt;body&gt;</code>; refuses a host that resolves to a private address; no redirects; 10 s timeout</td></tr>
+            <tr><td><code>deliver-webhooks</code></td><td>Cron 1 min</td><td>POSTs due webhook deliveries (#320), signed with HMAC-SHA256 over <code>&lt;timestamp&gt;.&lt;body&gt;</code> (two <code>v1=</code> values during a rotation's grace period, #335); resolves the host once, refuses it if any address is private, and connects to the checked address itself (TCP + TLS with the host name for SNI and certificate validation, HTTP/1.1 written by hand, <code>pin.ts</code>) so DNS rebinding can't redirect it; no redirects; 10 s timeout</td></tr>
             <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts, reminders and daily digests through Resend</td></tr>
             <tr><td><code>retention-purge</code></td><td>Cron nightly</td><td>Deletes expired objects through the Storage API, then their rows</td></tr>
           </tbody>
@@ -762,6 +763,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
             <tr><td><code>webhooks_kick</code></td><td>Every 1 min</td><td>Calls <code>deliver-webhooks</code> when a delivery of an enabled endpoint is due (#320)</td></tr>
             <tr><td><code>webhooks_purge</code></td><td>Daily 03:41 UTC</td><td>Deletes webhook deliveries older than 30 days</td></tr>
+            <tr><td><code>webhooks_end_grace</code></td><td>Every 1 min</td><td>Deletes a rotated-out webhook secret from Vault once its 24 hours are up (#335)</td></tr>
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Queues today (and any unfinished earlier day) for users with an open clock session, then calls <code>rebuild-segments</code> when a <code>dirty_days</code> row is due</td></tr>
             <tr><td><code>reminders</code></td><td>Every 15 min</td><td>Submit and approval reminders, admin escalations</td></tr>
             <tr><td><code>digest</code></td><td>Every 15 min</td><td>Each manager's daily digest of yesterday per direct report (hours, flagged time, misses, late clock-ins), from 09:00 in their zone; one a day, opt-out per person (ALR-03)</td></tr>
@@ -823,12 +825,12 @@ pub trait Platform: Send + Sync {
           <li><span class="badge pk">PK</span><b>id</b></li>
           <li><span class="badge">FK</span>org_id → orgs · created_by → users (set null)</li>
           <li>url (unique per org) · events[] · enabled · disabled_reason (admin, failing) · failed_in_row</li>
-          <li>signing secret in Vault (<code>webhook_secret:&lt;id&gt;</code>); owners/admins read, RPCs write</li>
+          <li>signing secret in Vault (<code>webhook_secret:&lt;id&gt;</code>); after a rotation the replaced one as <code>webhook_secret_prev:&lt;id&gt;</code> until previous_secret_expires_at (24 h); owners/admins read, RPCs write</li>
         </ul></div>
         <div class="t-card"><div class="name">webhook_deliveries</div><ul>
           <li><span class="badge pk">PK</span><b>id</b></li>
           <li><span class="badge">FK</span>webhook_id → webhooks (cascade)</li>
-          <li>event_id (stable, unique per webhook) · event_type · subject_user_id · payload</li>
+          <li>event_id (stable, unique per webhook among originals) · event_type (+ <code>ping</code>) · subject_user_id · payload · redelivery_of (the delivery a redelivery repeats)</li>
           <li>status (pending, delivered, failed) · attempts · next_attempt_at · response_status · last_error; 30 days; a deleted person's are removed or redacted to ids</li>
         </ul></div>
         <div class="t-card"><div class="name">shifts</div><ul>
