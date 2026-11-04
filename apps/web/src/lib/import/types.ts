@@ -55,6 +55,16 @@ export interface ExistingTask {
   archived: boolean;
 }
 
+/** A holiday already in the calendar, for a holidays import (#319). */
+export interface ExistingHoliday {
+  /** "YYYY-MM-DD". */
+  day: string;
+  name: string;
+  /** Null: everyone in the org. */
+  country: string | null;
+  state: string | null;
+}
+
 /** A manual time entry already there, for a time-entry import (#282). */
 export interface ExistingTimeEntry {
   /** The person's email, lower case. */
@@ -103,6 +113,8 @@ export interface ImportContext {
   shifts: ExistingShift[];
   /** Tasks of projects (time-entry imports). */
   tasks?: ExistingTask[];
+  /** Holiday imports: the calendar as it is. */
+  holidays?: ExistingHoliday[];
   /** Time-entry imports: what's already there for the file's people and dates. */
   time?: TimeContext;
   /** People imports only. Without it, new people need every column filled. */

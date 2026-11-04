@@ -139,6 +139,7 @@ test("a manager reads the week's report and it matches the timesheet totals, sor
     "Median response",
     "Breaks",
     "Pauses",
+    "Leave",
     "Late clock-ins",
     "Needs review",
   ]) {

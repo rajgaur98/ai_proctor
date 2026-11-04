@@ -2,7 +2,8 @@
 // client, project and task, on the week page (one person) and the Timesheets list (the
 // timesheets shown). The numbers come from packages/core workTotals, summed from raw
 // seconds; they are rounded only here, for display. Overtime (#65, TS-19) is shown next to
-// them by the page, which knows whether it is one person's week or many.
+// them by the page, which knows whether it is one person's week or many. Leave (#319, LV-05)
+// is its own number next to them, never part of worked time.
 import type { ClientTotal, WorkTotals } from "@ai-proctor/core";
 import type { ReactNode } from "react";
 import { ExportButton } from "../../components/ExportButton";
@@ -103,6 +104,7 @@ export function TotalsPanel({
   title,
   description,
   totals,
+  leave,
   names,
   overtime,
   loading,
@@ -112,6 +114,8 @@ export function TotalsPanel({
   title: string;
   description?: string;
   totals: WorkTotals;
+  /** LV-05: paid leave and holidays in seconds, shown apart; left out when there is none. */
+  leave?: number | undefined;
   names: Names;
   /** The overtime note shown next to the totals, or nothing. */
   overtime?: ReactNode;
@@ -147,6 +151,7 @@ export function TotalsPanel({
               <Stat label="Worked" seconds={totals.seconds} />
               <Stat label="Billable" seconds={totals.billable} />
               <Stat label="Non-billable" seconds={totals.nonBillable} />
+              {leave !== undefined && <Stat label="Leave" seconds={leave} />}
             </dl>
             {overtime}
           </div>

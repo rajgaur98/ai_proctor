@@ -5,6 +5,7 @@ import { IMPORT_MAX_INVITES, type ImportKind, ImportPayload } from "@ai-proctor/
 import { type CsvReadResult, readCsv, readXlsxTable } from "@ai-proctor/core";
 import { previewClients } from "./clients";
 import { mapColumns, type RowCells, rowCells } from "./columns";
+import { previewHolidays } from "./holidays";
 import { previewPeople } from "./people";
 import { previewProjects } from "./projects";
 import { previewShifts } from "./shifts";
@@ -24,6 +25,7 @@ const KINDS: Record<ImportKind, KindPreview> = {
   projects: previewProjects,
   shifts: previewShifts,
   time_entries: previewTimeEntries,
+  holidays: previewHolidays,
 };
 
 function counts(rows: PreviewRow[]): Record<RowStatus, number> {

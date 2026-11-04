@@ -24,6 +24,7 @@ export const SHEET_LIST_HEADER = [
   "Billable (h)",
   "Non-billable (h)",
   "Flagged (h)",
+  "Leave (h)",
   "Over weekly threshold",
 ];
 
@@ -53,6 +54,7 @@ export function sheetListTable(
         exportHours(split.billable),
         exportHours(split.nonBillable),
         exportHours(r.flaggedS),
+        exportHours(r.leaveS),
         weeklyHours ? yesNo(isOver(r.workedS, weeklyHours)) : "",
       ];
     }),

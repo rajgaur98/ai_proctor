@@ -20,6 +20,9 @@
 //            (#282, TS-31). An entry with the same person, start and end already there is
 //            left alone when it's identical and refused (entry_exists) when it isn't;
 //            imports never change existing entries.
+//   holidays items: ImportHoliday, matched on date and place (country, state; no country
+//            is everyone) like the unique index: `create` adds it, `update` renames the
+//            holiday already there, through save_holiday's rules (#319, LV-02).
 // Every item carries `rows`, the file's row numbers it came from, so an error the RPC
 // raises can point at a row. Rows the preview found unchanged are not sent.
 import { z } from "zod";
@@ -36,6 +39,7 @@ export const ImportKind = z.enum([
   "projects",
   "shifts",
   "time_entries",
+  "holidays",
 ]);
 export const ImportAction = z.enum(["create", "update"]);
 
@@ -153,6 +157,24 @@ export const ImportTimeEntry = z
     }
   });
 
+export const ImportHoliday = z
+  .object({
+    rows: Rows,
+    action: ImportAction,
+    day: z.iso.date(),
+    name: z.string().trim().min(1).max(80),
+    // No country: a holiday for everyone in the org.
+    country: CountryCode.nullable(),
+    state: z
+      .string()
+      .regex(/^[A-Z]{2}$/, "must be a two-letter state code")
+      .nullable(),
+  })
+  .refine((h) => h.state === null || h.country === "US", {
+    message: "Only the US has states",
+    path: ["state"],
+  });
+
 const items = <T extends z.ZodType>(item: T) => z.array(item).min(1).max(IMPORT_MAX_ROWS);
 
 export const ImportPayload = z.discriminatedUnion("kind", [
@@ -162,6 +184,7 @@ export const ImportPayload = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("projects"), items: items(ImportProject) }),
   z.object({ kind: z.literal("shifts"), items: items(ImportShifts) }),
   z.object({ kind: z.literal("time_entries"), items: items(ImportTimeEntry) }),
+  z.object({ kind: z.literal("holidays"), items: items(ImportHoliday) }),
 ]);
 
 export type ImportKind = z.infer<typeof ImportKind>;
@@ -173,4 +196,5 @@ export type ImportProject = z.infer<typeof ImportProject>;
 export type ImportShift = z.infer<typeof ImportShift>;
 export type ImportShifts = z.infer<typeof ImportShifts>;
 export type ImportTimeEntry = z.infer<typeof ImportTimeEntry>;
+export type ImportHoliday = z.infer<typeof ImportHoliday>;
 export type ImportPayload = z.infer<typeof ImportPayload>;

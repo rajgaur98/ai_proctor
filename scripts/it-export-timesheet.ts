@@ -285,9 +285,17 @@ assert.deepEqual(daily.header.slice(0, 5), [
   "Worked (h)",
   "Worked (H:MM)",
 ]);
-// #254 (TS-25): the per-day view ends with Work done.
-assert.deepEqual(daily.header.slice(-3), ["Status", "Approver", "Work done"]);
-for (const name of ["Flagged", "Excluded", "Break", "Manual", "Billable", "Non-billable"]) {
+// #254 (TS-25): the per-day view ends with Work done; #319 (LV-06): Time off before it.
+assert.deepEqual(daily.header.slice(-4), ["Status", "Approver", "Time off", "Work done"]);
+for (const name of [
+  "Flagged",
+  "Excluded",
+  "Break",
+  "Manual",
+  "Billable",
+  "Non-billable",
+  "Leave",
+]) {
   assert.ok(daily.col(`${name} (h)`) > 0 && daily.col(`${name} (H:MM)`) > 0, `${name} columns`);
 }
 assert.deepEqual(

@@ -11,7 +11,7 @@ export function TeamCalendar({ zone }: { zone: string }) {
   const headingId = useId();
   const today = DateTime.now().setZone(zone).toISODate() ?? "";
   const days = useMemo(() => twoWeeks(today), [today]);
-  const requests = useQuery(leaveRequestsQuery(days[0], days[13]));
+  const requests = useQuery(leaveRequestsQuery({ from: days[0] ?? "", to: days[13] ?? "" }));
   const holidays = useQuery(holidaysQuery);
   const weeks = useMemo(() => {
     const all = offByDay(days, requests.data ?? [], holidays.data ?? []);
