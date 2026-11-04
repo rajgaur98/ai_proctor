@@ -128,7 +128,7 @@ apps/agent/
 | Storage | Private `captures` bucket. Insert allowed only to the caller's own path; reads only via `capture-url` |
 | Realtime | Postgres Changes on `presence` for the pilot. Move to broadcast-from-database when concurrent managers grow |
 | Scheduled jobs | pg_cron: offline sweep (1 min), alert evaluation (1 min), segment rebuild trigger (5 min), retention purge (nightly). Edge Functions invoked via `pg_net` |
-| Edge Functions (Deno, TS) | `rebuild-segments`, `send-emails` (Resend), `export-timesheet` (CSV + XLSX; the XLSX writer is our own in `packages/core`, no library), `capture-url`, `retention-purge` (deletes storage objects through the Storage API, then rows), `api-v1` (the public API v1 with org API keys, #306; docs/api) |
+| Edge Functions (Deno, TS) | `rebuild-segments`, `send-emails` (Resend), `export-timesheet` (CSV + XLSX; the XLSX writer is our own in `packages/core`, no library), `capture-url`, `retention-purge` (deletes storage objects through the Storage API, then rows), `api-v1` (the public API v1 with org API keys, #306; docs/api), `deliver-webhooks` (signed webhook deliveries with retries, #320) |
 | Backups | Supabase Pro daily backups, plus a weekly `pg_dump` to R2 from a scheduled GitHub Action as an off-platform copy |
 
 ### Email and alerts (ALR-01, ALR-02)
@@ -138,6 +138,8 @@ apps/agent/
 **Late clock-ins (SHF-06).** A trigger on `clock_sessions` records each late clock-in in `late_clock_ins` (shift start, clock-in, seconds late, the grace that applied), with the alert's rule and `late_clock_in_min` grace, so editing a shift later doesn't rewrite them.
 
 **Daily digest (ALR-03).** `digest` (pg_cron, every 15 min) queues one email a day to each active person with direct reports, from 09:00 in their own zone (not after 18:00): yesterday's hours, flagged time, missed check-ins and late clock-ins per report, raw seconds rounded only in the email. Delegates don't get it. Each person can turn it off on the Alerts page (`notification_prefs.daily_digest`, default on).
+
+**Insights (INS-01..06, #305).** `public.insights(from, to, team, people)` returns, in one call, everything the Insights page and an employee's own Insights in My data show: totals for the range and for the previous range of the same length, a series by day (7-day buckets past two months), people by name, hours by client, project and task, billable share per team against its optional target (`teams.billable_target_pct`, off by default), and the person-days with anti-cheat flags or Tamper. People and numbers follow `report_rows`' rules exactly (pgTAP `insights.test.sql` compares them), from segments in raw seconds. Plain totals: no score, ranking or top/bottom list. `weekly_insights` (pg_cron, every 15 min) queues the optional weekly email (`notification_prefs.weekly_insights`, off until a manager turns it on on the Alerts page): last week's totals for their direct reports against the week before, no names. Timing for 500 people (`scripts/it-reports-scale.sh`): about 0.35 s for a week, 1.1 s for 28 days.
 
 **Email batching.** `alert_eval` also queues emails in `email_outbox`: at most one per recipient, employee and alert type per hour. Alerts raised inside that hour are held and go out together in the next email.
 

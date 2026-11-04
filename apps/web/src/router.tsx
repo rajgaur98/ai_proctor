@@ -12,6 +12,7 @@ import { ApiPage } from "./features/api/ApiPage";
 import { AuditLog } from "./features/audit/AuditLog";
 import { DayPage } from "./features/day/DayPage";
 import { ImportPage } from "./features/import/ImportPage";
+import { Insights } from "./features/insights/Insights";
 import { MyData } from "./features/mydata/MyData";
 import { NoticePage } from "./features/notice/Notice";
 import { People } from "./features/people/People";
@@ -202,14 +203,16 @@ const alertsRoute = createRoute({
 
 /** Everyone with an account sees their own data (#49, EMP-02): employees from the nav,
  * managers and admins from the account menu; the tray opens it too. Optional ?date= for
- * another day. */
+ * another day; ?view=insights shows their own Insights instead of the day (INS-05, #305). */
 const myDataRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/me",
-  validateSearch: (search: Record<string, unknown>): { date?: string } =>
-    typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date)
+  validateSearch: (search: Record<string, unknown>): { date?: string; view?: "insights" } => ({
+    ...(typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date)
       ? { date: search.date }
-      : {},
+      : {}),
+    ...(search.view === "insights" ? { view: "insights" as const } : {}),
+  }),
   component: MyData,
 });
 
@@ -228,6 +231,7 @@ const routeTree = rootRoute.addChildren([
     timesheetRoute,
     page("/time-off", "Time off", 304, TimeOff),
     page("/reports", "Reports", 47, Reports),
+    page("/insights", "Insights", 305, Insights),
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),
     page("/teams", "Teams", 66, Teams),

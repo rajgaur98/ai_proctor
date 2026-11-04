@@ -19,12 +19,14 @@ import {
   type OverrideGroup,
   orgValues,
   overrideSummary,
+  parseTarget,
   sameOverrides,
   validateOverrides,
 } from "./overrides";
 import {
   deleteTeam,
   saveTeam,
+  setTeamBillableTarget,
   setTeamMembers,
   setTeamPolicy,
   type Team,
@@ -203,6 +205,12 @@ function TeamDialog({
   const [draft, setDraft] = useState<OverrideDraft>(() =>
     draftFrom(team?.policy ?? {}, orgValues(org)),
   );
+  const [target, setTarget] = useState(
+    team?.billableTargetPct === null || team?.billableTargetPct === undefined
+      ? ""
+      : String(team.billableTargetPct),
+  );
+  const targetPct = parseTarget(target);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Set once the team row exists, so a retry after a failed members or policy save doesn't
   // create it twice.
@@ -234,6 +242,10 @@ function TeamDialog({
       }
       if (!sameOverrides(team?.policy ?? {}, checked.data)) {
         await setTeamPolicy(teamId, checked.data);
+      }
+      if (targetPct === undefined) throw new Error("Fix the billable target first.");
+      if (targetPct !== (team?.billableTargetPct ?? null)) {
+        await setTeamBillableTarget(teamId, targetPct);
       }
     },
     onSuccess: () => {
@@ -400,6 +412,28 @@ function TeamDialog({
           ))}
         </fieldset>
 
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${id}-target`}>Billable target (%)</Label>
+          <Input
+            id={`${id}-target`}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={100}
+            step={1}
+            className="w-32"
+            value={target}
+            aria-invalid={targetPct === undefined}
+            aria-describedby={`${id}-target-hint`}
+            onChange={(e) => setTarget(e.target.value)}
+          />
+          <p id={`${id}-target-hint`} className="text-xs text-ink3">
+            {targetPct === undefined
+              ? "Enter a whole percentage from 1 to 100, or leave it empty."
+              : "Optional. Insights show the team's billable share of worked time next to it. Empty is no target."}
+          </p>
+        </div>
+
         {confirmingDelete && (
           <div
             role="alertdialog"
@@ -434,7 +468,10 @@ function TeamDialog({
           <Button type="button" variant="secondary" className="ml-auto" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={save.isPending || checked.data === null}>
+          <Button
+            type="submit"
+            disabled={save.isPending || checked.data === null || targetPct === undefined}
+          >
             {save.isPending ? "Saving…" : "Save team"}
           </Button>
         </div>

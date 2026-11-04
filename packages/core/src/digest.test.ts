@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { type DigestReport, digestLineText, digestSummary, plural } from "./digest.ts";
+import {
+  type DigestReport,
+  digestLineText,
+  digestSummary,
+  plural,
+  weeklyInsightsLines,
+  weeklyLineText,
+} from "./digest.ts";
 
 const report = (over: Partial<DigestReport>): DigestReport => ({
   user_id: "u",
@@ -87,5 +94,51 @@ describe("digest text", () => {
   it("pluralises", () => {
     expect(plural(0, "miss", "misses")).toBe("0 misses");
     expect(plural(1, "miss", "misses")).toBe("1 miss");
+  });
+});
+
+describe("weeklyInsightsLines", () => {
+  it("shows last week next to the week before, rounded only for display", () => {
+    const lines = weeklyInsightsLines(
+      {
+        worked_s: 34_200,
+        scheduled_s: 144_000,
+        on_time: 3,
+        shift_days: 5,
+        late_clock_ins: 2,
+        no_clock_in: 0,
+        response_rate: 0.75,
+        median_response_ms: 1500,
+        checkins_missed: 2,
+        flagged_s: 1500,
+        billable_s: 10_800,
+        needs_review: 1,
+        tamper: 1,
+      },
+      { worked_s: 7200, response_rate: null, median_response_ms: null },
+    );
+    expect(lines.map(weeklyLineText)).toEqual([
+      "Worked: 9:30 (week before 2:00)",
+      "Scheduled: 40:00 (week before 0:00)",
+      "Shift days on time: 3 of 5 (week before 0 of 0)",
+      "Late clock-ins: 2 (week before 0)",
+      "Shift days without a clock-in: 0 (week before 0)",
+      "Check-in response rate: 75% (week before —)",
+      "Median response: 1.5 s (week before —)",
+      "Missed check-ins: 2 (week before 0)",
+      "Flagged: 0:25 (week before 0:00)",
+      "Billable share: 32% (week before 0%)",
+      "Anti-cheat flags to review: 1 (week before 0)",
+      "Tamper: 1 (week before 0)",
+    ]);
+  });
+
+  it("reads a missing or empty payload as nothing", () => {
+    const lines = weeklyInsightsLines({}, {});
+    expect(lines.find((l) => l.label === "Billable share")).toEqual({
+      label: "Billable share",
+      value: "—",
+      previous: "—",
+    });
   });
 });

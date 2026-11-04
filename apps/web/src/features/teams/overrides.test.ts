@@ -3,6 +3,7 @@ import {
   draftFrom,
   type OverrideValues,
   overrideSummary,
+  parseTarget,
   sameOverrides,
   toOverrides,
   validateOverrides,
@@ -120,5 +121,19 @@ describe("overrideSummary", () => {
       ["Check-ins every 30 min"],
     );
     expect(overrideSummary({})).toEqual([]);
+  });
+});
+
+describe("parseTarget (#305)", () => {
+  it("reads empty as no target and 1..100 as a percentage", () => {
+    expect(parseTarget("")).toBeNull();
+    expect(parseTarget("  ")).toBeNull();
+    expect(parseTarget("60")).toBe(60);
+    expect(parseTarget("1")).toBe(1);
+    expect(parseTarget("100")).toBe(100);
+  });
+
+  it("refuses anything else", () => {
+    for (const bad of ["0", "101", "12.5", "-5", "abc"]) expect(parseTarget(bad)).toBeUndefined();
   });
 });

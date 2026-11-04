@@ -85,6 +85,10 @@ describe("summarize", () => {
       ),
     ).toBe("Support · 1 setting");
     expect(actionLabel("team.policy_changed")).toBe("Changed a team's policy");
+    expect(
+      summarize("team.billable_target_changed", { name: "Web", from: null, to: 60 }, nameOf),
+    ).toBe("Web · None → 60%");
+    expect(actionLabel("team.billable_target_changed")).toBe("Changed a team's billable target");
   });
 
   it("reads role, manager and location changes", () => {
@@ -209,6 +213,40 @@ describe("summarize", () => {
     expect(summarize("api.write", { ...key, operation: "clients.create" }, nameOf)).toBe(
       "clients.create · key Payroll sync · aip_AbCd…",
     );
+  });
+
+  it("reads webhook endpoints (#320) by host, never the URL or the secret", () => {
+    expect(actionLabel("webhook.secret_rotated")).toBe("Rotated a webhook secret");
+    expect(
+      summarize(
+        "webhook.created",
+        { webhook_id: "w1", host: "hooks.example.com", events: ["person.invited", "alert.raised"] },
+        nameOf,
+      ),
+    ).toBe("hooks.example.com · person.invited, alert.raised");
+    expect(
+      summarize(
+        "webhook.changed",
+        {
+          host: "new.example.com",
+          changed: {
+            host: { from: "old.example.com", to: "new.example.com" },
+            events: { from: ["alert.raised"], to: ["person.invited"] },
+            enabled: { from: true, to: false },
+          },
+        },
+        nameOf,
+      ),
+    ).toBe(
+      "new.example.com · host old.example.com → new.example.com · events → person.invited · turned off",
+    );
+    expect(summarize("webhook.secret_rotated", { host: "hooks.example.com" }, nameOf)).toBe(
+      "hooks.example.com",
+    );
+    expect(
+      summarize("webhook.disabled", { host: "hooks.example.com", failed_deliveries: 5 }, nameOf),
+    ).toBe("hooks.example.com · 5 failed events in a row");
+    expect(summarize("webhook.deleted", {}, nameOf)).toBe("—");
   });
 
   it("shows unknown metadata as JSON and nothing as a dash", () => {

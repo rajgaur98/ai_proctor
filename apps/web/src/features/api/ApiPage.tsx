@@ -1,7 +1,8 @@
 // Settings → API (#306, API-01, API-02): owners and admins make org API keys for the public
 // API, with a name, what each key may read or change, and an optional expiry; a key is
 // shown once, when it is made, and can be revoked. Making, revoking and every request a
-// key makes are recorded in the audit log by the database.
+// key makes are recorded in the audit log by the database. Webhooks (#320, API-06) are
+// below the keys (WebhooksSection).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useId, useState } from "react";
@@ -20,6 +21,7 @@ import {
   revokeKey,
 } from "./apiKeysData";
 import { endOfDay, keyStatus, scopeGroups, scopeSummary } from "./apiText";
+import { WebhooksSection } from "./WebhooksSection";
 
 export function ApiPage() {
   const { profile } = useRouteContext({ from: "/_app" });
@@ -187,6 +189,8 @@ export function ApiPage() {
           .
         </p>
       </section>
+
+      <WebhooksSection />
 
       {creating && <CreateDialog onClose={() => setCreating(false)} />}
       {revoking && <RevokeDialog apiKey={revoking} onClose={() => setRevoking(null)} />}

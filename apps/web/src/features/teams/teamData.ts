@@ -11,18 +11,24 @@ export interface Team {
   name: string;
   /** The team's overrides; a key that isn't here follows the org's policy. */
   policy: TeamPolicy;
+  /** The billable share Insights shows the team against, in percent; null is none (#305). */
+  billableTargetPct: number | null;
 }
 
 export const teamsQuery = queryOptions({
   queryKey: ["teams"],
   queryFn: async (): Promise<Team[]> => {
-    const { data, error } = await supabase.from("teams").select("id, name, policy").order("name");
+    const { data, error } = await supabase
+      .from("teams")
+      .select("id, name, policy, billable_target_pct")
+      .order("name");
     if (error) throw error;
     return data.map((t) => ({
       id: t.id,
       name: t.name,
       // Stored by set_team_policy, so it parses; anything else shows as no overrides.
       policy: TeamPolicyKeys.catch({}).parse(t.policy),
+      billableTargetPct: t.billable_target_pct,
     }));
   },
 });
@@ -57,6 +63,16 @@ export async function setTeamPolicy(id: string, policy: TeamPolicy): Promise<Set
   return SetTeamPolicyReply.parse(data);
 }
 
+/** The team's billable target (1..100 percent), or null for none (INS-02, #305). */
+export async function setTeamBillableTarget(id: string, pct: number | null) {
+  const { error } = await supabase.rpc("set_team_billable_target", {
+    p_team_id: id,
+    // Generated types don't mark function arguments nullable; null turns the target off.
+    p_target_pct: pct as number,
+  });
+  if (error) throw new Error(explain(error.message, error.details));
+}
+
 export async function deleteTeam(id: string) {
   const { error } = await supabase.rpc("delete_team", { p_team_id: id });
   if (error) throw new Error(explain(error.message, error.details));
@@ -69,6 +85,7 @@ const messages: Record<string, string> = {
   name_taken: "Another team already has that name.",
   invalid_name: "Enter a team name (up to 80 characters).",
   mfa_required: "Verify two-factor authentication to change a team's policy.",
+  invalid_target: "A billable target is a whole percentage from 1 to 100, or empty for none.",
 };
 
 /** `details` is the key the database refused, when it names one. */

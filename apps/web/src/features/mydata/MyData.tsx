@@ -4,7 +4,7 @@
 // captures and who viewed them, the apps and sites seen, who viewed their captures,
 // their week's timesheet and the manager's edits to it, and the day's top apps (ACT-04,
 // #67), as the manager sees them. "Export my data" downloads a ZIP of all of it
-// (export-my-data).
+// (export-my-data). "My insights" shows their own totals and trends instead (INS-05, #305).
 import { windowsBetween } from "@ai-proctor/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
@@ -40,6 +40,7 @@ import {
   workedSeconds,
 } from "./helpers";
 import { MissReasonEdit } from "./MissReasonDialog";
+import { MyDataTabs, MyInsights } from "./MyInsights";
 import { partOptions } from "./partOptions";
 import {
   activityQuery,
@@ -56,7 +57,13 @@ import { SidePanels } from "./SidePanels";
 const card = "overflow-hidden rounded-xl border border-line bg-panel";
 const cardHead = "flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-5 py-4";
 
+/** My data: the day (the default) or the person's own Insights (?view=insights, #305). */
 export function MyData() {
+  const search = useSearch({ from: "/_app/me" });
+  return search.view === "insights" ? <MyInsights /> : <MyDay />;
+}
+
+function MyDay() {
   const { profile } = useRouteContext({ from: "/_app" });
   const search = useSearch({ from: "/_app/me" });
   const navigate = useNavigate();
@@ -162,6 +169,8 @@ export function MyData() {
           )}
         </div>
       </div>
+
+      <MyDataTabs view="day" />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="flex min-w-0 flex-col gap-5">

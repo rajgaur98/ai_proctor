@@ -387,11 +387,11 @@ Plain totals and trends of presence and time data. Not AI, and never a productiv
 | ID | Pri | Requirement |
 |---|---|---|
 | INS-01 | P1 | **Insights page:** managers see their reports (and their delegates' scope), owners and admins the org. Filter by team, person and date range; each metric shows its trend against the previous period of the same length |
-| INS-02 | P1 | Metrics. **Attendance:** on-time vs late clock-ins (SHF-06), shift days with no clock-in (leave and holidays excluded, LV-04), worked vs scheduled shift hours. **Presence:** check-in response rate and median response time over time (CHK-24), misses by reason (CHK-23), share deferred for calls and presenting (CHK-03). **Time:** worked vs flagged vs excluded (TS-02), break and pause use against caps (BRK-06), overtime (TS-19), billable share of worked time (utilisation) against an optional per-team target. **Projects:** hours by client, project and task over time, and the Unassigned share. **Needs review:** anti-cheat flags and Tamper counts over time (ANT-08), linking to the day views |
+| INS-02 | P1 | Metrics. **Attendance:** on-time vs late clock-ins (SHF-06), shift days with no clock-in (leave and holidays excluded, LV-04), worked vs scheduled shift hours. **Presence:** check-in response rate and median response time over time (CHK-24), misses by reason (CHK-23), share deferred for calls and presenting (CHK-03). **Time:** worked vs flagged vs excluded (TS-02), break and pause use against caps (BRK-06), overtime (TS-19), billable share of worked time (utilisation) against an optional per-team target (off unless an owner or admin sets one on the team, 1–100%). **Projects:** hours by client, project and task over time, and the Unassigned share. **Needs review:** anti-cheat flags and Tamper counts over time (ANT-08), linking to the day views |
 | INS-03 | P1 | People tables list people by name by default; no composite score and no "top / bottom" lists. Top apps stay time only, with no productive / unproductive labels (ACT-04) |
 | INS-04 | P1 | Numbers match Reports (DSH-07, DSH-10) for the same filters: computed server-side from segments in raw seconds and rounded only for display (TS-06). Export as TS-27/28 |
 | INS-05 | P1 | Employees see the same metrics about themselves in My data (EMP-02) |
-| INS-06 | P1 | Optional weekly insights email to managers, alongside the daily digest (ALR-03) |
+| INS-06 | P1 | Optional weekly insights email to managers, alongside the daily digest (ALR-03): off until the manager turns it on on the Alerts page; last week's totals for their direct reports against the week before, with no names |
 
 ### 4.19 Public API and AI assistant access (API)
 
@@ -509,7 +509,7 @@ Plain totals and trends of presence and time data. Not AI, and never a productiv
 
 ```
 orgs(id, name, data_region, region_preset, policy jsonb, created_at)
-teams(id, org_id, name)
+teams(id, org_id, name, policy jsonb, billable_target_pct)
 users(id, org_id, role, email, name, manager_id, team_id, work_country, work_state,
       timezone, approval_required, status)
 delegations(id, manager_id, delegate_id, starts_on, ends_on)
@@ -543,8 +543,9 @@ holidays(id, org_id, date, name, work_country, work_state)
 leave_requests(id, user_id, leave_type_id, start_at, end_at, note,
                status[pending|approved|rejected|cancelled], decided_by, decided_at)
 api_keys(id, org_id, name, key_hash, scopes[], created_by, expires_at, revoked_at, last_used_at)
-webhook_endpoints(id, org_id, url, events[], secret_hash, active)
-webhook_deliveries(id, endpoint_id, event, payload, status, attempts, next_attempt_at)
+webhooks(id, org_id, url, events[], enabled, disabled_reason, failed_in_row)  -- secret in Vault
+webhook_deliveries(id, webhook_id, event_id, event_type, payload, status, attempts,
+                   next_attempt_at, response_status)
 audit_log(id, org_id, actor_id, action, target_type, target_id, metadata, created_at)
 ```
 

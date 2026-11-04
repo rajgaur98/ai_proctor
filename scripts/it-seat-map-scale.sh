@@ -1,11 +1,11 @@
 #!/bin/bash
 # The seat map with a big org (#308, DSH-11: smooth with 5,000 people). Seeds synthetic
 # people into this worktree's stack, runs the seat map's performance spec (frame timing,
-# DOM size, query count, live updates without a new layout) and removes them again, even
-# when the spec fails. Local only, not part of CI.
+# DOM size, query count, live updates without a new layout; and the List view's load time,
+# #323) and removes them again, even when the spec fails. Local only, not part of CI.
 #   scripts/stack.sh up && scripts/stack.sh dotenv
 #   scripts/it-seat-map-scale.sh [people=5000]
-# The spec prints the frame timings it measured.
+# The spec prints the frame timings and list load times it measured.
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)

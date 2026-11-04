@@ -18,6 +18,7 @@ import { notificationNote, notificationTarget, notificationText } from "./notifi
 // (the top bar links them from a string the same way).
 const TIMESHEETS_TAB: string = "/timesheets";
 const TIME_OFF: string = "/time-off";
+const SETTINGS_API: string = "/settings/api";
 
 function Inbox() {
   return (
@@ -172,6 +173,10 @@ function NotificationRow({
           </Link>
         ) : target.page === "time-off" ? (
           <Link to={TIME_OFF} onClick={onOpen} className={className}>
+            {body}
+          </Link>
+        ) : target.page === "api" ? (
+          <Link to={SETTINGS_API} onClick={onOpen} className={className}>
             {body}
           </Link>
         ) : (

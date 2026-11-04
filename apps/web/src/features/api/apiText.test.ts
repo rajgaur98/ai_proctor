@@ -15,6 +15,7 @@ describe("API keys", () => {
       "checkins:read",
       "reports:read",
       "alerts:read",
+      "timeoff:read",
     ]);
   });
 
@@ -23,6 +24,7 @@ describe("API keys", () => {
       "People: read · Time: read, write",
     );
     expect(scopeSummary(["projects:write"])).toBe("Clients, projects and tasks: write");
+    expect(scopeSummary(["timeoff:read", "alerts:read"])).toBe("Alerts: read · Time off: read");
     expect(scopeSummary([])).toBe("");
   });
 
