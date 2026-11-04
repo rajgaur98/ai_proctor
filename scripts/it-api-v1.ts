@@ -1,4 +1,4 @@
-// Integration check for the public API v1 (#306) against a local stack, over HTTP through
+// Integration check for the public API v1 (#306; time off #320) against a local stack, over HTTP through
 // the api-v1 Edge Function: keys made and refused on the dashboard RPCs, the OpenAPI
 // document against docs/api/openapi.json, every key error (missing, malformed, unknown,
 // revoked, expired, creator no longer an admin), scopes, parameter errors, paging with
@@ -147,6 +147,7 @@ const ALL_SCOPES = [
   "checkins:read",
   "reports:read",
   "alerts:read",
+  "timeoff:read",
 ];
 
 // Keys -------------------------------------------------------------------------------------
@@ -499,6 +500,58 @@ assert.ok(
 );
 assert.equal(r.json.from, day);
 expectOk(await api(`/v1/reports/tasks?from=${day}&to=${day}`, full.key), "report per task");
+
+// Time off (#320): requests without their notes, and the holiday calendar ------------------------
+
+const erinToken = await signIn("erin@acme.test");
+const vacation = (
+  (await rest(`/rest/v1/leave_types?select=id&org_id=eq.${ORG}&name=eq.Vacation`, erinToken))
+    .json as { id: string }[]
+)[0];
+const leaveDay = new Date(
+  Date.now() + (60 + (Number.parseInt(RUN.slice(-3), 36) % 250)) * 86_400_000,
+)
+  .toISOString()
+  .slice(0, 10);
+const asked = await rest("/rest/v1/rpc/request_leave", erinToken, {
+  body: { p_leave_type_id: vacation.id, p_first_day: leaveDay, p_note: "Secret leave note" },
+});
+assert.equal(asked.status, 200, `request leave: ${JSON.stringify(asked.json)}`);
+const leaveId = asked.json as string;
+await rest("/rest/v1/holidays", service, {
+  body: { org_id: ORG, day: leaveDay, name: `IT Holiday ${RUN}` },
+  prefer: "return=minimal",
+});
+r = await api(
+  `/v1/time-off?user_id=${ERIN}&status=pending&from=${leaveDay}&to=${leaveDay}`,
+  full.key,
+);
+expectOk(r, "time off");
+const leave = data(r).find((l) => l.id === leaveId);
+assert.ok(leave, "the request is listed");
+assert.equal(leave.type_name, "Vacation");
+assert.equal(leave.kind, "days");
+assert.equal(leave.first_day, leaveDay);
+assert.equal(leave.decided_by, null);
+assert.ok(!JSON.stringify(r.json).includes("Secret leave note"), "never the note");
+r = await api(`/v1/holidays?from=${leaveDay}&to=${leaveDay}`, full.key);
+expectOk(r, "holidays");
+assert.ok(
+  data(r).some((h) => h.name === `IT Holiday ${RUN}` && h.day === leaveDay && h.country === null),
+  "the holiday is listed",
+);
+expectError(
+  await api("/v1/holidays", peopleOnly.key),
+  403,
+  "insufficient_scope",
+  "time off needs its scope",
+);
+expectError(
+  await api("/v1/time-off?status=maybe", full.key),
+  400,
+  "invalid_param",
+  "a bad time-off status",
+);
 
 // Another org's key sees only its org ---------------------------------------------------------
 

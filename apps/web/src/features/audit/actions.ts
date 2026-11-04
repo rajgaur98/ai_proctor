@@ -32,6 +32,11 @@ export const actionLabels: Record<string, string> = {
   "api_key.revoked": "Revoked an API key",
   "api.read": "Read through the API",
   "api.write": "Changed through the API",
+  "webhook.created": "Added a webhook endpoint",
+  "webhook.changed": "Changed a webhook endpoint",
+  "webhook.deleted": "Deleted a webhook endpoint",
+  "webhook.secret_rotated": "Rotated a webhook secret",
+  "webhook.disabled": "Turned off a failing webhook endpoint",
   "leave_type.created": "Added a leave type",
   "leave_type.changed": "Changed a leave type",
   "holiday.added": "Added a holiday",
@@ -76,6 +81,24 @@ const apiKeyName = (m: Meta): string => {
   return (
     [text(m.key_name) ?? text(m.name), prefix ? `${prefix}…` : null].filter(Boolean).join(" · ") ||
     "—"
+  );
+};
+
+/** A webhook endpoint (#320): its host and events, never the whole URL or the secret. */
+const webhookEvents = (v: unknown): string | null =>
+  Array.isArray(v) && v.length ? v.map(String).join(", ") : null;
+
+const webhookChange = (changed: unknown): string | null => {
+  if (!changed || typeof changed !== "object") return null;
+  const c = changed as Record<string, { from?: unknown; to?: unknown }>;
+  return (
+    [
+      c.host ? `host ${text(c.host.from) ?? "—"} → ${text(c.host.to) ?? "—"}` : null,
+      c.events ? `events → ${webhookEvents(c.events.to) ?? "none"}` : null,
+      c.enabled ? (c.enabled.to === true ? "turned on" : "turned off") : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null
   );
 };
 
@@ -211,6 +234,24 @@ export function summarize(
     }
     case "api.write":
       return [text(m.operation) ?? "—", `key ${apiKeyName(m)}`].join(" · ");
+    case "webhook.created":
+    case "webhook.deleted":
+      return [text(m.host), webhookEvents(m.events)].filter(Boolean).join(" · ") || "—";
+    case "webhook.changed":
+      return [text(m.host), webhookChange(m.changed)].filter(Boolean).join(" · ") || "—";
+    case "webhook.secret_rotated":
+      return text(m.host) ?? "—";
+    case "webhook.disabled":
+      return (
+        [
+          text(m.host),
+          typeof m.failed_deliveries === "number"
+            ? `${plural(m.failed_deliveries, "failed event")} in a row`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "—"
+      );
     case "leave_type.created":
       return `${text(m.name) ?? "—"} · ${m.paid === false ? "Unpaid" : "Paid"}`;
     case "leave_type.changed": {

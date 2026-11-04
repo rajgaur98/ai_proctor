@@ -1,4 +1,4 @@
-// The public API v1's operations (#306, API-01..05): one table that both the router
+// The public API v1's operations (#306, API-01..05; time off #320): one table that both the router
 // (index.ts) and the OpenAPI document (openapi.ts) are built from, so the two can't drift.
 // The database decides what each operation returns and checks every parameter
 // (internal.api_dispatch in 20261105200000_public_api.sql); this table only routes and
@@ -397,6 +397,42 @@ export const operations: Operation[] = [
     query: reportParams,
     schema: "TaskReport",
     shape: "report",
+  },
+  {
+    id: "time_off.list",
+    method: "GET",
+    path: "/v1/time-off",
+    scope: "timeoff:read",
+    tag: "Time off",
+    summary: "List time-off requests",
+    description:
+      "Whole days or part of a day, with the type, whether it is paid, the status and who decided. Never the employee's note or the decision note.",
+    query: [
+      ...paging,
+      userId,
+      {
+        name: "status",
+        type: "string",
+        enum: ["pending", "approved", "rejected", "cancelled"],
+        description: "Only this status.",
+      },
+      ...days("that the requests overlap (the person's own days)"),
+    ],
+    schema: "TimeOff",
+    shape: "list",
+  },
+  {
+    id: "holidays.list",
+    method: "GET",
+    path: "/v1/holidays",
+    scope: "timeoff:read",
+    tag: "Time off",
+    summary: "List holidays",
+    description:
+      "The organization's holiday calendar: for everyone, or for one work location (a country, and a state in the US). A deleted holiday is no longer listed.",
+    query: [...paging, ...days("of the holidays")],
+    schema: "Holiday",
+    shape: "list",
   },
 ];
 

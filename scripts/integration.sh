@@ -17,7 +17,7 @@ fresh() {
   curl -s -X DELETE "$mailpit/api/v1/messages" >/dev/null || true
 }
 
-for check in it-rebuild-segments it-export-timesheet it-export-my-data it-send-emails it-reminders it-digest it-api-v1; do
+for check in it-rebuild-segments it-export-timesheet it-export-my-data it-send-emails it-reminders it-digest it-api-v1 it-webhooks; do
   echo "== $check"
   fresh
   bash "scripts/$check.sh"
