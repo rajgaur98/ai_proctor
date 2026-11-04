@@ -61,7 +61,10 @@ $$;
 
 -- Open days -------------------------------------------------------------------------
 
-create temp table t0 as select clock_timestamp() - interval '3 days' as started;
+-- Local noon three local days ago: always four local days to today. (now() - 3 days
+-- spans only three late in the evening after clocks go back.)
+create temp table t0 as
+select ((pg_temp.erin_day(clock_timestamp()) - 3) + time '12:00') at time zone 'America/Los_Angeles' as started;
 create temp table open_s as select pg_temp.session(:erin, (select started from t0), null) as id;
 delete from public.dirty_days;
 
