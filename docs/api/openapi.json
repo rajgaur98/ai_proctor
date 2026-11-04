@@ -2592,7 +2592,7 @@
             "name": "X-AIProctor-Event-Id",
             "in": "header",
             "required": true,
-            "description": "The event's id, the same in every retry: dedupe on it.",
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
             "schema": {
               "type": "string"
             }
@@ -2619,7 +2619,7 @@
             "name": "X-AIProctor-Signature",
             "in": "header",
             "required": true,
-            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
             "schema": {
               "type": "string"
             }
@@ -2698,7 +2698,7 @@
             "name": "X-AIProctor-Event-Id",
             "in": "header",
             "required": true,
-            "description": "The event's id, the same in every retry: dedupe on it.",
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
             "schema": {
               "type": "string"
             }
@@ -2725,7 +2725,7 @@
             "name": "X-AIProctor-Signature",
             "in": "header",
             "required": true,
-            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
             "schema": {
               "type": "string"
             }
@@ -2804,7 +2804,7 @@
             "name": "X-AIProctor-Event-Id",
             "in": "header",
             "required": true,
-            "description": "The event's id, the same in every retry: dedupe on it.",
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
             "schema": {
               "type": "string"
             }
@@ -2831,7 +2831,7 @@
             "name": "X-AIProctor-Signature",
             "in": "header",
             "required": true,
-            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
             "schema": {
               "type": "string"
             }
@@ -2910,7 +2910,7 @@
             "name": "X-AIProctor-Event-Id",
             "in": "header",
             "required": true,
-            "description": "The event's id, the same in every retry: dedupe on it.",
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
             "schema": {
               "type": "string"
             }
@@ -2937,7 +2937,7 @@
             "name": "X-AIProctor-Signature",
             "in": "header",
             "required": true,
-            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
             "schema": {
               "type": "string"
             }
@@ -3016,7 +3016,7 @@
             "name": "X-AIProctor-Event-Id",
             "in": "header",
             "required": true,
-            "description": "The event's id, the same in every retry: dedupe on it.",
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
             "schema": {
               "type": "string"
             }
@@ -3043,7 +3043,7 @@
             "name": "X-AIProctor-Signature",
             "in": "header",
             "required": true,
-            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
             "schema": {
               "type": "string"
             }
@@ -3122,7 +3122,7 @@
             "name": "X-AIProctor-Event-Id",
             "in": "header",
             "required": true,
-            "description": "The event's id, the same in every retry: dedupe on it.",
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
             "schema": {
               "type": "string"
             }
@@ -3149,7 +3149,7 @@
             "name": "X-AIProctor-Signature",
             "in": "header",
             "required": true,
-            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
             "schema": {
               "type": "string"
             }
@@ -3228,7 +3228,7 @@
             "name": "X-AIProctor-Event-Id",
             "in": "header",
             "required": true,
-            "description": "The event's id, the same in every retry: dedupe on it.",
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
             "schema": {
               "type": "string"
             }
@@ -3255,7 +3255,7 @@
             "name": "X-AIProctor-Signature",
             "in": "header",
             "required": true,
-            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
             "schema": {
               "type": "string"
             }
@@ -3299,6 +3299,112 @@
                   },
                   "data": {
                     "$ref": "#/components/schemas/TimeOff"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
+    },
+    "ping": {
+      "post": {
+        "operationId": "webhookPing",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A test event: an admin pressed Send test event for this endpoint (sent whatever events it chose)",
+        "description": "Sent to one endpoint when an admin sends it a test event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry and redelivery: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret. For 24 hours after a rotation, two values separated by a comma (the new secret's first, then the previous one's): accept the request when any value matches.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "ping"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/WebhookPing"
                   }
                 }
               }
@@ -4471,6 +4577,20 @@
             "type": "string",
             "format": "date-time",
             "description": "ISO 8601 with a zone."
+          }
+        }
+      },
+      "WebhookPing": {
+        "type": "object",
+        "description": "A test event (#335).",
+        "required": [
+          "webhook_id"
+        ],
+        "properties": {
+          "webhook_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The endpoint the test was sent to."
           }
         }
       }

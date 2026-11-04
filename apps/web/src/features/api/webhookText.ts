@@ -1,4 +1,4 @@
-// Pure helpers for the webhooks part of Settings → API (#320, API-06): the events an endpoint
+// Pure helpers for the webhooks part of Settings → API (#320, #335; API-06): the events an endpoint
 // can subscribe to, an endpoint's and a delivery's status, and the server's refusals. Kept
 // apart from the data module so they test without a Supabase client.
 
@@ -14,7 +14,13 @@ export const webhookEvents: { type: string; label: string }[] = [
 ];
 
 export function eventLabel(type: string): string {
+  if (type === "ping") return "Test event";
   return webhookEvents.find((e) => e.type === type)?.label ?? type;
+}
+
+/** Only a delivery that is done (delivered or failed) can be sent again (#335). */
+export function canRedeliver(d: { status: string }): boolean {
+  return d.status === "delivered" || d.status === "failed";
 }
 
 /** "Timesheet submitted, Alert raised" for an endpoint's events, in the page's order. */
@@ -61,6 +67,10 @@ const messages: Record<string, string> = {
   url_taken: "Another endpoint already uses that URL.",
   too_many_webhooks: "An organization can have at most 10 endpoints. Delete one first.",
   webhook_not_found: "That endpoint is no longer there. Reload the page.",
+  webhook_off: "The endpoint is off. Turn it on first.",
+  too_many_tests: "At most 10 test events an hour per endpoint. Try again later.",
+  delivery_pending: "That event is still waiting to go out to this endpoint.",
+  delivery_not_found: "That delivery is no longer there. Reload the page.",
 };
 
 export function explainWebhook(code: string): string {
