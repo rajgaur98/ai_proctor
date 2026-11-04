@@ -10,6 +10,28 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/autonomy/heartbeat.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/autonomy/heartbeat.py\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

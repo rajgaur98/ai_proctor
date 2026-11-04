@@ -92,6 +92,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Autonomy scripts (next, gate, stop guard, wake-up)
+        run: python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
       - name: IPC JSON Schema is up to date with the Zod contracts
         run: |
           pnpm contracts:gen

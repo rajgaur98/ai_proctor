@@ -1,104 +1,89 @@
 #!/usr/bin/env python3
-"""Claude Code Stop hook: in autonomous mode, don't let a session end while
-unblocked milestone work remains (docs/progress.md, "Now / Next").
+"""Claude Code Stop hook: keep the autonomous run's owner working while there is
+something it can act on (scripts/autonomy/next.py).
 
-Mode is a local, untracked switch: `.claude/autonomy/mode` containing `on`.
-Anything else (or no file) means off, and the hook does nothing.
+Mode is the local switch `.claude/autonomy/mode` in the main checkout, set with
+`scripts/autonomy/ctl.sh on|off`. The owner is the session that ran `ctl.sh on`
+or `ctl.sh claim` (heartbeat.py records it).
 
-When on, it lists the open sub-issues of the milestone epics (#1-#7) that are not
-labelled `blocked`. If any remain, it blocks the stop and tells the session what's
-next. It lets the session stop when:
-  * nothing unblocked remains;
-  * GitHub can't be reached (fail open, never trap a session);
-  * it has blocked 8 times in a row with no new commit on any branch (the session
-    is stuck; better to stop and be woken by the scheduled check).
+It blocks the stop only when all of these hold:
+  * mode is on and this session is the owner (other sessions stop freely);
+  * some issue or PR is actionable: needs-work, pr-failing, pr-conflict,
+    behind-main or ready-to-merge. Waiting on CI or on a stacked base is not:
+    the session stops and the 15-minute wake-up looks again;
+  * the session isn't stuck: after MAX_IDLE_BLOCKS blocks in a row with fewer
+    than MIN_CALLS tool calls between them and no change on GitHub, it lets
+    the stop through and records the state as stuck, so the wake-up leaves that
+    exact state alone for an hour.
+GitHub unreachable or any error: lets the stop through (never traps a session).
 """
 
 import json
-import os
-import subprocess
 import sys
 import time
 
-REPO = "rajgaur98/ai_proctor"
-EPICS = [1, 2, 3, 4, 5, 6, 7]
-MAX_IDLE_BLOCKS = 8
+import lib
 
-root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-state_dir = os.path.join(root, ".claude", "autonomy")
-mode_file = os.path.join(state_dir, "mode")
-state_file = os.path.join(state_dir, "stop_guard.json")
+MAX_IDLE_BLOCKS = 4
+MIN_CALLS = 3
 
 
 def allow():
     sys.exit(0)
 
 
-def run(*args):
-    env = dict(os.environ)
-    token = subprocess.run(
-        ["gh", "auth", "token", "--user", "rajgaur98"], capture_output=True, text=True
-    ).stdout.strip()
-    if token:
-        env["GH_TOKEN"] = token
-    return subprocess.run(args, capture_output=True, text=True, env=env, timeout=30, cwd=root)
+def decide(owner, sid, rows, now):
+    """Returns (block_reason or None, updated owner)."""
+    if owner.get("session_id") != sid:
+        return None, owner
+    actionable = [r for r in rows if r["state"] in lib.ACTIONABLE]
+    if not actionable:
+        owner.pop("guard", None)
+        return None, owner
+    fp = lib.fingerprint(rows)
+    guard = owner.get("guard") or {}
+    calls = owner.get("calls", 0)
+    idle = guard.get("fingerprint") == fp and calls - guard.get("calls", 0) < MIN_CALLS
+    blocks = guard.get("blocks", 0) + 1 if idle else 1
+    if blocks > MAX_IDLE_BLOCKS:
+        owner.pop("guard", None)
+        owner["stuck"] = {"fingerprint": fp, "at": now}
+        return None, owner
+    owner["guard"] = {"fingerprint": fp, "calls": calls, "blocks": blocks}
+    import next as nxt
+
+    listed = "\n".join(f"- {nxt.line(r)}" for r in actionable[:6])
+    reason = (
+        f"Autonomous mode is on and {len(actionable)} items are actionable:\n{listed}\n"
+        "Don't stop: take the first one (`scripts/autonomy/next.py` has the full list). "
+        "If one truly needs Raj, write the question under 'Blocked on Raj' in "
+        "docs/progress.md, label the issue `blocked`, and move on. Waiting on CI is not "
+        "a reason to keep going: once only waiting items are left this hook lets you stop "
+        "and the wake-up resumes the run. To end the run: `scripts/autonomy/ctl.sh off`."
+    )
+    return reason, owner
 
 
-try:
-    with open(mode_file) as f:
-        if f.read().strip() != "on":
-            allow()
-except OSError:
+def main():
+    if not lib.mode_on():
+        allow()
+    try:
+        sid = json.load(sys.stdin).get("session_id")
+    except Exception:
+        allow()
+    owner = lib.read_owner()
+    if owner.get("session_id") != sid:
+        allow()
+    try:
+        rows = lib.collect()
+    except Exception:
+        allow()
+    reason, owner = decide(owner, sid, rows, time.time())
+    lib.write_owner(owner)
+    if reason:
+        print(json.dumps({"decision": "block", "reason": reason}))
     allow()
 
-try:
-    sys.stdin.read()  # hook input; not needed
-except Exception:
-    pass
 
-# Open, unblocked milestone issues.
-remaining = []
-try:
-    for epic in EPICS:
-        out = run("gh", "api", f"repos/{REPO}/issues/{epic}/sub_issues?per_page=100")
-        if out.returncode != 0:
-            allow()
-        for issue in json.loads(out.stdout):
-            labels = {l["name"] for l in issue.get("labels", [])}
-            if issue["state"] == "open" and "blocked" not in labels:
-                remaining.append((issue["number"], issue["title"]))
-except Exception:
-    allow()
-
-if not remaining:
-    allow()
-
-# Stuck detection: newest commit time on any local branch.
-head = run("git", "for-each-ref", "--sort=-committerdate", "--count=1",
-           "--format=%(committerdate:unix)", "refs/heads").stdout.strip()
-try:
-    with open(state_file) as f:
-        state = json.load(f)
-except (OSError, ValueError):
-    state = {}
-blocks = state.get("blocks", 0) + 1 if state.get("head") == head else 1
-if blocks > MAX_IDLE_BLOCKS:
-    os.makedirs(state_dir, exist_ok=True)
-    with open(state_file, "w") as f:
-        json.dump({"head": head, "blocks": 0, "gave_up_at": time.time()}, f)
-    allow()
-os.makedirs(state_dir, exist_ok=True)
-with open(state_file, "w") as f:
-    json.dump({"head": head, "blocks": blocks}, f)
-
-remaining.sort()
-listed = "; ".join(f"#{n} {t}" for n, t in remaining[:5])
-reason = (
-    f"Autonomous mode is on and {len(remaining)} unblocked milestone issues are open "
-    f"(next by number: {listed}). Don't stop: read the 'Now / Next' block in "
-    "docs/progress.md on origin/main and continue with the next issue in milestone "
-    "order. If something truly needs Raj, write the question under 'Blocked on Raj' "
-    "in docs/progress.md, label the issue `blocked`, and move on. To end the run, "
-    "Raj (or you, when everything is done) writes `off` to .claude/autonomy/mode."
-)
-print(json.dumps({"decision": "block", "reason": reason}))
+if __name__ == "__main__":
+    main()
