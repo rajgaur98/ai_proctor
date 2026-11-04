@@ -34,10 +34,16 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #295 fix: it-rebuild-segments failed in the hour after LA midnight (#296)
     - #299 comment buttons on the grid's rows and entries (#301)
     - #267 keyboard, axe and query budget for the grid and day list (#302)
-  - In progress: none. Every unblocked issue is merged.
-- **Open PRs:** the autonomy change that adds #62 to the run.
-- **Added 4 Nov (from the competitor comparison: Hubstaff, Toggl, Clockify, Insightful, Apploye, ActivTrak, Time Doctor, DeskTime):** P1 issues under #62, with PRD sections: #304 time off (LV-01..07), #305 insights page (INS-01..06), #306 public API and webhooks (API-01..06), #307 MCP server (API-07/08), #308 seat map at scale (DSH-11). Their defaults are listed in each issue.
-- **5 Nov:** Raj put #62 in the autonomous run (`EPICS` in `scripts/autonomy/lib.py`). Order: #304 time off, #308 seat map and #306 public API in parallel (no shared files); then #305 insights (uses leave days from #304) and #307 MCP server (needs #306's keys and endpoints).
+  - In progress: none from 1 Nov; the 5 Nov run is below.
+- **5 Nov (autonomous run on #62):** Raj put #62 in the run (`EPICS` in `scripts/autonomy/lib.py`, #314). `next.py` shows an issue whose worktree an implementer is working in as `building`, and an issue whose body says "Depends on #N" as `waiting-on-issue` while #N is open (#315, #316).
+  - Merged:
+    - #308 seat map at scale: tables sized to their team, zoom/pan canvas, find, 60 fps with 5,000 people (#321)
+    - #304 time off part 1: leave types, holidays, requests and approval, On leave status, no late/offline alerts or auto clock-in on leave (#317)
+    - #306 public API v1 with API keys, OpenAPI spec and docs (#318)
+  - Open PRs: #324 (#322 Live team read at scale, ~5.5 s → ~0.3 s for 5,000 people).
+  - Being built: #305 insights, #319 time off part 2 (Leave row, exports, reports, list filters, holidays import), #307 MCP server.
+  - Queue: #320 webhooks + time-off endpoint (after the current three), #323 Live team List view windowing (after #322).
+  - Defaults taken are listed in each PR body; Raj can override any of them.
 - **Next:**
   - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
