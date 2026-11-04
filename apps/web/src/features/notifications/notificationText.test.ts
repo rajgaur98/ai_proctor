@@ -288,6 +288,13 @@ const CASES: Case[] = [
     note: null,
     target: { page: "time-off" },
   },
+  {
+    kind: "webhook.disabled",
+    payload: { webhook_id: "w1", host: "hooks.example.com", failed_deliveries: 5 },
+    text: "A webhook endpoint was turned off: hooks.example.com kept failing",
+    note: "5 events in a row failed. Turn it back on in Settings → API.",
+    target: { page: "api" },
+  },
 ];
 
 describe("notifications", () => {
@@ -318,6 +325,7 @@ describe("notifications", () => {
         "leave.approved",
         "leave.rejected",
         "leave.cancelled",
+        "webhook.disabled",
       ]),
     );
   });

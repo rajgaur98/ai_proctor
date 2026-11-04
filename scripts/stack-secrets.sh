@@ -7,10 +7,13 @@
 #   project_url       http://kong:8000, the API as the database container sees it
 #                     (pg_net runs inside Docker, so 127.0.0.1 would be itself)
 #   service_role_key  the stack's service-role key, which rebuild-segments checks
+#   webhooks_allow_private_hosts
+#                     'true': webhook endpoints may use http and private hosts, so a
+#                     receiver inside the stack works (#320). Never set in production.
 #
 # Which stack: this worktree's, through scripts/stack.sh (override with STACK_SH);
 # without stack.sh, the default `pnpm supabase` stack of the main checkout.
-# Production sets both once at deploy (M6), in the Supabase dashboard's Vault.
+# Production sets the first two once at deploy (M6), in the Supabase dashboard's Vault.
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
@@ -38,5 +41,8 @@ select vault.update_secret(id, '$PROJECT_URL') from vault.secrets where name = '
 select vault.create_secret('$SERVICE_ROLE_KEY', 'service_role_key')
 where not exists (select 1 from vault.secrets where name = 'service_role_key');
 select vault.update_secret(id, '$SERVICE_ROLE_KEY') from vault.secrets where name = 'service_role_key';
+select vault.create_secret('true', 'webhooks_allow_private_hosts')
+where not exists (select 1 from vault.secrets where name = 'webhooks_allow_private_hosts');
+select vault.update_secret(id, 'true') from vault.secrets where name = 'webhooks_allow_private_hosts';
 SQL
 echo "Vault secrets set for ${DB_URL##*@} (project_url=$PROJECT_URL)"
