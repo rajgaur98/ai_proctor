@@ -726,6 +726,8 @@ pub trait Platform: Send + Sync {
           <tr><td><code>set_delegation</code></td><td>Manager</td><td>Delegate in same org; date range within 90 days</td></tr>
           <tr><td><code>confirm_dpia</code></td><td>Admin</td><td>EU-region org enabling webcam; audit-logged</td></tr>
           <tr><td><code>create_enrollment_token</code> / <code>revoke_enrollment_token</code> / <code>list_enrollment_tokens</code></td><td>Admin</td><td>MDM installs (#86): the token is returned once, only its SHA-256 is kept; revoking stops new enrollments, enrolled devices keep working; create, revoke and each enrollment audit-logged; MFA when the org requires it</td></tr>
+          <tr><td><code>create_api_key</code> / <code>revoke_api_key</code> / <code>list_api_keys</code></td><td>Admin</td><td>Public API keys (#306, API-02): name, scopes per resource (read, write), optional expiry; the key is returned once, only its SHA-256 is kept; create and revoke audit-logged; MFA when the org requires it</td></tr>
+          <tr><td><code>api_v1_authenticate</code> / <code>api_v1_call</code></td><td>Service role (api-v1)</td><td>The key (by hash), its creator still an active owner/admin, the per-key rate limit (120/min); then the scope, the operation run as the key's creator (<code>internal.api_dispatch</code>: can_view_user, the dashboard's write RPCs, the manual-entry rules) and an <code>api.read</code> / <code>api.write</code> audit row with the key, filters and row count</td></tr>
         </tbody>
       </table>
     </div>
@@ -739,6 +741,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>rebuild-segments</code></td><td>Cron 5 min; dashboard on open</td><td>Rebuilds every dirty user-day (section 6)</td></tr>
             <tr><td><code>capture-url</code></td><td>Dashboard</td><td>Access check, audit row, signed URLs valid 5 min</td></tr>
             <tr><td><code>export-timesheet</code></td><td>Dashboard</td><td>CSV or XLSX into a private exports bucket, signed link</td></tr>
+            <tr><td><code>api-v1</code></td><td>API clients (org API key)</td><td>The public API v1 (#306): routes <code>/v1/...</code>, hashes the key, calls <code>api_v1_authenticate</code> and <code>api_v1_call</code>; serves the OpenAPI document (docs/api)</td></tr>
             <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts, reminders and daily digests through Resend</td></tr>
             <tr><td><code>retention-purge</code></td><td>Cron nightly</td><td>Deletes expired objects through the Storage API, then their rows</td></tr>
           </tbody>
@@ -803,6 +806,12 @@ pub trait Platform: Send + Sync {
           <li><span class="badge">FK</span>org_id → orgs</li>
           <li>label · token_hash (SHA-256 only) · token_prefix</li>
           <li>revoked_at · last_used_at; RPCs only, no API reads</li>
+        </ul></div>
+        <div class="t-card"><div class="name">api_keys</div><ul>
+          <li><span class="badge pk">PK</span><b>id</b></li>
+          <li><span class="badge">FK</span>org_id → orgs · created_by → users (cascade)</li>
+          <li>name · key_hash (SHA-256 only) · key_prefix · scopes[] · expires_at</li>
+          <li>revoked_at · last_used_at · rate_window · rate_count; RPCs only, no API reads</li>
         </ul></div>
         <div class="t-card"><div class="name">shifts</div><ul>
           <li><span class="badge pk">PK</span><b>id</b></li>

@@ -24,6 +24,7 @@ const admin: NavLink[] = [
   { to: "/projects", label: "Projects" },
   { to: "/policy", label: "Policy" },
   { to: "/settings/import", label: "Import" },
+  { to: "/settings/api", label: "API" },
   { to: "/notice", label: "Monitoring notice" },
   { to: "/audit", label: "Audit log" },
 ];

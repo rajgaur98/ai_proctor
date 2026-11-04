@@ -27,6 +27,10 @@ export const actionLabels: Record<string, string> = {
   "import.applied": "Imported data",
   "checkin.miss_reason_set": "Set a miss reason",
   "timesheet.commented": "Commented on a timesheet",
+  "api_key.created": "Created an API key",
+  "api_key.revoked": "Revoked an API key",
+  "api.read": "Read through the API",
+  "api.write": "Changed through the API",
 };
 
 /** Actions offered in the filter, in the order above. */
@@ -54,6 +58,15 @@ const count = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
 const tokenName = (m: Meta): string => {
   const prefix = text(m.prefix);
   return [text(m.label), prefix ? `${prefix}…` : null].filter(Boolean).join(" · ") || "—";
+};
+
+/** An API key (#306): its name and prefix, never the key. */
+const apiKeyName = (m: Meta): string => {
+  const prefix = text(m.prefix);
+  return (
+    [text(m.key_name) ?? text(m.name), prefix ? `${prefix}…` : null].filter(Boolean).join(" · ") ||
+    "—"
+  );
 };
 
 /** `nameOf` turns a user id into a name (or something short when it's unknown). */
@@ -148,6 +161,24 @@ export function summarize(
         .filter(Boolean)
         .join(" · ");
     }
+    case "api_key.created": {
+      const scopes = Array.isArray(m.scopes) ? m.scopes.map(String).join(", ") : "";
+      return [apiKeyName(m), scopes || null].filter(Boolean).join(" · ");
+    }
+    case "api_key.revoked":
+      return apiKeyName(m);
+    case "api.read": {
+      // #306: like an export, the operation, its filters and the row count.
+      const f = (m.filters ?? {}) as Meta;
+      return [
+        text(m.operation) ?? "—",
+        plural(typeof m.row_count === "number" ? m.row_count : 0, "row"),
+        ...Object.entries(f).map(([k, v]) => `${k}: ${String(v)}`),
+        `key ${apiKeyName(m)}`,
+      ].join(" · ");
+    }
+    case "api.write":
+      return [text(m.operation) ?? "—", `key ${apiKeyName(m)}`].join(" · ");
     default:
       return Object.keys(m).length ? JSON.stringify(m) : "—";
   }

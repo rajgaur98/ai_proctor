@@ -394,6 +394,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# The public API (#306) authenticates with org API keys, not session JWTs: the function
+# checks the key itself (supabase/functions/api-v1).
+[functions.api-v1]
+verify_jwt = false
+
 [analytics]
 # Off locally: log shipping (Logflare + Vector) is not needed and fails health checks on Docker Desktop.
 enabled = false
