@@ -23,10 +23,13 @@ describe("navFor", () => {
     expect(navFor("admin").map((l) => l.label)).toContain("Monitoring notice");
   });
 
-  it("keeps imports to owners and admins", () => {
+  it("keeps imports and API keys to owners and admins", () => {
     expect(navFor("admin").map((l) => l.to)).toContain("/settings/import");
     expect(navFor("manager").map((l) => l.to)).not.toContain("/settings/import");
     expect(navFor("employee").map((l) => l.to)).not.toContain("/settings/import");
+    expect(navFor("admin").map((l) => l.to)).toContain("/settings/api");
+    expect(navFor("manager").map((l) => l.to)).not.toContain("/settings/api");
+    expect(navFor("employee").map((l) => l.to)).not.toContain("/settings/api");
   });
 
   it("keeps the audit log to owners and admins", () => {
