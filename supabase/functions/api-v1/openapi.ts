@@ -1,4 +1,5 @@
-// The OpenAPI 3.1 document of the public API v1 (#306, API-01), built from the route table.
+// The OpenAPI 3.1 document of the public API v1 (#306, API-01), built from the route table,
+// with the webhook events (#320, API-06) under `webhooks`.
 // Served at GET /v1/openapi.json and committed as docs/api/openapi.json
 // (`pnpm api:openapi` writes it; `pnpm api:openapi --check` fails when it is stale).
 import { type Operation, operations, type Param, type ParamType } from "./routes.ts";
@@ -221,6 +222,51 @@ const schemas: Record<string, Schema> = {
     worked_s: seconds("Counted time."),
     flagged_s: seconds("Flagged time."),
   }),
+  TimeOff: object(
+    {
+      id,
+      user_id: id,
+      leave_type_id: id,
+      type_name: { type: "string", description: "The leave type's name, e.g. Vacation." },
+      paid: { type: "boolean", description: "The type's paid flag when it was asked for." },
+      kind: {
+        type: "string",
+        enum: ["days", "part_day"],
+        description: "Whole days (first_day..last_day) or part of one day (start_at..end_at).",
+      },
+      first_day: { ...day, description: "In the person's time zone when they asked." },
+      last_day: { ...day, description: "Inclusive; the same as first_day for a part day." },
+      start_at: { ...time, description: "Local midnight of first_day, or a part day's start." },
+      end_at: { ...time, description: "Midnight after last_day, or a part day's end." },
+      timezone: { type: "string", description: "The person's time zone when they asked." },
+      status: { type: "string", enum: ["pending", "approved", "rejected", "cancelled"] },
+      decided_by: {
+        ...nullableId,
+        description:
+          "Who approved or declined it (the person themselves when approved on asking: someone with no manager).",
+      },
+      decided_at: nullableTime,
+      cancelled_at: nullableTime,
+      created_at: time,
+      updated_at: time,
+    },
+    "A time-off request. The employee's note and the decision note are never returned.",
+  ),
+  Holiday: object(
+    {
+      id,
+      day,
+      name: text,
+      country: {
+        ...nullableText,
+        description: "ISO country code of the work location it is for; null: everyone.",
+      },
+      state: { ...nullableText, description: "US state code, for a US holiday of one state." },
+      created_at: time,
+      updated_at: time,
+    },
+    "A holiday: the whole local day of everyone it applies to.",
+  ),
   Error: object({
     error: {
       type: "object",
@@ -363,6 +409,133 @@ function operationObject(op: Operation): Schema {
   };
 }
 
+// Webhooks (#320, API-06) ------------------------------------------------------------------
+
+const webhookEvents: { type: string; summary: string; data: Schema }[] = [
+  {
+    type: "timesheet.submitted",
+    summary: "A week was submitted (or reopened after approval: previous_status approved)",
+    data: { $ref: "#/components/schemas/WebhookTimesheet" },
+  },
+  {
+    type: "timesheet.approved",
+    summary: "A week was approved (also a week approved on submit, needing no approval)",
+    data: { $ref: "#/components/schemas/WebhookTimesheet" },
+  },
+  {
+    type: "timesheet.returned",
+    summary: "A week was returned to the person",
+    data: { $ref: "#/components/schemas/WebhookTimesheet" },
+  },
+  {
+    type: "alert.raised",
+    summary: "A manager alert was raised about a person (once, however many recipients)",
+    data: { $ref: "#/components/schemas/WebhookAlert" },
+  },
+  {
+    type: "person.invited",
+    summary: "A person was added to the organization (invited or imported)",
+    data: { $ref: "#/components/schemas/Person" },
+  },
+  {
+    type: "person.deactivated",
+    summary: "A person was deactivated",
+    data: { $ref: "#/components/schemas/Person" },
+  },
+  {
+    type: "time_off.decided",
+    summary: "A time-off request was approved or declined",
+    data: { $ref: "#/components/schemas/TimeOff" },
+  },
+];
+
+schemas.WebhookTimesheet = {
+  allOf: [
+    { $ref: "#/components/schemas/Timesheet" },
+    {
+      type: "object",
+      required: ["previous_status"],
+      properties: {
+        previous_status: {
+          type: ["string", "null"],
+          enum: ["draft", "submitted", "approved", "returned", null],
+          description: "The status before this change; null for a week created in this state.",
+        },
+      },
+    },
+  ],
+};
+schemas.WebhookAlert = object(
+  {
+    user_id: { ...id, description: "The person the alert is about." },
+    kind: {
+      type: "string",
+      enum: ["consecutive_misses", "offline", "tamper", "late_clock_in", "pause_over_cap"],
+    },
+    details: { type: "object", description: "Kind-specific details." },
+    triggered_at: time,
+  },
+  "A manager alert. The recipients are not included.",
+);
+
+const signatureHeaders = [
+  ["X-AIProctor-Event", "The event type, e.g. timesheet.approved."],
+  ["X-AIProctor-Event-Id", "The event's id, the same in every retry: dedupe on it."],
+  ["X-AIProctor-Delivery", "This endpoint's delivery of the event."],
+  ["X-AIProctor-Timestamp", "Unix seconds when this attempt was signed."],
+  [
+    "X-AIProctor-Signature",
+    "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+  ],
+].map(([name, description]) => ({
+  name,
+  in: "header",
+  required: true,
+  description,
+  schema: { type: "string" },
+}));
+
+function webhooks(): Record<string, Schema> {
+  return Object.fromEntries(
+    webhookEvents.map((e) => [
+      e.type,
+      {
+        post: {
+          operationId: `webhook${e.type.replace(/(^|[._])(\w)/g, (_, __, c: string) => c.toUpperCase())}`,
+          tags: ["Webhooks"],
+          summary: e.summary,
+          description:
+            "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+          parameters: signatureHeaders,
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["id", "type", "created_at", "api_version", "data"],
+                  properties: {
+                    id: { ...id, description: "The event's id (as X-AIProctor-Event-Id)." },
+                    type: { type: "string", const: e.type },
+                    created_at: time,
+                    api_version: { type: "string", const: "v1" },
+                    redacted: {
+                      type: "boolean",
+                      description: "Present (true) when the person's data was removed.",
+                    },
+                    data: e.data,
+                  },
+                },
+              },
+            },
+          },
+          responses: { "200": { description: "Any 2xx status: delivered." } },
+        },
+      },
+    ]),
+  );
+}
+
 export function openApiDocument(): Schema {
   const paths: Record<string, Record<string, Schema>> = {};
   for (const op of operations) {
@@ -375,7 +548,7 @@ export function openApiDocument(): Schema {
       title: "AI Proctor API",
       version: "1.0.0",
       description:
-        "Read people, projects, timesheets, time, check-in metadata, reports and alerts, and create clients, projects, tasks and manual entries. Authenticate with an org API key (`Authorization: Bearer aip_...`) made by an owner or admin on the dashboard's API page. Times are ISO 8601 with a zone; durations are exact seconds. Every request is recorded in the org's audit log. The API never returns capture images or links to them, window titles, or when a check-in is scheduled. See docs/api/v1.md.",
+        "Read people, projects, timesheets, time, check-in metadata, reports, alerts and time off, and create clients, projects, tasks and manual entries. Webhooks (see `webhooks`) push events as they happen. Authenticate with an org API key (`Authorization: Bearer aip_...`) made by an owner or admin on the dashboard's API page. Times are ISO 8601 with a zone; durations are exact seconds. Every request is recorded in the org's audit log. The API never returns capture images or links to them, window titles, or when a check-in is scheduled. See docs/api/v1.md.",
     },
     servers: [
       {
@@ -392,8 +565,11 @@ export function openApiDocument(): Schema {
       { name: "Check-ins" },
       { name: "Reports" },
       { name: "Alerts" },
+      { name: "Time off" },
+      { name: "Webhooks", description: "Events sent to your endpoints (see `webhooks`)." },
     ],
     paths,
+    webhooks: webhooks(),
     components: {
       securitySchemes: {
         apiKey: {

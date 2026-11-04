@@ -3,7 +3,7 @@
   "info": {
     "title": "AI Proctor API",
     "version": "1.0.0",
-    "description": "Read people, projects, timesheets, time, check-in metadata, reports and alerts, and create clients, projects, tasks and manual entries. Authenticate with an org API key (`Authorization: Bearer aip_...`) made by an owner or admin on the dashboard's API page. Times are ISO 8601 with a zone; durations are exact seconds. Every request is recorded in the org's audit log. The API never returns capture images or links to them, window titles, or when a check-in is scheduled. See docs/api/v1.md."
+    "description": "Read people, projects, timesheets, time, check-in metadata, reports, alerts and time off, and create clients, projects, tasks and manual entries. Webhooks (see `webhooks`) push events as they happen. Authenticate with an org API key (`Authorization: Bearer aip_...`) made by an owner or admin on the dashboard's API page. Times are ISO 8601 with a zone; durations are exact seconds. Every request is recorded in the org's audit log. The API never returns capture images or links to them, window titles, or when a check-in is scheduled. See docs/api/v1.md."
   },
   "servers": [
     {
@@ -34,6 +34,13 @@
     },
     {
       "name": "Alerts"
+    },
+    {
+      "name": "Time off"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Events sent to your endpoints (see `webhooks`)."
     }
   ],
   "paths": {
@@ -2297,6 +2304,1013 @@
           }
         }
       }
+    },
+    "/v1/time-off": {
+      "get": {
+        "operationId": "timeOffList",
+        "tags": [
+          "Time off"
+        ],
+        "summary": "List time-off requests",
+        "description": "Whole days or part of a day, with the type, whether it is paid, the status and who decided. Never the employee's note or the decision note.\n\nScope: `timeoff:read`.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Items per page, 1 to 500 (default 100).",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The `next_cursor` of the previous page. Keep the other parameters the same.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "updated_since",
+            "in": "query",
+            "required": false,
+            "description": "Only items changed at or after this time (ISO 8601 with a zone). For syncing: pass the newest `updated_at` you have, minus a few minutes.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "description": "One person.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Only this status.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "First day (YYYY-MM-DD) that the requests overlap (the person's own days).",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last day (YYYY-MM-DD) that the requests overlap (the person's own days), inclusive.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TimeOff"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Pass as `cursor` for the next page; null on the last page."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/holidays": {
+      "get": {
+        "operationId": "holidaysList",
+        "tags": [
+          "Time off"
+        ],
+        "summary": "List holidays",
+        "description": "The organization's holiday calendar: for everyone, or for one work location (a country, and a state in the US). A deleted holiday is no longer listed.\n\nScope: `timeoff:read`.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Items per page, 1 to 500 (default 100).",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The `next_cursor` of the previous page. Keep the other parameters the same.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "updated_since",
+            "in": "query",
+            "required": false,
+            "description": "Only items changed at or after this time (ISO 8601 with a zone). For syncing: pass the newest `updated_at` you have, minus a few minutes.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "First day (YYYY-MM-DD) of the holidays.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last day (YYYY-MM-DD) of the holidays, inclusive.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Holiday"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Pass as `cursor` for the next page; null on the last page."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {
+    "timesheet.submitted": {
+      "post": {
+        "operationId": "webhookTimesheetSubmitted",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A week was submitted (or reopened after approval: previous_status approved)",
+        "description": "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "timesheet.submitted"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/WebhookTimesheet"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
+    },
+    "timesheet.approved": {
+      "post": {
+        "operationId": "webhookTimesheetApproved",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A week was approved (also a week approved on submit, needing no approval)",
+        "description": "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "timesheet.approved"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/WebhookTimesheet"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
+    },
+    "timesheet.returned": {
+      "post": {
+        "operationId": "webhookTimesheetReturned",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A week was returned to the person",
+        "description": "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "timesheet.returned"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/WebhookTimesheet"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
+    },
+    "alert.raised": {
+      "post": {
+        "operationId": "webhookAlertRaised",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A manager alert was raised about a person (once, however many recipients)",
+        "description": "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "alert.raised"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/WebhookAlert"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
+    },
+    "person.invited": {
+      "post": {
+        "operationId": "webhookPersonInvited",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A person was added to the organization (invited or imported)",
+        "description": "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "person.invited"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/Person"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
+    },
+    "person.deactivated": {
+      "post": {
+        "operationId": "webhookPersonDeactivated",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A person was deactivated",
+        "description": "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "person.deactivated"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/Person"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
+    },
+    "time_off.decided": {
+      "post": {
+        "operationId": "webhookTimeOffDecided",
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "A time-off request was approved or declined",
+        "description": "Sent to every enabled endpoint that subscribed to this event. A 2xx answer within 10 seconds counts as delivered; anything else is retried after 1, 4, 16, 64, 256 and 1024 minutes. When a person is deleted before their event goes out, `data` keeps only ids and `redacted` is true.",
+        "parameters": [
+          {
+            "name": "X-AIProctor-Event",
+            "in": "header",
+            "required": true,
+            "description": "The event type, e.g. timesheet.approved.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Event-Id",
+            "in": "header",
+            "required": true,
+            "description": "The event's id, the same in every retry: dedupe on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "This endpoint's delivery of the event.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix seconds when this attempt was signed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-AIProctor-Signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` with the endpoint's signing secret.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "api_version",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The event's id (as X-AIProctor-Event-Id)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "time_off.decided"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 with a zone."
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "const": "v1"
+                  },
+                  "redacted": {
+                    "type": "boolean",
+                    "description": "Present (true) when the person's data was removed."
+                  },
+                  "data": {
+                    "$ref": "#/components/schemas/TimeOff"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx status: delivered."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3196,6 +4210,176 @@
           }
         }
       },
+      "TimeOff": {
+        "type": "object",
+        "description": "A time-off request. The employee's note and the decision note are never returned.",
+        "required": [
+          "id",
+          "user_id",
+          "leave_type_id",
+          "type_name",
+          "paid",
+          "kind",
+          "first_day",
+          "last_day",
+          "start_at",
+          "end_at",
+          "timezone",
+          "status",
+          "decided_by",
+          "decided_at",
+          "cancelled_at",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "leave_type_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type_name": {
+            "type": "string",
+            "description": "The leave type's name, e.g. Vacation."
+          },
+          "paid": {
+            "type": "boolean",
+            "description": "The type's paid flag when it was asked for."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "days",
+              "part_day"
+            ],
+            "description": "Whole days (first_day..last_day) or part of one day (start_at..end_at)."
+          },
+          "first_day": {
+            "type": "string",
+            "format": "date",
+            "description": "In the person's time zone when they asked."
+          },
+          "last_day": {
+            "type": "string",
+            "format": "date",
+            "description": "Inclusive; the same as first_day for a part day."
+          },
+          "start_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Local midnight of first_day, or a part day's start."
+          },
+          "end_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Midnight after last_day, or a part day's end."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The person's time zone when they asked."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "cancelled"
+            ]
+          },
+          "decided_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Who approved or declined it (the person themselves when approved on asking: someone with no manager)."
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO 8601 with a zone."
+          },
+          "cancelled_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO 8601 with a zone."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 with a zone."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 with a zone."
+          }
+        }
+      },
+      "Holiday": {
+        "type": "object",
+        "description": "A holiday: the whole local day of everyone it applies to.",
+        "required": [
+          "id",
+          "day",
+          "name",
+          "country",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "name": {
+            "type": "string"
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO country code of the work location it is for; null: everyone."
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "US state code, for a US holiday of one state."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 with a zone."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 with a zone."
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "required": [
@@ -3222,6 +4406,71 @@
                 "description": "The parameter at fault (invalid_param)."
               }
             }
+          }
+        }
+      },
+      "WebhookTimesheet": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Timesheet"
+          },
+          {
+            "type": "object",
+            "required": [
+              "previous_status"
+            ],
+            "properties": {
+              "previous_status": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "draft",
+                  "submitted",
+                  "approved",
+                  "returned",
+                  null
+                ],
+                "description": "The status before this change; null for a week created in this state."
+              }
+            }
+          }
+        ]
+      },
+      "WebhookAlert": {
+        "type": "object",
+        "description": "A manager alert. The recipients are not included.",
+        "required": [
+          "user_id",
+          "kind",
+          "details",
+          "triggered_at"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The person the alert is about."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "consecutive_misses",
+              "offline",
+              "tamper",
+              "late_clock_in",
+              "pause_over_cap"
+            ]
+          },
+          "details": {
+            "type": "object",
+            "description": "Kind-specific details."
+          },
+          "triggered_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 with a zone."
           }
         }
       }

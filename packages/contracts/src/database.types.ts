@@ -1218,6 +1218,7 @@ export type Database = {
           name: string;
           org_id: string;
           state: string | null;
+          updated_at: string;
         };
         ComputedFields: never;
         Insert: {
@@ -1229,6 +1230,7 @@ export type Database = {
           name: string;
           org_id: string;
           state?: string | null;
+          updated_at?: string;
         };
         Update: {
           country?: string | null;
@@ -1239,6 +1241,7 @@ export type Database = {
           name?: string;
           org_id?: string;
           state?: string | null;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -1407,6 +1410,7 @@ export type Database = {
           start_at: string;
           status: string;
           timezone: string;
+          updated_at: string;
           user_id: string;
         };
         ComputedFields: never;
@@ -1429,6 +1433,7 @@ export type Database = {
           start_at: string;
           status?: string;
           timezone: string;
+          updated_at?: string;
           user_id: string;
         };
         Update: {
@@ -1450,6 +1455,7 @@ export type Database = {
           start_at?: string;
           status?: string;
           timezone?: string;
+          updated_at?: string;
           user_id?: string;
         };
         Relationships: [
@@ -3053,6 +3059,144 @@ export type Database = {
           },
         ];
       };
+      webhook_deliveries: {
+        Row: {
+          attempts: number;
+          created_at: string;
+          delivered_at: string | null;
+          event_id: string;
+          event_type: string;
+          id: string;
+          last_attempt_at: string | null;
+          last_error: string | null;
+          next_attempt_at: string;
+          org_id: string;
+          payload: NonNullable<Json>;
+          response_status: number | null;
+          status: string;
+          subject_user_id: string | null;
+          webhook_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          attempts?: number;
+          created_at?: string;
+          delivered_at?: string | null;
+          event_id: string;
+          event_type: string;
+          id?: string;
+          last_attempt_at?: string | null;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          org_id: string;
+          payload: NonNullable<Json>;
+          response_status?: number | null;
+          status?: string;
+          subject_user_id?: string | null;
+          webhook_id: string;
+        };
+        Update: {
+          attempts?: number;
+          created_at?: string;
+          delivered_at?: string | null;
+          event_id?: string;
+          event_type?: string;
+          id?: string;
+          last_attempt_at?: string | null;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          org_id?: string;
+          payload?: NonNullable<Json>;
+          response_status?: number | null;
+          status?: string;
+          subject_user_id?: string | null;
+          webhook_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "webhook_deliveries_webhook_id_fkey";
+            columns: ["webhook_id"];
+            isOneToOne: false;
+            referencedRelation: "webhooks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      webhooks: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          disabled_at: string | null;
+          disabled_reason: string | null;
+          enabled: boolean;
+          events: string[];
+          failed_in_row: number;
+          id: string;
+          org_id: string;
+          secret_rotated_at: string | null;
+          updated_at: string;
+          url: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          disabled_at?: string | null;
+          disabled_reason?: string | null;
+          enabled?: boolean;
+          events: string[];
+          failed_in_row?: number;
+          id?: string;
+          org_id: string;
+          secret_rotated_at?: string | null;
+          updated_at?: string;
+          url: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          disabled_at?: string | null;
+          disabled_reason?: string | null;
+          enabled?: boolean;
+          events?: string[];
+          failed_in_row?: number;
+          id?: string;
+          org_id?: string;
+          secret_rotated_at?: string | null;
+          updated_at?: string;
+          url?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "webhooks_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "webhooks_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "webhooks_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       my_pauses: {
@@ -3292,6 +3436,15 @@ export type Database = {
         };
         Returns: string;
       };
+      create_webhook: {
+        Args: { p_events: string[]; p_url: string };
+        Returns: {
+          events: string[];
+          id: string;
+          secret: string;
+          url: string;
+        }[];
+      };
       decide_leave: {
         Args: { p_approve: boolean; p_note?: string; p_request_id: string };
         Returns: undefined;
@@ -3327,6 +3480,7 @@ export type Database = {
       delete_holiday: { Args: { p_id: string }; Returns: undefined };
       delete_team: { Args: { p_team_id: string }; Returns: undefined };
       delete_user_data: { Args: { p_email: string; p_user_id: string }; Returns: Json };
+      delete_webhook: { Args: { p_id: string }; Returns: undefined };
       due_segment_days: {
         Args: { p_limit?: number };
         Returns: {
@@ -3493,6 +3647,42 @@ export type Database = {
         Args: { p_limit?: number; p_user_id: string };
         Returns: {
           name: string;
+        }[];
+      };
+      list_webhook_deliveries: {
+        Args: { p_limit?: number; p_webhook_id?: string };
+        Returns: {
+          attempts: number;
+          created_at: string;
+          delivered_at: string;
+          event_id: string;
+          event_type: string;
+          id: string;
+          last_attempt_at: string;
+          last_error: string;
+          next_attempt_at: string;
+          response_status: number;
+          status: string;
+          url: string;
+          webhook_id: string;
+        }[];
+      };
+      list_webhooks: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          created_at: string;
+          created_by_name: string;
+          disabled_at: string;
+          disabled_reason: string;
+          enabled: boolean;
+          events: string[];
+          failed_in_row: number;
+          id: string;
+          last_delivery_at: string;
+          last_delivery_status: string;
+          pending: number;
+          secret_rotated_at: string;
+          url: string;
         }[];
       };
       mark_alerts_read: { Args: { p_ids?: string[] }; Returns: number };
@@ -3669,6 +3859,7 @@ export type Database = {
       revoke_api_key: { Args: { p_id: string }; Returns: undefined };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       revoke_enrollment_token: { Args: { p_id: string }; Returns: undefined };
+      rotate_webhook_secret: { Args: { p_id: string }; Returns: string };
       save_client: {
         Args: { p_archived?: boolean; p_id: string; p_name: string };
         Returns: string;
@@ -3871,6 +4062,27 @@ export type Database = {
       update_policy: {
         Args: { p_dpia_confirmed?: boolean; p_policy: Json; p_works_council_confirmed?: boolean };
         Returns: Json;
+      };
+      update_webhook: {
+        Args: { p_enabled: boolean; p_events: string[]; p_id: string; p_url: string };
+        Returns: undefined;
+      };
+      webhook_claim: {
+        Args: { p_limit?: number };
+        Returns: {
+          allow_private: boolean;
+          attempt: number;
+          event_id: string;
+          event_type: string;
+          id: string;
+          payload: Json;
+          secret: string;
+          url: string;
+        }[];
+      };
+      webhook_record: {
+        Args: { p_error: string; p_id: string; p_ok: boolean; p_status: number };
+        Returns: undefined;
       };
     };
     Enums: {

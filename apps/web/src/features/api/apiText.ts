@@ -30,6 +30,11 @@ export const scopeGroups: { resource: string; about: string; read: string; write
   },
   { resource: "Reports", about: "Totals per person, project and task", read: "reports:read" },
   { resource: "Alerts", about: "Manager alerts", read: "alerts:read" },
+  {
+    resource: "Time off",
+    about: "Time-off requests (never their notes) and holidays",
+    read: "timeoff:read",
+  },
 ];
 
 export const allScopes = scopeGroups.flatMap((g) => (g.write ? [g.read, g.write] : [g.read]));

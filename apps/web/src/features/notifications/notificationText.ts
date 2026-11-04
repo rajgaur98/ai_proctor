@@ -6,7 +6,8 @@
 // timesheet.late_data (late_events), and timesheet.commented (#265, timesheet_comments): to the
 // employee when a reviewer comments, to the reviewers when the employee does. #304 (LV-03):
 // leave.requested and leave.cancelled to the people who decide, leave.approved and
-// leave.rejected to the employee.
+// leave.rejected to the employee. #320 (API-06): webhook.disabled to owners and admins when an
+// endpoint is turned off after failing.
 import type { Json } from "@ai-proctor/contracts";
 import { DateTime } from "luxon";
 import { leaveWhen } from "../timeoff/leaveText";
@@ -132,6 +133,8 @@ export function notificationText(kind: string, payload: Json): string {
       return `Your time off was declined: ${leaveOf(payload)}`;
     case "leave.cancelled":
       return `${str(payload, "employee_name") ?? "Someone"} cancelled time off: ${leaveOf(payload)}`;
+    case "webhook.disabled":
+      return `A webhook endpoint was turned off: ${str(payload, "host") ?? "an endpoint"} kept failing`;
     default:
       return "New notification";
   }
@@ -167,6 +170,10 @@ export function notificationNote(kind: string, payload: Json): string | null {
       const by = str(payload, "by_name");
       return [by ? `By ${by}` : null, note ? `“${note}”` : null].filter(Boolean).join(": ") || null;
     }
+    case "webhook.disabled": {
+      const n = num(payload, "failed_deliveries");
+      return `${n > 0 ? `${plural(n, "event", "events")} in a row failed. ` : ""}Turn it back on in Settings → API.`;
+    }
     default:
       return null;
   }
@@ -175,7 +182,8 @@ export function notificationNote(kind: string, payload: Json): string | null {
 export type NotificationTarget =
   | { page: "week"; userId: string; week: string }
   | { page: "timesheets" }
-  | { page: "time-off" };
+  | { page: "time-off" }
+  | { page: "api" };
 
 /**
  * Where the notification leads: the person's week, or the Timesheets tab. Reminders name the
@@ -209,6 +217,8 @@ export function notificationTarget(
     case "leave.rejected":
     case "leave.cancelled":
       return { page: "time-off" };
+    case "webhook.disabled":
+      return { page: "api" };
     default:
       return null;
   }
