@@ -13,7 +13,7 @@ import subprocess
 import time
 
 REPO = "rajgaur98/ai_proctor"
-EPICS = [1, 2, 3, 4, 5, 6, 7]
+EPICS = [1, 2, 3, 4, 5, 6, 7, 62]
 REQUIRED_CHECK = "CI OK"
 # A session whose heartbeat is newer than this is live. A foreground command
 # can run 10 minutes without a tool call finishing, so it has to be longer.

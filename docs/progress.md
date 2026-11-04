@@ -35,8 +35,9 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #299 comment buttons on the grid's rows and entries (#301)
     - #267 keyboard, axe and query budget for the grid and day list (#302)
   - In progress: none. Every unblocked issue is merged.
-- **Open PRs:** #312 autonomy scripts (this PR).
-- **Added 4 Nov (from the competitor comparison: Hubstaff, Toggl, Clockify, Insightful, Apploye, ActivTrak, Time Doctor, DeskTime):** P1 issues under #62, with PRD sections: #304 time off (LV-01..07), #305 insights page (INS-01..06), #306 public API and webhooks (API-01..06), #307 MCP server (API-07/08), #308 seat map at scale (DSH-11). Backlog, not started; their defaults are listed in each issue.
+- **Open PRs:** the autonomy change that adds #62 to the run.
+- **Added 4 Nov (from the competitor comparison: Hubstaff, Toggl, Clockify, Insightful, Apploye, ActivTrak, Time Doctor, DeskTime):** P1 issues under #62, with PRD sections: #304 time off (LV-01..07), #305 insights page (INS-01..06), #306 public API and webhooks (API-01..06), #307 MCP server (API-07/08), #308 seat map at scale (DSH-11). Their defaults are listed in each issue.
+- **5 Nov:** Raj put #62 in the autonomous run (`EPICS` in `scripts/autonomy/lib.py`). Order: #304 time off, #308 seat map and #306 public API in parallel (no shared files); then #305 insights (uses leave days from #304) and #307 MCP server (needs #306's keys and endpoints).
 - **Next:**
   - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.
 - **Waiting on Raj:** see "Blocked on Raj"; those issues carry the `blocked` label and are skipped.
