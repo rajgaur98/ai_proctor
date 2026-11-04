@@ -1,13 +1,13 @@
-// DSH-01/02 live grid, from the Claude Design TeamGrid screen; DSH-09 seat view (#251) and
-// its canvas for large orgs (DSH-11, #308).
+// DSH-01/02 live grid, from the Claude Design TeamGrid screen (the list draws only the rows
+// on screen for big teams, #323); DSH-09 seat view (#251) and its canvas for large orgs
+// (DSH-11, #308).
 import { useQuery } from "@tanstack/react-query";
-import { getRouteApi, Link, useRouteContext } from "@tanstack/react-router";
+import { getRouteApi, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ExportButton } from "../../components/ExportButton";
-import { type PresenceStatus, StatusChip, statusStyle } from "../../components/StatusChip";
+import { type PresenceStatus, statusStyle } from "../../components/StatusChip";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
-import { initials } from "../../lib/nav";
 import { supabase } from "../../lib/supabase";
 import { formatTime, viewerZone } from "../../lib/time";
 import { projectsQuery } from "../projects/projectData";
@@ -17,12 +17,12 @@ import {
   inTeam,
   onShift,
   type SortKey,
-  since,
   sortRows,
   summarize,
   type TeamRow,
 } from "./grid";
 import { SeatMap } from "./SeatMap";
+import { TeamList } from "./TeamList";
 import { liveTeamTable } from "./teamExport";
 import { useLivePresence, withRecentChanges } from "./useLivePresence";
 
@@ -157,30 +157,8 @@ export function LiveTeam() {
       ) : visible.length === 0 ? (
         <Empty filtered={onShift(data ?? []).length > 0} />
       ) : (
-        <table className="w-full border-collapse text-[13.5px]">
-          <thead className="hidden bg-sunk text-left text-xs font-medium text-ink3 md:table-header-group">
-            <tr className="h-10 border-b border-line">
-              <th className="px-5 font-medium">Person</th>
-              <th className="font-medium">Status</th>
-              <th className="font-medium">Last check-in</th>
-              <th className="font-medium">Today</th>
-              <th className="font-medium">Project</th>
-              <th className="pr-5">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((r) => (
-              <Row
-                key={r.user_id}
-                row={r}
-                now={now}
-                project={(r.project_id && projectName.get(r.project_id)) || null}
-              />
-            ))}
-          </tbody>
-        </table>
+        // Long lists draw only the rows on screen (#323).
+        <TeamList rows={visible} now={now} projectName={projectName} />
       )}
       <p className="px-5 py-3 text-xs text-ink3">
         "Today" is check-ins passed out of check-ins shown. Captures you open are logged and visible
@@ -397,81 +375,6 @@ function StatusChipMark({ status }: { status: PresenceStatus }) {
     <span aria-hidden className="h-2 w-2 rounded-full" style={{ border: `2px solid ${color}` }} />
   ) : (
     <span aria-hidden className="h-2 w-2" style={{ background: color, borderRadius: round }} />
-  );
-}
-
-function Row({ row, now, project }: { row: TeamRow; now: Date; project: string | null }) {
-  const zone = viewerZone();
-  const missed = row.last_checkin_outcome === "miss" || row.last_checkin_outcome === "failed";
-  return (
-    <tr className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 border-b border-line px-4 py-3 hover:bg-sunk md:table-row md:p-0">
-      <td className="row-span-3 md:py-3 md:pl-5">
-        <div className="flex items-center gap-[11px]">
-          <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full border border-line bg-sunk text-xs font-semibold text-ink2">
-            {initials(row.full_name ?? "")}
-          </span>
-          <div className="hidden md:block">
-            <div className="font-medium">{row.full_name}</div>
-            <div className="mt-px text-xs text-ink3 capitalize">{row.role}</div>
-          </div>
-        </div>
-      </td>
-      <td className="font-medium md:hidden">{row.full_name}</td>
-      <td>
-        <span className="inline-flex items-center gap-1.5">
-          <StatusChip
-            status={(row.status ?? "off_shift") as PresenceStatus}
-            reason={row.tamper_reason}
-          />
-          <span className="text-[12.5px] text-ink3">· {since(row.since, now)}</span>
-        </span>
-      </td>
-      <td>
-        {row.last_checkin_at ? (
-          <span className="flex items-center gap-2">
-            <time
-              className="font-mono text-[12.5px]"
-              dateTime={row.last_checkin_at}
-              title={
-                row.timezone
-                  ? `${formatTime(row.last_checkin_at, row.timezone, zone)} employee's time`
-                  : undefined
-              }
-            >
-              {formatTime(row.last_checkin_at, zone, zone)}
-            </time>
-            <span
-              className={
-                missed
-                  ? "rounded-full border border-dashed border-ink3 px-[7px] py-px text-xs font-semibold"
-                  : "text-[12.5px] text-ink3"
-              }
-            >
-              {row.last_checkin_outcome === "pass"
-                ? "passed"
-                : row.last_checkin_outcome === "miss"
-                  ? "missed"
-                  : "failed"}
-            </span>
-          </span>
-        ) : (
-          <span className="text-[12.5px] text-ink3">No check-in yet</span>
-        )}
-      </td>
-      <td className="text-ink2 tabular-nums">
-        {row.checkins_passed_today} of {row.checkins_shown_today}
-      </td>
-      <td className="truncate text-ink2">{project ?? "—"}</td>
-      <td className="md:pr-5 md:text-right">
-        <Link
-          to="/team/$userId"
-          params={{ userId: row.user_id ?? "" }}
-          className="inline-block py-3 text-[13px] font-medium whitespace-nowrap text-acctext"
-        >
-          View day<span className="sr-only"> for {row.full_name}</span>
-        </Link>
-      </td>
-    </tr>
   );
 }
 
