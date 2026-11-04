@@ -18,6 +18,7 @@
 // Errors: 400 invalid_request / invalid_parts, 401 unauthorized, 404 checkin_not_found,
 // 409 not_a_pass, 500 delete_failed.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
+import { isAssistantToken } from "../_shared/assistantToken.ts";
 import { cors, isUuid, reply } from "../_shared/userData.ts";
 
 const PARTS = ["webcam", "screen", "apps", "domains"];
@@ -40,6 +41,10 @@ function sqlError(error: { message: string }) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "method_not_allowed" }, 405);
+  // #307: an AI assistant's token is only for the MCP server.
+  if (isAssistantToken(req.headers.get("Authorization"))) {
+    return reply({ error: "assistant_token" }, 403);
+  }
 
   const authorization = req.headers.get("Authorization") ?? "";
   const token = authorization.replace(/^Bearer\s+/i, "");

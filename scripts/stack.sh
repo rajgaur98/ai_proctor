@@ -83,6 +83,7 @@ else
     -e "s/^port = 54327/port = $((BASE + 7))/" \
     -e "s/^inspector_port = 8083/inspector_port = $INSPECTOR/" \
     -e "s#\"http://localhost:5173/\*\*\"#\"http://localhost:5173/**\", \"http://localhost:$WEB_PORT\", \"http://localhost:$WEB_PORT/**\"#" \
+    -e "s#^site_url = \"http://localhost:5173\"#site_url = \"http://localhost:$WEB_PORT\"#" \
     "$ROOT/supabase/config.toml" > "$WORKDIR/supabase/config.toml"
 fi
 

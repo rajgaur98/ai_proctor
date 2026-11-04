@@ -6,6 +6,7 @@
 // dashboard puts on its own Supabase URL (inside the runtime the API is an
 // internal host the browser can't reach). Null when the file isn't there.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
+import { isAssistantToken } from "../_shared/assistantToken.ts";
 
 const SIGNED_FOR_SECONDS = 300;
 const cors = {
@@ -30,6 +31,10 @@ interface View {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "method_not_allowed" }, 405);
+  // #307: an AI assistant's token is only for the MCP server.
+  if (isAssistantToken(req.headers.get("Authorization"))) {
+    return reply({ error: "assistant_token" }, 403);
+  }
 
   const body = await req.json().catch(() => null);
   const checkinId = typeof body?.checkin_id === "string" ? body.checkin_id : "";

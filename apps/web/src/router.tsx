@@ -9,6 +9,8 @@ import {
 import { AppShell } from "./components/AppShell";
 import { AlertsPage } from "./features/alerts/AlertsPage";
 import { ApiPage } from "./features/api/ApiPage";
+import { safeReturnPath } from "./features/assistants/assistantText";
+import { Consent } from "./features/assistants/Consent";
 import { AuditLog } from "./features/audit/AuditLog";
 import { DayPage } from "./features/day/DayPage";
 import { ImportPage } from "./features/import/ImportPage";
@@ -39,9 +41,14 @@ const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   notFoundComponent: () => <p className="p-8 text-sm text-ink2">Page not found.</p>,
 });
 
+/** `?redirect=/path` returns there after signing in (the OAuth consent page, #307). */
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sign-in",
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    const path = safeReturnPath(search.redirect);
+    return path ? { redirect: path } : {};
+  },
   component: SignIn,
 });
 const signUpRoute = createRoute({
@@ -67,6 +74,26 @@ const joinRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/join",
   component: Join,
+});
+
+/** OAuth consent (#307, API-07): Supabase Auth sends a person here when an AI assistant
+ * asks to connect as them. Needs a session; signs in first and comes back. */
+const consentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/oauth/consent",
+  validateSearch: (search: Record<string, unknown>): { authorization_id: string } => ({
+    authorization_id: typeof search.authorization_id === "string" ? search.authorization_id : "",
+  }),
+  beforeLoad: async ({ context, location }): Promise<{ profile: Profile | null }> => {
+    const session = await currentSession();
+    if (!session) throw redirect({ to: "/sign-in", search: { redirect: location.href } });
+    return { profile: await context.queryClient.fetchQuery(profileQuery(session.user.id)) };
+  },
+  component: function ConsentPage() {
+    const { profile } = consentRoute.useRouteContext();
+    const { authorization_id } = consentRoute.useSearch();
+    return <Consent authorizationId={authorization_id} profile={profile} />;
+  },
 });
 
 const mfaRoute = createRoute({
@@ -218,6 +245,7 @@ const routeTree = rootRoute.addChildren([
   signUpRoute,
   onboardingRoute,
   joinRoute,
+  consentRoute,
   mfaRoute,
   appRoute.addChildren([
     indexRoute,

@@ -12,11 +12,16 @@
 // returned the export is audit-logged as my_data.exported with the row counts. Over the
 // image limit the reply is 413 export_too_large and nothing is sent.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
+import { isAssistantToken } from "../_shared/assistantToken.ts";
 import { cors, exportResponse, reply } from "../_shared/userData.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "method_not_allowed" }, 405);
+  // #307: an AI assistant's token is only for the MCP server.
+  if (isAssistantToken(req.headers.get("Authorization"))) {
+    return reply({ error: "assistant_token" }, 403);
+  }
 
   const authorization = req.headers.get("Authorization") ?? "";
   const token = authorization.replace(/^Bearer\s+/i, "");

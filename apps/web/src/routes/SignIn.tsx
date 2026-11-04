@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -11,6 +11,9 @@ const providerLabel = { google: "Continue with Google", azure: "Continue with Mi
 
 export function SignIn() {
   const navigate = useNavigate();
+  const router = useRouter();
+  // Where to go after signing in: home, or the page that sent them here (validated by the route).
+  const { redirect } = useSearch({ from: "/sign-in" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,7 +28,8 @@ export function SignIn() {
     });
     setBusy(false);
     if (error) return setError(error.message);
-    await navigate({ to: "/" });
+    if (redirect) router.history.push(redirect);
+    else await navigate({ to: "/" });
   };
 
   return (
@@ -37,7 +41,7 @@ export function SignIn() {
           onClick={() =>
             supabase.auth.signInWithOAuth({
               provider,
-              options: { redirectTo: window.location.origin },
+              options: { redirectTo: `${window.location.origin}${redirect ?? ""}` },
             })
           }
         >

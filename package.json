@@ -29,6 +29,7 @@
     "it:user-data": "bash scripts/it-user-data.sh",
     "it:checkin-parts": "bash scripts/it-checkin-parts.sh",
     "it:api": "bash scripts/it-api-v1.sh",
+    "it:mcp": "bash scripts/it-mcp.sh",
     "api:openapi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/api-openapi.ts"
   },
   "devDependencies": {

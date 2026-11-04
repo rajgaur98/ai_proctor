@@ -211,6 +211,39 @@ describe("summarize", () => {
     );
   });
 
+  it("reads AI assistant access and tool calls (#307) with the tool, rows and assistant", () => {
+    expect(actionLabel("ai_assistant_access.changed")).toBe("Changed AI assistant access");
+    expect(summarize("ai_assistant_access.changed", { enabled: true }, nameOf)).toBe("On");
+    expect(summarize("ai_assistant_access.changed", { enabled: false }, nameOf)).toBe("Off");
+    expect(actionLabel("mcp.tool_call")).toBe("Asked through an AI assistant");
+    expect(
+      summarize(
+        "mcp.tool_call",
+        {
+          tool: "get_person_day",
+          row_count: 5,
+          filters: { date: "2026-11-04" },
+          client_id: "c1",
+          client_name: "Claude",
+        },
+        nameOf,
+      ),
+    ).toBe("get_person_day · 5 rows · date: 2026-11-04 · Claude");
+    expect(
+      summarize(
+        "mcp.tool_call",
+        {
+          tool: "list_people",
+          row_count: 0,
+          filters: {},
+          client_id: "c1",
+          error: "ai_assistant_access_off",
+        },
+        nameOf,
+      ),
+    ).toBe("list_people · 0 rows · c1 · refused: ai_assistant_access_off");
+  });
+
   it("shows unknown metadata as JSON and nothing as a dash", () => {
     expect(summarize("timesheet.approved", { week: "2026-W10" }, nameOf)).toBe(
       '{"week":"2026-W10"}',

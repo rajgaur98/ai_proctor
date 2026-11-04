@@ -728,6 +728,8 @@ pub trait Platform: Send + Sync {
           <tr><td><code>create_enrollment_token</code> / <code>revoke_enrollment_token</code> / <code>list_enrollment_tokens</code></td><td>Admin</td><td>MDM installs (#86): the token is returned once, only its SHA-256 is kept; revoking stops new enrollments, enrolled devices keep working; create, revoke and each enrollment audit-logged; MFA when the org requires it</td></tr>
           <tr><td><code>create_api_key</code> / <code>revoke_api_key</code> / <code>list_api_keys</code></td><td>Admin</td><td>Public API keys (#306, API-02): name, scopes per resource (read, write), optional expiry; the key is returned once, only its SHA-256 is kept; create and revoke audit-logged; MFA when the org requires it</td></tr>
           <tr><td><code>api_v1_authenticate</code> / <code>api_v1_call</code></td><td>Service role (api-v1)</td><td>The key (by hash), its creator still an active owner/admin, the per-key rate limit (120/min); then the scope, the operation run as the key's creator (<code>internal.api_dispatch</code>: can_view_user, the dashboard's write RPCs, the manual-entry rules) and an <code>api.read</code> / <code>api.write</code> audit row with the key, filters and row count</td></tr>
+          <tr><td><code>set_ai_assistant_access</code></td><td>Admin</td><td>The org's AI assistant access switch (#307, API-07), off by default; audit-logged; publishes a notice version that mentions it when the notice is still the template text (ADM-06); MFA when the org requires it</td></tr>
+          <tr><td><code>mcp_call</code></td><td>Service role (mcp)</td><td>One MCP tool call (#307, API-08) for the person behind an assistant's OAuth token: refused while AI assistant access is off, a per-person rate limit (60/min), the tool run as the person with the token's aal (<code>internal.mcp_*</code>: can_view_user, no captures, window titles, websites, scheduled times or free text) and an <code>mcp.tool_call</code> audit row with the tool, arguments, row count and assistant</td></tr>
         </tbody>
       </table>
     </div>
@@ -742,6 +744,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>capture-url</code></td><td>Dashboard</td><td>Access check, audit row, signed URLs valid 5 min</td></tr>
             <tr><td><code>export-timesheet</code></td><td>Dashboard</td><td>CSV or XLSX into a private exports bucket, signed link</td></tr>
             <tr><td><code>api-v1</code></td><td>API clients (org API key)</td><td>The public API v1 (#306): routes <code>/v1/...</code>, hashes the key, calls <code>api_v1_authenticate</code> and <code>api_v1_call</code>; serves the OpenAPI document (docs/api)</td></tr>
+            <tr><td><code>mcp</code></td><td>AI assistants (OAuth token)</td><td>The MCP server (#307): Streamable HTTP, tools only; 401 with <code>WWW-Authenticate</code> and Protected Resource Metadata pointing at Supabase Auth's OAuth 2.1 server; checks the token with Auth (it must carry <code>client_id</code>), then <code>mcp_call</code> (docs/api/mcp.md)</td></tr>
             <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts, reminders and daily digests through Resend</td></tr>
             <tr><td><code>retention-purge</code></td><td>Cron nightly</td><td>Deletes expired objects through the Storage API, then their rows</td></tr>
           </tbody>

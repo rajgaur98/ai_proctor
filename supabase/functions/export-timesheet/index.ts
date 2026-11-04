@@ -16,6 +16,7 @@
 // The UTF-8 byte order mark at the start of the file is for Excel, which otherwise reads
 // names with accents as Windows-1252.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
+import { isAssistantToken } from "../_shared/assistantToken.ts";
 import {
   type DbDayNote,
   type DbExportRow,
@@ -101,6 +102,10 @@ function parseFilters(v: unknown): Filters | null {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "method_not_allowed" }, 405);
+  // #307: an AI assistant's token is only for the MCP server.
+  if (isAssistantToken(req.headers.get("Authorization"))) {
+    return reply({ error: "assistant_token" }, 403);
+  }
 
   const caller = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",

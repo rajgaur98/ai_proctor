@@ -1834,6 +1834,7 @@ export type Database = {
       };
       orgs: {
         Row: {
+          ai_assistant_access: boolean;
           created_at: string;
           data_region: Database["public"]["Enums"]["data_region"];
           id: string;
@@ -1844,6 +1845,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          ai_assistant_access?: boolean;
           created_at?: string;
           data_region?: Database["public"]["Enums"]["data_region"];
           id?: string;
@@ -1853,6 +1855,7 @@ export type Database = {
           region_preset?: Database["public"]["Enums"]["region_preset"];
         };
         Update: {
+          ai_assistant_access?: boolean;
           created_at?: string;
           data_region?: Database["public"]["Enums"]["data_region"];
           id?: string;
@@ -3500,6 +3503,16 @@ export type Database = {
         Returns: number;
       };
       mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
+      mcp_call: {
+        Args: {
+          p_aal: string;
+          p_args: Json;
+          p_client_id: string;
+          p_tool: string;
+          p_user_id: string;
+        };
+        Returns: Json;
+      };
       merge_manual_entries: { Args: { p_first: string; p_second: string }; Returns: string };
       my_capture_views: {
         Args: { p_days?: number };
@@ -3723,6 +3736,7 @@ export type Database = {
         }[];
       };
       segment_inputs: { Args: { p_day: string; p_user_id: string }; Returns: Json };
+      set_ai_assistant_access: { Args: { p_enabled: boolean }; Returns: Json };
       set_approval_required: {
         Args: { p_required: boolean; p_user_id: string };
         Returns: undefined;

@@ -1,7 +1,8 @@
 // Settings → API (#306, API-01, API-02): owners and admins make org API keys for the public
 // API, with a name, what each key may read or change, and an optional expiry; a key is
 // shown once, when it is made, and can be revoked. Making, revoking and every request a
-// key makes are recorded in the audit log by the database.
+// key makes are recorded in the audit log by the database. Below the keys, the org's AI
+// assistant access switch (#307, API-07).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useId, useState } from "react";
@@ -10,6 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { exportTime } from "../../lib/exportFile";
+import { AssistantAccess } from "../assistants/AssistantAccess";
 import { DateTimeText } from "../notice/NoticeView";
 import {
   type ApiKey,
@@ -187,6 +189,8 @@ export function ApiPage() {
           .
         </p>
       </section>
+
+      <AssistantAccess orgName={profile.orgName} />
 
       {creating && <CreateDialog onClose={() => setCreating(false)} />}
       {revoking && <RevokeDialog apiKey={revoking} onClose={() => setRevoking(null)} />}
