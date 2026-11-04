@@ -543,8 +543,9 @@ holidays(id, org_id, date, name, work_country, work_state)
 leave_requests(id, user_id, leave_type_id, start_at, end_at, note,
                status[pending|approved|rejected|cancelled], decided_by, decided_at)
 api_keys(id, org_id, name, key_hash, scopes[], created_by, expires_at, revoked_at, last_used_at)
-webhook_endpoints(id, org_id, url, events[], secret_hash, active)
-webhook_deliveries(id, endpoint_id, event, payload, status, attempts, next_attempt_at)
+webhooks(id, org_id, url, events[], enabled, disabled_reason, failed_in_row)  -- secret in Vault
+webhook_deliveries(id, webhook_id, event_id, event_type, payload, status, attempts,
+                   next_attempt_at, response_status)
 audit_log(id, org_id, actor_id, action, target_type, target_id, metadata, created_at)
 ```
 
