@@ -746,7 +746,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>export-timesheet</code></td><td>Dashboard</td><td>CSV or XLSX into a private exports bucket, signed link</td></tr>
             <tr><td><code>api-v1</code></td><td>API clients (org API key)</td><td>The public API v1 (#306): routes <code>/v1/...</code>, hashes the key, calls <code>api_v1_authenticate</code> and <code>api_v1_call</code>; serves the OpenAPI document (docs/api)</td></tr>
             <tr><td><code>deliver-webhooks</code></td><td>Cron 1 min</td><td>POSTs due webhook deliveries (#320), signed with HMAC-SHA256 over <code>&lt;timestamp&gt;.&lt;body&gt;</code> (two <code>v1=</code> values during a rotation's grace period, #335); resolves the host once, refuses it if any address is private, and connects to the checked address itself (TCP + TLS with the host name for SNI and certificate validation, HTTP/1.1 written by hand, <code>pin.ts</code>) so DNS rebinding can't redirect it; no redirects; 10 s timeout</td></tr>
-            <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts, reminders and daily digests through Resend</td></tr>
+            <tr><td><code>send-emails</code></td><td>Cron 1 min</td><td>Sends pending alerts, reminders, daily digests and weekly insights emails through Resend</td></tr>
             <tr><td><code>retention-purge</code></td><td>Cron nightly</td><td>Deletes expired objects through the Storage API, then their rows</td></tr>
           </tbody>
         </table>
@@ -767,6 +767,7 @@ pub trait Platform: Send + Sync {
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Queues today (and any unfinished earlier day) for users with an open clock session, then calls <code>rebuild-segments</code> when a <code>dirty_days</code> row is due</td></tr>
             <tr><td><code>reminders</code></td><td>Every 15 min</td><td>Submit and approval reminders, admin escalations</td></tr>
             <tr><td><code>digest</code></td><td>Every 15 min</td><td>Each manager's daily digest of yesterday per direct report (hours, flagged time, misses, late clock-ins), from 09:00 in their zone; one a day, opt-out per person (ALR-03)</td></tr>
+            <tr><td><code>weekly_insights</code></td><td>Every 15 min</td><td>For each manager who turned it on: last org week's totals for their direct reports against the week before (attendance, check-ins, time, needs review; no names), from 09:00 on the week's first day in their zone; one a week, off by default (INS-06)</td></tr>
             <tr><td><code>retention</code></td><td>Daily 02:00 UTC</td><td>Calls <code>retention-purge</code></td></tr>
             <tr><td><code>partitions</code></td><td>Weekly</td><td>Creates next weekly partitions, drops expired ones</td></tr>
           </tbody>

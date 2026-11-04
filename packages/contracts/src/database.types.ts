@@ -1747,6 +1747,7 @@ export type Database = {
           org_id: string;
           updated_at: string;
           user_id: string;
+          weekly_insights: boolean;
         };
         ComputedFields: never;
         Insert: {
@@ -1754,12 +1755,14 @@ export type Database = {
           org_id: string;
           updated_at?: string;
           user_id: string;
+          weekly_insights?: boolean;
         };
         Update: {
           daily_digest?: boolean;
           org_id?: string;
           updated_at?: string;
           user_id?: string;
+          weekly_insights?: boolean;
         };
         Relationships: [
           {
@@ -2389,6 +2392,7 @@ export type Database = {
       };
       teams: {
         Row: {
+          billable_target_pct: number | null;
           created_at: string;
           id: string;
           name: string;
@@ -2398,6 +2402,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          billable_target_pct?: number | null;
           created_at?: string;
           id?: string;
           name: string;
@@ -2406,6 +2411,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          billable_target_pct?: number | null;
           created_at?: string;
           id?: string;
           name?: string;
@@ -3203,6 +3209,63 @@ export type Database = {
           },
         ];
       };
+      weekly_insights_sent: {
+        Row: {
+          email_id: string | null;
+          id: string;
+          org_id: string;
+          recipient_id: string;
+          sent_at: string;
+          week_start: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          email_id?: string | null;
+          id?: string;
+          org_id: string;
+          recipient_id: string;
+          sent_at?: string;
+          week_start: string;
+        };
+        Update: {
+          email_id?: string | null;
+          id?: string;
+          org_id?: string;
+          recipient_id?: string;
+          sent_at?: string;
+          week_start?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "weekly_insights_sent_email_id_fkey";
+            columns: ["email_id"];
+            isOneToOne: false;
+            referencedRelation: "email_outbox";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "weekly_insights_sent_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "weekly_insights_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "weekly_insights_sent_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       my_pauses: {
@@ -3590,6 +3653,10 @@ export type Database = {
         Args: { p_emails: string[]; p_from: string; p_to: string };
         Returns: Json;
       };
+      insights: {
+        Args: { p_from: string; p_team_id?: string; p_to: string; p_user_ids?: string[] };
+        Returns: Json;
+      };
       leave_requests_list: {
         Args: {
           p_from?: string;
@@ -3953,6 +4020,10 @@ export type Database = {
         Returns: undefined;
       };
       set_shifts: { Args: { p_shifts: Json; p_user_id: string }; Returns: undefined };
+      set_team_billable_target: {
+        Args: { p_target_pct: number; p_team_id: string };
+        Returns: undefined;
+      };
       set_team_members: { Args: { p_team_id: string; p_user_ids: string[] }; Returns: undefined };
       set_team_policy: { Args: { p_policy: Json; p_team_id: string }; Returns: Json };
       set_timesheet_favourite: {
@@ -3960,6 +4031,7 @@ export type Database = {
         Returns: boolean;
       };
       set_user_active: { Args: { p_active: boolean; p_user_id: string }; Returns: undefined };
+      set_weekly_insights: { Args: { p_enabled: boolean }; Returns: boolean };
       split_manual_entry: { Args: { p_at: string; p_id: string }; Returns: string };
       stuck_segment_days: {
         Args: Record<PropertyKey, never>;

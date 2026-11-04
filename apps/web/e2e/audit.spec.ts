@@ -83,7 +83,7 @@ test("an admin filters the audit log, exports it, and the export is logged", asy
   await expectNoA11yViolations(page);
   await page.getByLabel("From", { exact: true }).fill(today);
   await page.getByLabel("To", { exact: true }).fill(today);
-  await page.getByLabel("Target").selectOption({ label: "Lucas Martin" });
+  await page.getByLabel("Target", { exact: true }).selectOption({ label: "Lucas Martin" });
   // Settled once every row on screen is about Lucas.
   await expect
     .poll(async () => {

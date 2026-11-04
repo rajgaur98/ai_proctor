@@ -1,8 +1,8 @@
-// send-emails (#50, #46, #67; ALR-01, ALR-02, ALR-03, TS-17, LLD jobs table): delivers the
-// emails waiting in email_outbox (alerts, the reminder_* timesheet reminders and the
-// managers' daily digest). Called every minute by the send_emails cron job
-// (internal.send_emails_kick, through pg_net) with the service-role key as the bearer
-// token; nobody else may call it.
+// send-emails (#50, #46, #67, #305; ALR-01, ALR-02, ALR-03, TS-17, INS-06, LLD jobs table):
+// delivers the emails waiting in email_outbox (alerts, the reminder_* timesheet reminders,
+// the managers' daily digest and the weekly insights email). Called every minute by the
+// send_emails cron job (internal.send_emails_kick, through pg_net) with the service-role
+// key as the bearer token; nobody else may call it.
 //
 // It claims due rows with email_claim (which counts the attempt and sets the retry
 // backoff), sends each, and records the result with email_mark_sent / email_mark_failed.
@@ -18,7 +18,13 @@
 // DASHBOARD_URL (default http://localhost:5173) is the base of the links in the mail.
 // Reply: { claimed, sent, failed }.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { type DigestReport, digestLineText, digestSummary } from "../_shared/core/digest.ts";
+import {
+  type DigestReport,
+  digestLineText,
+  digestSummary,
+  weeklyInsightsLines,
+  weeklyLineText,
+} from "../_shared/core/digest.ts";
 
 const MAX_BATCH = 50;
 // Resend allows 2 requests a second on the free tier.
@@ -278,9 +284,61 @@ function digestMessage(row: OutboxRow, dashboardUrl: string): Message {
   return { subject, text, html };
 }
 
+/**
+ * The weekly insights email (INS-06, #305): last week's totals for the recipient's direct
+ * reports next to the week before's. No names, scores or rankings; the payload is written
+ * by internal.weekly_insights_eval with raw seconds and only these lines round them.
+ */
+function weeklyInsightsMessage(row: OutboxRow, dashboardUrl: string): Message {
+  const p = row.payload;
+  const base = dashboardUrl.replace(/\/$/, "");
+  const from = String(p.week_from);
+  const to = String(p.week_to);
+  const lines = weeklyInsightsLines(
+    (p.current ?? {}) as Record<string, unknown>,
+    (p.previous ?? {}) as Record<string, unknown>,
+  );
+  const greeting = `Hi ${String(p.recipient_name ?? "there")},`;
+  const intro = `Your direct reports, ${day(from)} to ${day(to)}, next to the week before:`;
+  const subject = `Weekly insights: your team, ${day(from)} to ${day(to)}`;
+  const link = `${base}/insights`;
+  const note =
+    "Plain totals, with no scores or rankings. You get this email once a week because you turned it on; turn it off on the Alerts page.";
+
+  const text = [
+    greeting,
+    "",
+    intro,
+    ...lines.map((l) => `- ${weeklyLineText(l)}`),
+    "",
+    `Insights: ${link}`,
+    "",
+    note,
+  ].join("\n");
+
+  const cell = "padding:4px 12px 4px 0;text-align:left";
+  const num = "padding:4px 12px 4px 0;text-align:right;font-family:monospace";
+  const html = [
+    `<p>${escapeHtml(greeting)}</p>`,
+    `<p>${escapeHtml(intro)}</p>`,
+    `<table style="border-collapse:collapse;font-size:14px">`,
+    `<thead><tr><th style="${cell}">Metric</th><th style="${num}">Last week</th><th style="${num}">Week before</th></tr></thead>`,
+    "<tbody>",
+    ...lines.map(
+      (l) =>
+        `<tr><td style="${cell}">${escapeHtml(l.label)}</td><td style="${num}">${escapeHtml(l.value)}</td><td style="${num}">${escapeHtml(l.previous)}</td></tr>`,
+    ),
+    "</tbody></table>",
+    `<p><a href="${escapeHtml(link)}">Open Insights</a></p>`,
+    `<p style="color:#696d74;font-size:13px">${escapeHtml(note)}</p>`,
+  ].join("\n");
+  return { subject, text, html };
+}
+
 function render(row: OutboxRow, dashboardUrl: string): Message {
   if (row.template === "alert") return alertMessage(row, dashboardUrl);
   if (row.template === "digest") return digestMessage(row, dashboardUrl);
+  if (row.template === "weekly_insights") return weeklyInsightsMessage(row, dashboardUrl);
   if (
     row.template === "reminder_submit" ||
     row.template === "reminder_approval" ||

@@ -101,3 +101,14 @@ export function overrideSummary(p: TeamPolicy): string[] {
   }
   return out;
 }
+
+/**
+ * The billable target field (#305, INS-02): null when empty (no target, the default),
+ * undefined when it isn't a whole percentage from 1 to 100.
+ */
+export function parseTarget(text: string): number | null | undefined {
+  const t = text.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isInteger(n) && n >= 1 && n <= 100 ? n : undefined;
+}
