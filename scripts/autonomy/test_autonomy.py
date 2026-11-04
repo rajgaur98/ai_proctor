@@ -103,6 +103,20 @@ class Rows(unittest.TestCase):
         self.assertIn("building", lib.WAITING)
         self.assertEqual(s[8], "ready-to-merge")
 
+    def test_next_orders_every_state(self):
+        import next as nxt
+        self.assertEqual(set(nxt.ORDER), lib.ACTIONABLE | lib.WAITING | {"blocked"})
+
+    def test_depends_on_an_open_issue_waits(self):
+        self.assertEqual(lib.depends_on("Covers API-07. Depends on #306.\ndepends on #12"), [12, 306])
+        a, b, c = issue(5), issue(6), issue(7)
+        b["depends_on"] = [5]
+        c["depends_on"] = [99]  # closed: not in the open list
+        s = self.states([a, b, c], [])
+        self.assertEqual(s[(6, None)], "waiting-on-issue")
+        self.assertIn("waiting-on-issue", lib.WAITING)
+        self.assertEqual(s[(7, None)], "needs-work")
+
     def test_branch_without_pr_is_named(self):
         r = lib.rows([issue(7)], [], lambda p: 0, ["7-thing"])[0]
         self.assertEqual(r["next"], "continue on 7-thing")

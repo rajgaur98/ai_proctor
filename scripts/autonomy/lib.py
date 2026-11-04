@@ -42,7 +42,7 @@ OWNER_FILE = os.path.join(STATE_DIR, "owner.json")
 # What a state asks of the run. Actionable states keep the owner working;
 # waiting states let it stop until the wake-up looks again.
 ACTIONABLE = {"needs-work", "pr-failing", "pr-conflict", "behind-main", "ready-to-merge"}
-WAITING = {"pr-in-ci", "waiting-on-base", "building"}
+WAITING = {"pr-in-ci", "waiting-on-base", "building", "waiting-on-issue"}
 # An issue without a PR whose worktree had an edit this recently is being built
 # by an implementer: the owner waits instead of starting it again.
 BUILDING_S = 45 * 60
@@ -131,9 +131,15 @@ def open_issues(epics=EPICS):
                 "number": it["number"],
                 "title": it["title"],
                 "labels": [l["name"] for l in it.get("labels", [])],
+                "depends_on": depends_on(it.get("body") or ""),
                 "epic": epic,
             })
     return sorted(issues, key=lambda i: i["number"])
+
+
+def depends_on(body):
+    """Issue numbers named as "Depends on #N" in an issue body."""
+    return sorted({int(n) for n in re.findall(r"(?i)depends on #(\d+)", body)})
 
 
 def open_prs():
@@ -228,6 +234,7 @@ NEXT_ACTION = {
     "pr-in-ci": "wait for CI",
     "waiting-on-base": "wait for #{base_pr} to merge",
     "building": "wait for the implementer in {worktree}",
+    "waiting-on-issue": "wait for #{dep} (depends on it)",
     "blocked": "skip (Blocked on Raj)",
 }
 
@@ -239,6 +246,7 @@ def rows(issues, prs, behind_of, branches=(), building=None):
     building: {issue: worktree path} for issues an implementer is working on.
     """
     building = building or {}
+    open_numbers = {i["number"] for i in issues}
     heads = {p["headRefName"]: p for p in prs}
     by_issue = {}
     for p in prs:
@@ -273,6 +281,11 @@ def rows(issues, prs, behind_of, branches=(), building=None):
                         "next": NEXT_ACTION["blocked"]})
             continue
         linked = sorted(by_issue.get(n, []), key=lambda p: p["number"])
+        open_deps = [d for d in it.get("depends_on", []) if d in open_numbers]
+        if not linked and n not in building and open_deps:
+            out.append({"issue": n, "title": it["title"], "state": "waiting-on-issue", "pr": None,
+                        "next": NEXT_ACTION["waiting-on-issue"].format(dep=open_deps[0])})
+            continue
         if not linked and n in building:
             out.append({"issue": n, "title": it["title"], "state": "building", "pr": None,
                         "next": NEXT_ACTION["building"].format(worktree=building[n])})
