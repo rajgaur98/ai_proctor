@@ -4,8 +4,8 @@ import { asTamperReason, statusLabel, statusStyle, tamperLabel } from "./StatusC
 describe("statusStyle", () => {
   it("has a label for every status (never colour alone, NFR-UX-01)", () => {
     const labels = Object.values(statusStyle).map((s) => s.label);
-    expect(labels).toHaveLength(10);
-    expect(new Set(labels).size).toBe(10);
+    expect(labels).toHaveLength(11);
+    expect(new Set(labels).size).toBe(11);
   });
 
   it("uses distinct shapes for the states that matter most", () => {
@@ -13,6 +13,8 @@ describe("statusStyle", () => {
     expect(statusStyle.tamper.shape).toBe("diamond");
     expect(statusStyle.paused.shape).toBe("square");
     expect(statusStyle.off_shift.shape).toBe("dash");
+    // On leave reads like Off shift (not working), in the break colour (away by right).
+    expect(statusStyle.on_leave).toMatchObject({ label: "On leave", shape: "dash" });
   });
 });
 

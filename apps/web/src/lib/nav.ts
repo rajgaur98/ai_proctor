@@ -11,6 +11,7 @@ export interface NavLink {
 const manager: NavLink[] = [
   { to: "/team", label: "Live team" },
   { to: "/timesheets", label: "Timesheets" },
+  { to: "/time-off", label: "Time off" },
   { to: "/reports", label: "Reports" },
   { to: "/projects", label: "Projects" },
 ];
@@ -18,6 +19,7 @@ const manager: NavLink[] = [
 const admin: NavLink[] = [
   { to: "/team", label: "Live team" },
   { to: "/timesheets", label: "Timesheets" },
+  { to: "/time-off", label: "Time off" },
   { to: "/reports", label: "Reports" },
   { to: "/people", label: "People" },
   { to: "/teams", label: "Teams" },
@@ -31,6 +33,7 @@ const admin: NavLink[] = [
 const employee: NavLink[] = [
   { to: "/me", label: "My data" },
   { to: "/my-timesheet", label: "My timesheet" },
+  { to: "/time-off", label: "Time off" },
   { to: "/my-day", label: "My day" },
   { to: "/notice", label: "Monitoring notice" },
 ];

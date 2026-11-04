@@ -27,6 +27,22 @@ pub struct SessionPolicy {
     pub shifts: Vec<Shift>,
     /// The employee's time zone, for "today".
     pub timezone: chrono_tz::Tz,
+    /// LV-04: approved leave and the holidays that apply to them. No auto clock-in
+    /// inside one; clocking in by hand works as usual.
+    pub leave: Vec<LeaveSpan>,
+}
+
+/// A span of time off, `[start, end)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LeaveSpan {
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+}
+
+impl LeaveSpan {
+    pub fn contains(&self, at: DateTime<Utc>) -> bool {
+        self.start <= at && at < self.end
+    }
 }
 
 impl Default for SessionPolicy {
@@ -36,6 +52,7 @@ impl Default for SessionPolicy {
             forgotten_clock_out_after: Duration::minutes(30),
             shifts: Vec::new(),
             timezone: chrono_tz::UTC,
+            leave: Vec::new(),
         }
     }
 }
@@ -429,6 +446,7 @@ impl Session {
         if !self.policy.auto_clock_in
             || !self.collection_allowed
             || shift::window_containing(&self.policy.shifts, now).is_none()
+            || self.policy.leave.iter().any(|l| l.contains(now))
             || self.platform.idle_seconds() > RECENT_INPUT_S
         {
             return Ok(());
@@ -691,6 +709,7 @@ mod tests {
                 tz: chrono_tz::America::Los_Angeles,
             }],
             timezone: chrono_tz::America::Los_Angeles,
+            leave: Vec::new(),
         }
     }
 
@@ -909,6 +928,44 @@ mod tests {
         assert_eq!(r.session.shift(), ShiftState::Working);
         assert_eq!(r.sink.last().2["reason"], "auto");
         assert_eq!(r.platform.snapshot().notifications[0].0, "Clocked in");
+    }
+
+    #[test]
+    fn no_auto_clock_in_on_leave_but_clocking_in_by_hand_works() {
+        // LV-04: the whole Monday is a holiday (or approved leave) for them.
+        let monday = "2026-10-19T07:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let mut policy = shift_policy(true);
+        policy.leave = vec![LeaveSpan {
+            start: monday,
+            end: monday + Duration::days(1),
+        }];
+        let mut r = rig(policy);
+        r.clock.advance(Duration::minutes(15)); // 09:05, inside the shift
+        r.platform.update(|s| s.idle_seconds = 1);
+        r.session.tick().unwrap();
+        assert_eq!(r.session.shift(), ShiftState::OffShift, "no auto clock-in");
+
+        r.session.clock_in(None).unwrap();
+        assert_eq!(r.session.shift(), ShiftState::Working, "by hand, as usual");
+    }
+
+    #[test]
+    fn auto_clock_in_resumes_when_the_leave_ends() {
+        // A part day off until 10:00 Monday.
+        let mut policy = shift_policy(true);
+        policy.leave = vec![LeaveSpan {
+            start: "2026-10-19T16:00:00Z".parse().unwrap(),
+            end: "2026-10-19T17:00:00Z".parse().unwrap(),
+        }];
+        let mut r = rig(policy);
+        r.clock.advance(Duration::minutes(15)); // 09:05
+        r.platform.update(|s| s.idle_seconds = 1);
+        r.session.tick().unwrap();
+        assert_eq!(r.session.shift(), ShiftState::OffShift);
+
+        r.clock.advance(Duration::minutes(60)); // 10:05
+        r.session.tick().unwrap();
+        assert_eq!(r.session.shift(), ShiftState::Working);
     }
 
     #[test]

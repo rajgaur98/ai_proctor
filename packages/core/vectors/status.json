@@ -12,7 +12,8 @@
         "locked": true,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "off_shift"
     },
@@ -27,7 +28,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "active"
     },
@@ -42,7 +44,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "tamper"
     },
@@ -57,7 +60,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "offline"
     },
@@ -72,7 +76,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "on_break"
     },
@@ -87,7 +92,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "paused"
     },
@@ -102,7 +108,8 @@
         "locked": true,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "paused"
     },
@@ -117,7 +124,8 @@
         "locked": true,
         "last_checkin": "miss",
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "away_locked"
     },
@@ -132,7 +140,8 @@
         "locked": false,
         "last_checkin": "miss",
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "away"
     },
@@ -147,7 +156,8 @@
         "locked": false,
         "last_checkin": "failed",
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "away"
     },
@@ -162,7 +172,8 @@
         "locked": false,
         "last_checkin": "miss",
         "in_call": true,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "away"
     },
@@ -177,7 +188,8 @@
         "locked": false,
         "last_checkin": "pass",
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "active"
     },
@@ -192,7 +204,8 @@
         "locked": false,
         "last_checkin": "pass",
         "in_call": true,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "in_meeting"
     },
@@ -207,7 +220,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": true,
-        "idle": true
+        "idle": true,
+        "on_leave": false
       },
       "expected": "in_meeting"
     },
@@ -222,7 +236,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": true
+        "idle": true,
+        "on_leave": false
       },
       "expected": "idle"
     },
@@ -237,7 +252,8 @@
         "locked": true,
         "last_checkin": null,
         "in_call": true,
-        "idle": true
+        "idle": true,
+        "on_leave": false
       },
       "expected": "away_locked"
     },
@@ -252,7 +268,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "tamper"
     },
@@ -267,7 +284,8 @@
         "locked": false,
         "last_checkin": "deferred",
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "active"
     },
@@ -282,7 +300,8 @@
         "locked": false,
         "last_checkin": "deferred",
         "in_call": true,
-        "idle": true
+        "idle": true,
+        "on_leave": false
       },
       "expected": "in_meeting"
     },
@@ -297,7 +316,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "off_shift"
     },
@@ -312,7 +332,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "tamper"
     },
@@ -327,7 +348,8 @@
         "locked": false,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "tamper"
     },
@@ -342,7 +364,8 @@
         "locked": true,
         "last_checkin": null,
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "tamper"
     },
@@ -357,7 +380,8 @@
         "locked": false,
         "last_checkin": "miss",
         "in_call": true,
-        "idle": true
+        "idle": true,
+        "on_leave": false
       },
       "expected": "tamper"
     },
@@ -372,7 +396,8 @@
         "locked": false,
         "last_checkin": "pass",
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "active"
     },
@@ -387,9 +412,74 @@
         "locked": false,
         "last_checkin": "miss",
         "in_call": false,
-        "idle": false
+        "idle": false,
+        "on_leave": false
       },
       "expected": "away"
+    },
+    {
+      "name": "on leave and not clocked in is on leave",
+      "input": {
+        "clocked_in": false,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false,
+        "on_leave": true
+      },
+      "expected": "on_leave"
+    },
+    {
+      "name": "on leave beats whatever else is set while not clocked in",
+      "input": {
+        "clocked_in": false,
+        "tamper": true,
+        "offline": true,
+        "on_break": false,
+        "paused": false,
+        "locked": true,
+        "last_checkin": "miss",
+        "in_call": false,
+        "idle": false,
+        "on_leave": true
+      },
+      "expected": "on_leave"
+    },
+    {
+      "name": "clocked in on a leave day is tracked as normal",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": false,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false,
+        "on_leave": true
+      },
+      "expected": "active"
+    },
+    {
+      "name": "clocked in on a leave day can go offline",
+      "input": {
+        "clocked_in": true,
+        "tamper": false,
+        "offline": true,
+        "on_break": false,
+        "paused": false,
+        "locked": false,
+        "last_checkin": null,
+        "in_call": false,
+        "idle": false,
+        "on_leave": true
+      },
+      "expected": "offline"
     }
   ]
 }

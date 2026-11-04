@@ -10,7 +10,7 @@
 //! a number outside its range is clamped, a key that is missing or of the wrong type
 //! (an org that never set it) falls back to the built-in default.
 
-use chrono::{Duration, NaiveTime};
+use chrono::{DateTime, Duration, NaiveTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -20,7 +20,7 @@ use crate::checkin::{CardPolicy, DEFAULT_COUNTDOWN, MAX_COUNTDOWN, MIN_COUNTDOWN
 use crate::contracts::NoticeBody;
 use crate::presence::DEFAULT_IDLE_THRESHOLD;
 use crate::scheduler::SchedulePolicy;
-use crate::session::SessionPolicy;
+use crate::session::{LeaveSpan, SessionPolicy};
 use crate::shift::Shift;
 
 /// Server ranges, in minutes unless noted (`POLICY_LIMITS`).
@@ -49,6 +49,29 @@ pub struct AgentConfig {
     /// the card are accepted (and still flagged). Off when an older server leaves it out.
     #[serde(default)]
     pub assistive_input: bool,
+    /// LV-04 (#304): approved leave and the holidays that apply to this person, from
+    /// yesterday on. No auto clock-in inside one. Empty when an older server leaves it out.
+    #[serde(default)]
+    pub leave: Vec<LeaveConfig>,
+}
+
+/// One span of time off, as RFC 3339 instants (`[start, end)`).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct LeaveConfig {
+    pub start: String,
+    pub end: String,
+}
+
+impl LeaveConfig {
+    fn to_span(&self) -> Option<LeaveSpan> {
+        let start = DateTime::parse_from_rfc3339(&self.start)
+            .ok()?
+            .with_timezone(&Utc);
+        let end = DateTime::parse_from_rfc3339(&self.end)
+            .ok()?
+            .with_timezone(&Utc);
+        (end > start).then_some(LeaveSpan { start, end })
+    }
 }
 
 /// The org's current notice and where this person stands with it. The `policy` in
@@ -264,6 +287,17 @@ impl AgentConfig {
             )),
             shifts,
             timezone: self.timezone.parse().unwrap_or(defaults.timezone),
+            leave: self
+                .leave
+                .iter()
+                .filter_map(|l| {
+                    let span = l.to_span();
+                    if span.is_none() {
+                        tracing::warn!(?l, "leave from the server ignored");
+                    }
+                    span
+                })
+                .collect(),
         }
     }
 }
@@ -299,6 +333,27 @@ mod tests {
             NaiveTime::from_hms_opt(22, 0, 0).unwrap()
         );
         assert_eq!(p.shifts[1].tz, chrono_tz::America::Los_Angeles);
+    }
+
+    #[test]
+    fn leave_becomes_spans_and_bad_ones_are_skipped() {
+        assert!(config(json!({}), json!([]))
+            .session_policy()
+            .leave
+            .is_empty());
+        let with: AgentConfig = serde_json::from_value(json!({
+            "policy": {}, "policy_version": 3, "timezone": "UTC", "shifts": [],
+            "leave": [
+                { "start": "2026-11-16T08:00:00+00:00", "end": "2026-11-17T08:00:00+00:00" },
+                { "start": "not a time", "end": "2026-11-17T08:00:00+00:00" },
+                { "start": "2026-11-18T08:00:00+00:00", "end": "2026-11-18T08:00:00+00:00" }
+            ]
+        }))
+        .unwrap();
+        let leave = with.session_policy().leave;
+        assert_eq!(leave.len(), 1);
+        assert_eq!(leave[0].start.to_rfc3339(), "2026-11-16T08:00:00+00:00");
+        assert_eq!(leave[0].end - leave[0].start, Duration::days(1));
     }
 
     #[test]
