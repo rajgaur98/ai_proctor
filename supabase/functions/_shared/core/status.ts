@@ -7,6 +7,7 @@
 
 export const presenceStatuses = [
   "off_shift",
+  "on_leave",
   "tamper",
   "offline",
   "on_break",
@@ -37,10 +38,15 @@ export interface StatusInput {
   in_call: boolean;
   /** No input for at least the idle threshold. */
   idle: boolean;
+  /**
+   * LV-04: an approved leave covers now, or a holiday that applies to them is today (their
+   * time zone). Only changes the status when they aren't clocked in.
+   */
+  on_leave: boolean;
 }
 
 export function computeStatus(s: StatusInput): PresenceStatus {
-  if (!s.clocked_in) return "off_shift";
+  if (!s.clocked_in) return s.on_leave ? "on_leave" : "off_shift";
   if (s.tamper) return "tamper";
   if (s.offline) return "offline";
   if (s.on_break) return "on_break";

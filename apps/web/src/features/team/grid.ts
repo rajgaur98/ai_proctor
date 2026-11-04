@@ -18,10 +18,12 @@ const statusRank: Record<PresenceStatus, number> = {
   paused: 7,
   active: 8,
   off_shift: 9,
+  on_leave: 10,
 };
 
+/** Clocked in: neither Off shift nor On leave (LV-04). */
 export function onShift(rows: TeamRow[]): TeamRow[] {
-  return rows.filter((r) => r.status && r.status !== "off_shift");
+  return rows.filter((r) => r.status && r.status !== "off_shift" && r.status !== "on_leave");
 }
 
 export function sortRows(rows: TeamRow[], key: SortKey): TeamRow[] {
@@ -78,7 +80,8 @@ export function summarize(rows: TeamRow[]): Summary {
     live.filter((r) => s.includes(r.status as PresenceStatus)).length;
   return {
     onShift: live.length,
-    scheduled: rows.filter((r) => r.scheduled_today).length,
+    // Someone on leave or a holiday (LV-04) isn't expected in today.
+    scheduled: rows.filter((r) => r.scheduled_today && r.status !== "on_leave").length,
     active: count("active", "in_meeting", "paused", "idle"),
     away: count("away", "away_locked"),
     missed: live.filter(

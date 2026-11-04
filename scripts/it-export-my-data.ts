@@ -251,6 +251,7 @@ try {
     "timesheets",
     "timesheet-edits",
     "timesheet-comments",
+    "time-off-requests",
     "activity-samples",
     "notice-acknowledgements",
     "capture-views",

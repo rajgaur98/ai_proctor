@@ -4,9 +4,12 @@
 // when a manager or delegate is deactivated or demoted, #147), the reminders
 // (timesheet.submit_reminder / approval_reminder / escalation) and
 // timesheet.late_data (late_events), and timesheet.commented (#265, timesheet_comments): to the
-// employee when a reviewer comments, to the reviewers when the employee does.
+// employee when a reviewer comments, to the reviewers when the employee does. #304 (LV-03):
+// leave.requested and leave.cancelled to the people who decide, leave.approved and
+// leave.rejected to the employee.
 import type { Json } from "@ai-proctor/contracts";
 import { DateTime } from "luxon";
+import { leaveWhen } from "../timeoff/leaveText";
 
 function field(payload: Json, key: string): Json | undefined {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return undefined;
@@ -68,6 +71,19 @@ const EDITS: Record<string, string> = {
   note: "changed a work note in",
 };
 
+/** "Vacation, Mon 16 Nov – Fri 20 Nov 2026" from a leave notification's payload. */
+function leaveOf(payload: Json): string {
+  const when = leaveWhen({
+    kind: str(payload, "kind") ?? "days",
+    firstDay: str(payload, "first_day") ?? "",
+    lastDay: str(payload, "last_day") ?? "",
+    startAt: str(payload, "start_at") ?? "",
+    endAt: str(payload, "end_at") ?? "",
+    timezone: str(payload, "timezone") ?? "UTC",
+  });
+  return [str(payload, "type_name"), when || null].filter(Boolean).join(", ");
+}
+
 /** One short line for the notification. */
 export function notificationText(kind: string, payload: Json): string {
   switch (kind) {
@@ -108,6 +124,14 @@ export function notificationText(kind: string, payload: Json): string {
       return str(payload, "to") === "reviewer"
         ? `${str(payload, "by_name") ?? "Someone"} commented on ${weekOf(payload, "their")}`
         : `${str(payload, "by_name") ?? "Your manager"} commented on ${weekOf(payload)}`;
+    case "leave.requested":
+      return `${str(payload, "employee_name") ?? "Someone"} asked for time off: ${leaveOf(payload)}`;
+    case "leave.approved":
+      return `Your time off was approved: ${leaveOf(payload)}`;
+    case "leave.rejected":
+      return `Your time off was declined: ${leaveOf(payload)}`;
+    case "leave.cancelled":
+      return `${str(payload, "employee_name") ?? "Someone"} cancelled time off: ${leaveOf(payload)}`;
     default:
       return "New notification";
   }
@@ -133,6 +157,16 @@ export function notificationNote(kind: string, payload: Json): string | null {
       const excerpt = str(payload, "excerpt");
       return excerpt === null ? null : `Comment: ${excerpt}`;
     }
+    case "leave.requested": {
+      const note = str(payload, "note");
+      return note === null ? null : `Note: ${note}`;
+    }
+    case "leave.approved":
+    case "leave.rejected": {
+      const note = str(payload, "note");
+      const by = str(payload, "by_name");
+      return [by ? `By ${by}` : null, note ? `“${note}”` : null].filter(Boolean).join(": ") || null;
+    }
     default:
       return null;
   }
@@ -140,7 +174,8 @@ export function notificationNote(kind: string, payload: Json): string | null {
 
 export type NotificationTarget =
   | { page: "week"; userId: string; week: string }
-  | { page: "timesheets" };
+  | { page: "timesheets" }
+  | { page: "time-off" };
 
 /**
  * Where the notification leads: the person's week, or the Timesheets tab. Reminders name the
@@ -169,6 +204,11 @@ export function notificationTarget(
     case "delegation.assigned":
     case "delegation.ended":
       return { page: "timesheets" };
+    case "leave.requested":
+    case "leave.approved":
+    case "leave.rejected":
+    case "leave.cancelled":
+      return { page: "time-off" };
     default:
       return null;
   }

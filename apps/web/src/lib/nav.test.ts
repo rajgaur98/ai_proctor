@@ -6,6 +6,7 @@ describe("navFor", () => {
     expect(navFor("manager").map((l) => l.label)).toEqual([
       "Live team",
       "Timesheets",
+      "Time off",
       "Reports",
       "Projects",
     ]);
@@ -41,9 +42,16 @@ describe("navFor", () => {
     expect(navFor("employee").map((l) => l.to)).toEqual([
       "/me",
       "/my-timesheet",
+      "/time-off",
       "/my-day",
       "/notice",
     ]);
+  });
+
+  it("gives everyone Time off (#304)", () => {
+    for (const role of ["owner", "admin", "manager", "employee"] as const) {
+      expect(navFor(role).map((l) => l.to)).toContain("/time-off");
+    }
   });
 
   it("keeps Reports from employees", () => {

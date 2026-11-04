@@ -753,7 +753,8 @@ pub trait Platform: Send + Sync {
           <thead><tr><th>Job</th><th>Schedule</th><th>Does</th></tr></thead>
           <tbody>
             <tr><td><code>offline_sweep</code></td><td>Every 1 min</td><td>Clocked-in users with <code>last_seen</code> older than 3 min become Offline</td></tr>
-            <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap</td></tr>
+            <tr><td><code>alert_eval</code></td><td>Every 1 min</td><td>Consecutive misses, offline over 15 min, tamper, late clock-in, pause cap. No late clock-in or offline alert on approved leave or a holiday (LV-04)</td></tr>
+            <tr><td><code>leave_sweep</code></td><td>Every 1 min</td><td>People not clocked in whose leave or holiday began or ended get their status recomputed: On leave or Off shift (LV-04)</td></tr>
             <tr><td><code>anticheat_daily</code></td><td>Daily 03:30 UTC</td><td>Flags each employee's previous local day: passes under 300 ms, implausibly even response times. Rows land in <code>anticheat_flags</code> as "needs review" (ANT-04, ANT-08)</td></tr>
             <tr><td><code>send_emails</code></td><td>Every 1 min</td><td>Calls <code>send-emails</code> when <code>email_outbox</code> has mail due</td></tr>
             <tr><td><code>segments_kick</code></td><td>Every 5 min</td><td>Queues today (and any unfinished earlier day) for users with an open clock session, then calls <code>rebuild-segments</code> when a <code>dirty_days</code> row is due</td></tr>
@@ -895,6 +896,12 @@ pub trait Platform: Send + Sync {
           <li><span class="badge">FK</span>user_id · project_id · decided_by</li>
           <li>start_at · end_at · reason</li>
           <li>status (pending, approved, rejected)</li>
+        </ul></div>
+        <div class="t-card"><div class="name">leave_requests · leave_types · holidays</div><ul>
+          <li>leave_requests: user_id · leave_type_id · paid · kind (days, part_day) · first_day · last_day · start_at · end_at · timezone · note · status (pending, approved, rejected, cancelled) · decided_by · decided_by_name · decision_note</li>
+          <li>leave_types: org_id · name · paid · archived (never deleted)</li>
+          <li>holidays: org_id · day · name · country · state (null: everyone)</li>
+          <li>Decided by the direct manager or active delegate (<code>is_entry_decider</code>); <code>internal.on_leave_at</code> drives On leave, late clock-ins, alerts and the agent's <code>leave</code> spans (LV-01..04)</li>
         </ul></div>
         <div class="t-card"><div class="name">clients · projects · project_members</div><ul>
           <li>clients: id · name</li>

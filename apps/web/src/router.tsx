@@ -20,6 +20,7 @@ import { Projects } from "./features/projects/Projects";
 import { Reports } from "./features/reports/Reports";
 import { LiveTeam } from "./features/team/LiveTeam";
 import { Teams } from "./features/teams/Teams";
+import { TimeOff } from "./features/timeoff/TimeOff";
 import { TimesheetPage } from "./features/timesheets/TimesheetPage";
 import { MyTimesheets, Timesheets } from "./features/timesheets/Timesheets";
 import { homeFor, navFor } from "./lib/nav";
@@ -225,6 +226,7 @@ const routeTree = rootRoute.addChildren([
     myDayRoute,
     page("/timesheets", "Timesheets", 43, Timesheets),
     timesheetRoute,
+    page("/time-off", "Time off", 304, TimeOff),
     page("/reports", "Reports", 47, Reports),
     page("/projects", "Projects", 38, Projects),
     page("/people", "People", 28, People),

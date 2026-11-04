@@ -178,6 +178,7 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     notifications,
     lateClockIns,
     favourites,
+    timeOff,
     editors,
     orgRow,
   ] = await Promise.all([
@@ -237,6 +238,8 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     scoped("late_clock_ins", ["shift_start", "id"]),
     // #264 (TS-34): the rows they pinned to their week grid.
     scoped("timesheet_favourites", ["created_at", "id"]),
+    // #304 (LV-03, LV-07): the time off they asked for, with who decided by name as written.
+    scoped("leave_requests", ["start_at", "id"]),
     // Who made each edit, by name (the employee can't read their manager's row). The
     // admin path looks the names up below, for the editors that appear.
     mode === "self"
@@ -281,6 +284,7 @@ export async function exportResponse(o: ExportOptions): Promise<Response> {
     timesheets,
     "timesheet-day-notes": dayNotes,
     "timesheet-comments": comments,
+    "time-off-requests": timeOff,
     "timesheet-edits": edits.map((e) => ({
       ...e,
       editor_name:

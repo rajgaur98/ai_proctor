@@ -1208,6 +1208,62 @@ export type Database = {
           },
         ];
       };
+      holidays: {
+        Row: {
+          country: string | null;
+          created_at: string;
+          created_by: string | null;
+          day: string;
+          id: string;
+          name: string;
+          org_id: string;
+          state: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          country?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          day: string;
+          id?: string;
+          name: string;
+          org_id: string;
+          state?: string | null;
+        };
+        Update: {
+          country?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          day?: string;
+          id?: string;
+          name?: string;
+          org_id?: string;
+          state?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "holidays_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "holidays_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "holidays_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       last_seen: {
         Row: {
           at: string;
@@ -1327,6 +1383,152 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      leave_requests: {
+        Row: {
+          cancelled_at: string | null;
+          created_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          decided_by_name: string | null;
+          decision_note: string | null;
+          end_at: string;
+          first_day: string;
+          id: string;
+          kind: string;
+          last_day: string;
+          leave_type_id: string;
+          note: string | null;
+          org_id: string;
+          paid: boolean;
+          start_at: string;
+          status: string;
+          timezone: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          cancelled_at?: string | null;
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decided_by_name?: string | null;
+          decision_note?: string | null;
+          end_at: string;
+          first_day: string;
+          id?: string;
+          kind: string;
+          last_day: string;
+          leave_type_id: string;
+          note?: string | null;
+          org_id: string;
+          paid: boolean;
+          start_at: string;
+          status?: string;
+          timezone: string;
+          user_id: string;
+        };
+        Update: {
+          cancelled_at?: string | null;
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decided_by_name?: string | null;
+          decision_note?: string | null;
+          end_at?: string;
+          first_day?: string;
+          id?: string;
+          kind?: string;
+          last_day?: string;
+          leave_type_id?: string;
+          note?: string | null;
+          org_id?: string;
+          paid?: boolean;
+          start_at?: string;
+          status?: string;
+          timezone?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "leave_requests_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "leave_requests_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leave_requests_leave_type_id_fkey";
+            columns: ["leave_type_id"];
+            isOneToOne: false;
+            referencedRelation: "leave_types";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leave_requests_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leave_requests_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "leave_requests_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      leave_types: {
+        Row: {
+          archived: boolean;
+          created_at: string;
+          id: string;
+          name: string;
+          org_id: string;
+          paid: boolean;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived?: boolean;
+          created_at?: string;
+          id?: string;
+          name: string;
+          org_id: string;
+          paid?: boolean;
+        };
+        Update: {
+          archived?: boolean;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          org_id?: string;
+          paid?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "leave_types_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
             referencedColumns: ["id"];
           },
         ];
@@ -3054,6 +3256,7 @@ export type Database = {
       can_decide_timesheet: { Args: { target: string }; Returns: boolean };
       can_reopen_timesheet: { Args: { target: string }; Returns: boolean };
       can_view_user: { Args: { target: string }; Returns: boolean };
+      cancel_leave: { Args: { p_request_id: string }; Returns: undefined };
       cancel_manual_entry: { Args: { p_id: string }; Returns: undefined };
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
       checkin_removed_paths: { Args: { p_checkin_id: string }; Returns: string[] };
@@ -3089,6 +3292,10 @@ export type Database = {
         };
         Returns: string;
       };
+      decide_leave: {
+        Args: { p_approve: boolean; p_note?: string; p_request_id: string };
+        Returns: undefined;
+      };
       decide_manual_entry: {
         Args: { p_approve: boolean; p_id: string; p_note?: string };
         Returns: undefined;
@@ -3117,6 +3324,7 @@ export type Database = {
         }[];
       };
       delete_checkin_parts: { Args: { p_checkin_id: string; p_parts: string[] }; Returns: Json };
+      delete_holiday: { Args: { p_id: string }; Returns: undefined };
       delete_team: { Args: { p_team_id: string }; Returns: undefined };
       delete_user_data: { Args: { p_email: string; p_user_id: string }; Returns: Json };
       due_segment_days: {
@@ -3221,6 +3429,32 @@ export type Database = {
       import_time_entries_context: {
         Args: { p_emails: string[]; p_from: string; p_to: string };
         Returns: Json;
+      };
+      leave_requests_list: {
+        Args: { p_from?: string; p_status?: string; p_to?: string; p_user_id?: string };
+        Returns: {
+          can_cancel: boolean;
+          can_decide: boolean;
+          cancelled_at: string;
+          created_at: string;
+          decided_at: string;
+          decided_by_name: string;
+          decision_note: string;
+          employee_name: string;
+          end_at: string;
+          first_day: string;
+          id: string;
+          kind: string;
+          last_day: string;
+          leave_type_id: string;
+          note: string;
+          paid: boolean;
+          start_at: string;
+          status: string;
+          timezone: string;
+          type_name: string;
+          user_id: string;
+        }[];
       };
       list_api_keys: {
         Args: Record<PropertyKey, never>;
@@ -3394,6 +3628,17 @@ export type Database = {
           worked_s: number;
         }[];
       };
+      request_leave: {
+        Args: {
+          p_end_time?: string;
+          p_first_day: string;
+          p_last_day?: string;
+          p_leave_type_id: string;
+          p_note?: string;
+          p_start_time?: string;
+        };
+        Returns: string;
+      };
       request_manual_entry: {
         Args: {
           p_end_at: string;
@@ -3425,6 +3670,14 @@ export type Database = {
       save_day_note: {
         Args: { p_day: string; p_note: string; p_reason?: string; p_user_id: string };
         Returns: undefined;
+      };
+      save_holiday: {
+        Args: { p_country?: string; p_day: string; p_id: string; p_name: string; p_state?: string };
+        Returns: string;
+      };
+      save_leave_type: {
+        Args: { p_archived?: boolean; p_id: string; p_name: string; p_paid: boolean };
+        Returns: string;
       };
       save_project: {
         Args: {
@@ -3621,6 +3874,7 @@ export type Database = {
       device_platform: "macos" | "windows";
       presence_status:
         | "off_shift"
+        | "on_leave"
         | "tamper"
         | "offline"
         | "on_break"
@@ -3764,6 +4018,7 @@ export const Constants = {
       device_platform: ["macos", "windows"],
       presence_status: [
         "off_shift",
+        "on_leave",
         "tamper",
         "offline",
         "on_break",
