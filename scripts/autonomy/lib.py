@@ -314,7 +314,11 @@ def rows(issues, prs, behind_of, branches=(), building=None):
     for it in issues:
         n = it["number"]
         if "blocked" in it["labels"]:
-            out.append({"issue": n, "title": it["title"], "state": "blocked", "pr": None,
+            # Its PRs wait for Raj too: never merged while the issue is blocked.
+            linked = sorted(p["number"] for p in by_issue.get(n, []))
+            seen_prs.update(linked)
+            out.append({"issue": n, "title": it["title"], "state": "blocked",
+                        "pr": linked[0] if linked else None,
                         "next": NEXT_ACTION["blocked"]})
             continue
         linked = sorted(by_issue.get(n, []), key=lambda p: p["number"])

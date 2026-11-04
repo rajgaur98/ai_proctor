@@ -109,6 +109,7 @@ export function Reports() {
                       "Median response (s)",
                       "Breaks (h)",
                       "Pauses (h)",
+                      "Leave (h)",
                       "Late clock-ins",
                       "Needs review",
                     ],
@@ -126,6 +127,7 @@ export function Reports() {
                         : Math.round(r.medianResponseMs / 100) / 10,
                       exportHours(r.breakS),
                       exportHours(r.pauseS),
+                      exportHours(r.leaveS),
                       r.lateClockIns,
                       r.needsReview,
                     ]),
@@ -239,6 +241,7 @@ export function Reports() {
             />
             <Tile label="Breaks" value={formatDuration(totals.breakS)} />
             <Tile label="Pauses" value={formatDuration(totals.pauseS)} />
+            <Tile label="Leave" value={formatDuration(totals.leaveS)} />
             <Tile label="Late clock-ins" value={String(totals.lateClockIns)} />
           </dl>
 

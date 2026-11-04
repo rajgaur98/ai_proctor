@@ -142,6 +142,7 @@ Answered by Raj on 20 Oct 2026.
 Format: `- #<issue>: <exact question or action needed>`
 
 - #12, #13, #14 (Windows halves), #56: a Windows VM (Raj is setting one up, 22 Oct). CI builds an unsigned Windows installer to install there; then the Windows checklists in each PR.
+- #307 (PR #330, built and green, not merged): an AI assistant's OAuth token is a full Supabase Auth session, so the assistant can change the person's password and enrol an MFA factor through `PUT /auth/v1/user` (Supabase's OAuth server has no scopes). Off per org by default; the consent page names the assistant and its return host. Which: (a) accept for the pilot; (b) accept and set `secure_password_change = true` (password changes need a recent sign-in, for everyone); (c) no OAuth for now, only short-lived tokens issued from the dashboard? Also the privacy lawyer review of the notice sentence about AI assistant access.
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
 - 31 Oct defaults taken (Raj can change any of them):
   - #251: in_meeting, paused and idle show red on the seat map, although the "Active" tile counts them as active.

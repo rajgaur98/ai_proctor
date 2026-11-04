@@ -186,7 +186,8 @@ test("totals: billable, non-billable and by client, project and task, with overt
     await page.goto("/timesheets");
     const erinRow = page.getByRole("row").filter({ hasText: "Erin Employee" });
     await expect(erinRow.getByRole("cell")).toHaveText(
-      ["Erin Employee", /Draft/, /3 h 45 min/, "2 h 00 min", "1 h 45 min", "—", "Open"],
+      // Flagged, then Leave (#319): none of either.
+      ["Erin Employee", /Draft/, /3 h 45 min/, "2 h 00 min", "1 h 45 min", "—", "—", "Open"],
       // Rendered text: the phone-only labels in the cells are hidden here.
       { timeout: 30_000, useInnerText: true },
     );

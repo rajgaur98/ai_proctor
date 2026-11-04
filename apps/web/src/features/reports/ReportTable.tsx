@@ -114,6 +114,14 @@ export const metrics: Metric[] = [
     total: (t) => formatDuration(t.pauseS),
   },
   {
+    // LV-06 (#319): paid leave and holidays, apart from worked time.
+    id: "leave",
+    header: "Leave",
+    sort: (r) => r.leaveS,
+    show: (r) => formatDuration(r.leaveS),
+    total: (t) => formatDuration(t.leaveS),
+  },
+  {
     id: "late",
     header: "Late clock-ins",
     sort: (r) => r.lateClockIns,

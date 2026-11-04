@@ -902,6 +902,8 @@ pub trait Platform: Send + Sync {
           <li>leave_types: org_id · name · paid · archived (never deleted)</li>
           <li>holidays: org_id · day · name · country · state (null: everyone)</li>
           <li>Decided by the direct manager or active delegate (<code>is_entry_decider</code>); <code>internal.on_leave_at</code> drives On leave, late clock-ins, alerts and the agent's <code>leave</code> spans (LV-01..04)</li>
+          <li><code>internal.leave_days</code> counts leave per person and local day (LV-05): paid whole days and holidays the hours of the shifts that start that day inside them, paid part days their span, each instant once; unpaid 0 but listed. Read by <code>timesheet_leave</code> (the week's Leave row, the Timesheets list), <code>timesheet_export_rows</code> (<code>leave</code>, the exports' Leave column) and <code>report_rows</code> (<code>leave_s</code>); never worked or overtime time (LV-06)</li>
+          <li>Holidays import through <code>import_apply</code> kind <code>holidays</code>, matched on date and place (LV-02)</li>
         </ul></div>
         <div class="t-card"><div class="name">clients · projects · project_members</div><ul>
           <li>clients: id · name</li>
