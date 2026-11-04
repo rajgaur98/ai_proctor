@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { AlertsPage } from "./features/alerts/AlertsPage";
+import { ApiPage } from "./features/api/ApiPage";
 import { AuditLog } from "./features/audit/AuditLog";
 import { DayPage } from "./features/day/DayPage";
 import { ImportPage } from "./features/import/ImportPage";
@@ -232,6 +233,7 @@ const routeTree = rootRoute.addChildren([
     page("/teams", "Teams", 66, Teams),
     page("/policy", "Policy", 52, PolicyPage),
     page("/settings/import", "Import", 256, ImportPage),
+    page("/settings/api", "API", 306, ApiPage),
     page("/audit", "Audit log", 53, AuditLog),
     myDataRoute,
     page("/my-timesheet", "My timesheet", 43, MyTimesheets),

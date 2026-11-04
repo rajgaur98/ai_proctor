@@ -27,7 +27,9 @@
     "it:export-timesheet": "bash scripts/it-export-timesheet.sh",
     "it:import-people": "bash scripts/it-import-people.sh",
     "it:user-data": "bash scripts/it-user-data.sh",
-    "it:checkin-parts": "bash scripts/it-checkin-parts.sh"
+    "it:checkin-parts": "bash scripts/it-checkin-parts.sh",
+    "it:api": "bash scripts/it-api-v1.sh",
+    "api:openapi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/api-openapi.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

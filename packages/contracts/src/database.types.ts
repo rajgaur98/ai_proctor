@@ -330,6 +330,94 @@ export type Database = {
           },
         ];
       };
+      api_keys: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          expires_at: string | null;
+          id: string;
+          key_hash: string;
+          key_prefix: string;
+          last_used_at: string | null;
+          name: string;
+          org_id: string;
+          rate_count: number;
+          rate_window: string | null;
+          revoked_at: string | null;
+          revoked_by: string | null;
+          scopes: string[];
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          expires_at?: string | null;
+          id?: string;
+          key_hash: string;
+          key_prefix: string;
+          last_used_at?: string | null;
+          name: string;
+          org_id: string;
+          rate_count?: number;
+          rate_window?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          scopes: string[];
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          expires_at?: string | null;
+          id?: string;
+          key_hash?: string;
+          key_prefix?: string;
+          last_used_at?: string | null;
+          name?: string;
+          org_id?: string;
+          rate_count?: number;
+          rate_window?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          scopes?: string[];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "api_keys_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "api_keys_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "api_keys_revoked_by_fkey";
+            columns: ["revoked_by"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "api_keys_revoked_by_fkey";
+            columns: ["revoked_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_log: {
         Row: {
           action: string;
@@ -463,6 +551,7 @@ export type Database = {
           scheduled_at: string;
           screen_deleted_at: string | null;
           shown_at: string | null;
+          updated_at: string;
           user_id: string;
           webcam_deleted_at: string | null;
           wrong_clicks: number;
@@ -492,6 +581,7 @@ export type Database = {
           scheduled_at: string;
           screen_deleted_at?: string | null;
           shown_at?: string | null;
+          updated_at?: string;
           user_id: string;
           webcam_deleted_at?: string | null;
           wrong_clicks?: number;
@@ -520,6 +610,7 @@ export type Database = {
           scheduled_at?: string;
           screen_deleted_at?: string | null;
           shown_at?: string | null;
+          updated_at?: string;
           user_id?: string;
           webcam_deleted_at?: string | null;
           wrong_clicks?: number;
@@ -569,6 +660,7 @@ export type Database = {
           id: string;
           name: string;
           org_id: string;
+          updated_at: string;
         };
         ComputedFields: never;
         Insert: {
@@ -577,6 +669,7 @@ export type Database = {
           id?: string;
           name: string;
           org_id: string;
+          updated_at?: string;
         };
         Update: {
           archived?: boolean;
@@ -584,6 +677,7 @@ export type Database = {
           id?: string;
           name?: string;
           org_id?: string;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -1454,6 +1548,7 @@ export type Database = {
           start_at: string;
           status: string;
           task_id: string | null;
+          updated_at: string;
           user_id: string;
         };
         ComputedFields: never;
@@ -1471,6 +1566,7 @@ export type Database = {
           start_at: string;
           status?: string;
           task_id?: string | null;
+          updated_at?: string;
           user_id: string;
         };
         Update: {
@@ -1487,6 +1583,7 @@ export type Database = {
           start_at?: string;
           status?: string;
           task_id?: string | null;
+          updated_at?: string;
           user_id?: string;
         };
         Relationships: [
@@ -1971,6 +2068,7 @@ export type Database = {
           org_id: string;
           project_id: string;
           sort_order: number;
+          updated_at: string;
         };
         ComputedFields: never;
         Insert: {
@@ -1982,6 +2080,7 @@ export type Database = {
           org_id: string;
           project_id: string;
           sort_order?: number;
+          updated_at?: string;
         };
         Update: {
           archived?: boolean;
@@ -1992,6 +2091,7 @@ export type Database = {
           org_id?: string;
           project_id?: string;
           sort_order?: number;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -2019,6 +2119,7 @@ export type Database = {
           id: string;
           name: string;
           org_id: string;
+          updated_at: string;
         };
         ComputedFields: never;
         Insert: {
@@ -2029,6 +2130,7 @@ export type Database = {
           id?: string;
           name: string;
           org_id: string;
+          updated_at?: string;
         };
         Update: {
           archived?: boolean;
@@ -2038,6 +2140,7 @@ export type Database = {
           id?: string;
           name?: string;
           org_id?: string;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -2285,6 +2388,7 @@ export type Database = {
           name: string;
           org_id: string;
           policy: NonNullable<Json>;
+          updated_at: string;
         };
         ComputedFields: never;
         Insert: {
@@ -2293,6 +2397,7 @@ export type Database = {
           name: string;
           org_id: string;
           policy?: NonNullable<Json>;
+          updated_at?: string;
         };
         Update: {
           created_at?: string;
@@ -2300,6 +2405,7 @@ export type Database = {
           name?: string;
           org_id?: string;
           policy?: NonNullable<Json>;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -2327,6 +2433,7 @@ export type Database = {
           start_at: string;
           task_id: string | null;
           type: string;
+          updated_at: string;
           user_id: string;
         };
         ComputedFields: never;
@@ -2345,6 +2452,7 @@ export type Database = {
           start_at: string;
           task_id?: string | null;
           type: string;
+          updated_at?: string;
           user_id: string;
         };
         Update: {
@@ -2362,6 +2470,7 @@ export type Database = {
           start_at?: string;
           task_id?: string | null;
           type?: string;
+          updated_at?: string;
           user_id?: string;
         };
         Relationships: [
@@ -2781,6 +2890,7 @@ export type Database = {
           returned_at: string | null;
           status: string;
           submitted_at: string | null;
+          updated_at: string;
           user_id: string;
         };
         ComputedFields: never;
@@ -2798,6 +2908,7 @@ export type Database = {
           returned_at?: string | null;
           status?: string;
           submitted_at?: string | null;
+          updated_at?: string;
           user_id: string;
         };
         Update: {
@@ -2814,6 +2925,7 @@ export type Database = {
           returned_at?: string | null;
           status?: string;
           submitted_at?: string | null;
+          updated_at?: string;
           user_id?: string;
         };
         Relationships: [
@@ -2869,6 +2981,7 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role"];
           team_id: string | null;
           timezone: string;
+          updated_at: string;
           work_country: string;
           work_state: string | null;
         };
@@ -2887,6 +3000,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"];
           team_id?: string | null;
           timezone?: string;
+          updated_at?: string;
           work_country?: string;
           work_state?: string | null;
         };
@@ -2904,6 +3018,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"];
           team_id?: string | null;
           timezone?: string;
+          updated_at?: string;
           work_country?: string;
           work_state?: string | null;
         };
@@ -3127,6 +3242,11 @@ export type Database = {
         Returns: Json;
       };
       anticheat_mark_reviewed: { Args: { p_flag_id: string; p_note?: string }; Returns: undefined };
+      api_v1_authenticate: { Args: { p_key_hash: string }; Returns: Json };
+      api_v1_call: {
+        Args: { p_key_id: string; p_operation: string; p_params: Json };
+        Returns: Json;
+      };
       approve_timesheet: { Args: { p_id: string }; Returns: undefined };
       begin_user_data_request: {
         Args: { p_action: string; p_email: string; p_user_id: string };
@@ -3141,6 +3261,18 @@ export type Database = {
       capture_view: { Args: { p_checkin_id: string }; Returns: Json };
       checkin_removed_paths: { Args: { p_checkin_id: string }; Returns: string[] };
       copy_week_manual_entries: { Args: { p_entry_ids: string[]; p_week: string }; Returns: Json };
+      create_api_key: {
+        Args: { p_expires_at?: string; p_name: string; p_scopes: string[] };
+        Returns: {
+          created_at: string;
+          expires_at: string;
+          id: string;
+          key: string;
+          key_prefix: string;
+          name: string;
+          scopes: string[];
+        }[];
+      };
       create_enrollment_token: {
         Args: { p_label: string };
         Returns: {
@@ -3322,6 +3454,20 @@ export type Database = {
           timezone: string;
           type_name: string;
           user_id: string;
+        }[];
+      };
+      list_api_keys: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          created_at: string;
+          created_by_name: string;
+          expires_at: string;
+          id: string;
+          key_prefix: string;
+          last_used_at: string;
+          name: string;
+          revoked_at: string;
+          scopes: string[];
         }[];
       };
       list_enrollment_tokens: {
@@ -3514,6 +3660,7 @@ export type Database = {
       retention_mark_captures_purged: { Args: { p_checkin_ids: string[] }; Returns: number };
       retention_purge_rows: { Args: Record<PropertyKey, never>; Returns: Json };
       return_timesheet: { Args: { p_comment: string; p_id: string }; Returns: undefined };
+      revoke_api_key: { Args: { p_id: string }; Returns: undefined };
       revoke_device: { Args: { p_device_id: string }; Returns: undefined };
       revoke_enrollment_token: { Args: { p_id: string }; Returns: undefined };
       save_client: {
