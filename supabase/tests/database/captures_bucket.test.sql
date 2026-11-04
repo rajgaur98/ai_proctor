@@ -80,10 +80,12 @@ select is(
   'exactly the two allowed files were stored'
 );
 
--- Only the functions policies need are callable by API roles in the internal schema.
+-- Only the functions policies (and the team_live view, #322) need are callable by API roles
+-- in the internal schema.
 select is_empty(
   $$ select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-     where n.nspname = 'internal' and p.proname not in ('can_upload_capture', 'jwt_org_id')
+     where n.nspname = 'internal'
+       and p.proname not in ('can_upload_capture', 'jwt_org_id', 'viewable_user_ids', 'viewable_team_ids')
        and (has_function_privilege('authenticated', p.oid, 'execute')
             or has_function_privilege('anon', p.oid, 'execute')) $$,
   'no other internal function is executable by anon or authenticated'
