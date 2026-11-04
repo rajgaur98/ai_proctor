@@ -12,6 +12,13 @@
 // get a Task column after Project, and a row per task. The per-day view ends with a "Work
 // done" column (TS-25): the person's note for the day, then the notes of the day's manual
 // entries.
+//
+// #319 (LV-05/06): leave comes in next to the segments, per person and day (`LeaveDay`, from
+// timesheet_export_rows' `leave`) and gets its own Leave column: paid leave and holidays
+// as the timesheet's Leave row counts them, unpaid leave 0. It is never worked, billable or
+// overtime time (TS-19). The per-day view adds it to the person's day and names it in a
+// "Time off" column; the per-project view has a "Leave" row per person (it is on no
+// project); the segment view has a row per leave day with type "leave" and its name.
 
 import { toCsv } from "./csv.ts";
 import { isOver, NO_OVERTIME, type OvertimeThresholds, weekOf } from "./overtime.ts";
@@ -93,6 +100,70 @@ export interface DbDayNote {
   note: string;
 }
 
+/** What a day's leave is, as `timesheet_export_rows` (and timesheet_leave) return it. */
+export interface LeaveItem {
+  name: string;
+  paid: boolean;
+  holiday: boolean;
+  part_day: boolean;
+}
+
+/** One person's leave on one local day (LV-05): its counted seconds and what it is. */
+export interface LeaveDay {
+  userId: string;
+  employee: string;
+  email: string;
+  timezone: string;
+  day: string;
+  seconds: number;
+  /** What the leave is, in words ("Vacation", "Thanksgiving (holiday)"). */
+  what: string;
+  /** Status of the timesheet for the day's week; draft when it hasn't been opened. */
+  status: string;
+  approver: string | null;
+}
+
+/** A leave day as `timesheet_export_rows` returns it (`leave`). */
+export interface DbLeaveDay {
+  user_id: string;
+  employee: string;
+  email: string;
+  timezone: string;
+  day: string;
+  seconds: number;
+  items: LeaveItem[];
+  status: string;
+  approver: string | null;
+}
+
+/** "Vacation", "Thanksgiving (holiday)", "Unpaid (unpaid)", "Sick (part day)"; "; " between. */
+export function leaveWhat(items: readonly LeaveItem[]): string {
+  return items
+    .map((i) => {
+      const notes = [
+        i.holiday ? "holiday" : null,
+        i.paid ? null : "unpaid",
+        i.part_day ? "part day" : null,
+      ].filter((n) => n !== null);
+      return notes.length > 0 ? `${i.name} (${notes.join(", ")})` : i.name;
+    })
+    .join("; ");
+}
+
+export function fromDbLeaveDay(l: DbLeaveDay): LeaveDay {
+  return {
+    userId: l.user_id,
+    employee: l.employee,
+    email: l.email,
+    timezone: l.timezone,
+    day: l.day,
+    seconds: Number(l.seconds),
+    what: leaveWhat(l.items ?? []),
+    status: l.status,
+    approver: l.approver,
+  };
+}
+
 export function fromDbDayNote(n: DbDayNote): DayNote {
   return { userId: n.user_id, day: n.day, note: n.note };
 }
@@ -132,6 +203,8 @@ export interface Durations {
   manual: number;
   billable: number;
   nonBillable: number;
+  /** Paid leave and holidays (LV-05); apart from worked time. */
+  leave: number;
 }
 
 export function emptyDurations(): Durations {
@@ -143,6 +216,7 @@ export function emptyDurations(): Durations {
     manual: 0,
     billable: 0,
     nonBillable: 0,
+    leave: 0,
   };
 }
 
@@ -184,6 +258,7 @@ const DURATION_COLUMNS: [keyof Durations, string][] = [
   ["manual", "Manual"],
   ["billable", "Billable"],
   ["nonBillable", "Non-billable"],
+  ["leave", "Leave"],
 ];
 
 const LEADING: Record<ExportView, string[]> = {
@@ -206,9 +281,9 @@ const LEADING: Record<ExportView, string[]> = {
 
 /** Free-text columns after Approver. */
 const TRAILING: Record<ExportView, string[]> = {
-  daily: ["Work done"],
+  daily: ["Time off", "Work done"],
   project: [],
-  segments: [],
+  segments: ["Time off"],
 };
 
 export interface ExportRow {
@@ -229,6 +304,8 @@ export interface ExportTable {
 }
 
 const UNASSIGNED = "Unassigned";
+/** The per-project view's row for a person's leave (on no project). */
+export const LEAVE_ROW = "Leave";
 
 function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -328,33 +405,76 @@ export function workDone(dayNote: string | null | undefined, segments: ExportSeg
   return notes.join("\n");
 }
 
+interface Group {
+  labels: string[];
+  sort: string[];
+  members: ExportSegment[];
+  seconds: Durations;
+  statuses: Set<string>;
+  approvers: Set<string>;
+  /** The per-day key, for the day's note. */
+  dayKey: string | null;
+  leave: string[];
+}
+
+function leaveLabels(view: ExportView, l: LeaveDay): string[] {
+  const person = [l.employee, l.email];
+  switch (view) {
+    case "daily":
+      return [...person, l.day];
+    case "project":
+      return [...person, "", LEAVE_ROW, "", "No"];
+    case "segments":
+      return [...person, l.day, "", "", l.timezone, "leave", "", "", "", "No"];
+  }
+}
+
+function leaveSortKey(view: ExportView, l: LeaveDay): string[] {
+  switch (view) {
+    case "daily":
+      return [l.employee, l.userId, l.day];
+    case "project":
+      // After the person's projects and Unassigned.
+      return [l.employee, l.userId, "2"];
+    case "segments":
+      return [l.employee, l.userId, l.day, "", "", "leave"];
+  }
+}
+
+function leaveGroupKey(view: ExportView, l: LeaveDay, index: number): string {
+  switch (view) {
+    case "daily":
+      return dayKey(l.userId, l.day);
+    case "project":
+      return `${l.userId}\u0000leave`;
+    case "segments":
+      return `leave\u0000${index}`;
+  }
+}
+
 export function buildExport(
   view: ExportView,
   segments: ExportSegment[],
   dayNotes: DayNote[] = [],
+  leave: LeaveDay[] = [],
 ): ExportTable {
   const sorted = [...segments].sort((a, b) => compareKeys(sortKey(view, a), sortKey(view, b)));
-  const groups = new Map<
-    string,
-    {
-      first: ExportSegment;
-      members: ExportSegment[];
-      seconds: Durations;
-      statuses: Set<string>;
-      approvers: Set<string>;
-    }
-  >();
+  const groups = new Map<string, Group>();
+  const blank = (labels: string[], sort: string[], key: string | null): Group => ({
+    labels,
+    sort,
+    members: [],
+    seconds: emptyDurations(),
+    statuses: new Set(),
+    approvers: new Set(),
+    dayKey: key,
+    leave: [],
+  });
   sorted.forEach((s, i) => {
     const key = groupKey(view, s, i);
     let g = groups.get(key);
     if (!g) {
-      g = {
-        first: s,
-        members: [],
-        seconds: emptyDurations(),
-        statuses: new Set(),
-        approvers: new Set(),
-      };
+      g = blank(labelsFor(view, s), sortKey(view, s), view === "daily" ? key : null);
       groups.set(key, g);
     }
     g.members.push(s);
@@ -362,21 +482,42 @@ export function buildExport(
     g.statuses.add(s.status);
     if (s.approver) g.approvers.add(s.approver);
   });
+  leave.forEach((l, i) => {
+    const key = leaveGroupKey(view, l, i);
+    let g = groups.get(key);
+    if (!g) {
+      g = blank(leaveLabels(view, l), leaveSortKey(view, l), view === "daily" ? key : null);
+      groups.set(key, g);
+    }
+    g.seconds.leave += l.seconds;
+    if (l.what && !g.leave.includes(l.what)) g.leave.push(l.what);
+    g.statuses.add(l.status);
+    if (l.approver) g.approvers.add(l.approver);
+  });
   const notes = new Map(dayNotes.map((n) => [dayKey(n.userId, n.day), n.note]));
-  const rows = [...groups.values()].map(
+  // Stable: segments keep their order; a leave group goes where its key sorts.
+  const ordered = [...groups.values()]
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => compareKeys(a.g.sort, b.g.sort) || a.i - b.i)
+    .map(({ g }) => g);
+  const rows = ordered.map(
     (g): ExportRow => ({
-      labels: labelsFor(view, g.first),
+      labels: g.labels,
       seconds: g.seconds,
       // A project row can span weeks in different states.
       status: g.statuses.size === 1 ? ([...g.statuses][0] ?? "") : "Mixed",
       approver: [...g.approvers].sort(cmp).join("; "),
       trailing:
         view === "daily"
-          ? [workDone(notes.get(dayKey(g.first.userId, g.first.day)), g.members)]
-          : [],
+          ? [g.leave.join("; "), workDone(notes.get(g.dayKey ?? ""), g.members)]
+          : view === "segments"
+            ? [g.leave.join("; ")]
+            : [],
     }),
   );
-  return { view, rows, total: sumSegments(segments) };
+  const total = sumSegments(segments);
+  for (const l of leave) total.leave += l.seconds;
+  return { view, rows, total };
 }
 
 function durationCells(d: Durations): string[] {
@@ -420,8 +561,9 @@ export function exportCsv(
   view: ExportView,
   segments: ExportSegment[],
   dayNotes: DayNote[] = [],
+  leave: LeaveDay[] = [],
 ): string {
-  return toCsv(formatTable(buildExport(view, segments, dayNotes)));
+  return toCsv(formatTable(buildExport(view, segments, dayNotes, leave)));
 }
 
 /** The download's name: timesheet-daily-2026-03-16_2026-03-22.csv (or .xlsx). */
@@ -451,6 +593,8 @@ export interface XlsxExportOptions {
   weekStart?: string | null;
   /** TS-25: the people's day notes, for the per-day Work done column. */
   dayNotes?: DayNote[];
+  /** LV-05/06: the people's leave days, for the Leave column. */
+  leave?: LeaveDay[];
 }
 
 /** Decimal hours as a number cell: the CSV's rounded value ("7.43" -> 7.43). */
@@ -543,7 +687,7 @@ export function exportXlsx(
   options: XlsxExportOptions = {},
 ): Uint8Array {
   const overtime = options.overtime ?? NO_OVERTIME;
-  const table = buildExport(view, segments, options.dayNotes ?? []);
+  const table = buildExport(view, segments, options.dayNotes ?? [], options.leave ?? []);
   const leading = LEADING[view];
   const bold = { bold: true };
   const rows: XlsxCell[][] = [

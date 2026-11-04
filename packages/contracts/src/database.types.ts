@@ -3498,7 +3498,13 @@ export type Database = {
         Returns: Json;
       };
       leave_requests_list: {
-        Args: { p_from?: string; p_status?: string; p_to?: string; p_user_id?: string };
+        Args: {
+          p_from?: string;
+          p_status?: string;
+          p_team_id?: string;
+          p_to?: string;
+          p_user_id?: string;
+        };
         Returns: {
           can_cancel: boolean;
           can_decide: boolean;
@@ -3890,6 +3896,15 @@ export type Database = {
           project_id: string;
           start_at: string;
           type: string;
+        }[];
+      };
+      timesheet_leave: {
+        Args: { p_from: string; p_to: string; p_user_id?: string };
+        Returns: {
+          day: string;
+          items: Json;
+          seconds: number;
+          user_id: string;
         }[];
       };
       timesheet_totals: {

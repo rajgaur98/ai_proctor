@@ -2,7 +2,9 @@
 // row-by-row errors, fixes the file, imports it, and the same file then reads as
 // unchanged. Managers can't open the page. The clients it adds have names no other spec
 // uses and end archived, so other specs see the org as they left it. Time entries (#282)
-// go on a past day no other spec uses; Lucas's pending one is cancelled at the end.
+// go on a past day no other spec uses; Lucas's pending one is cancelled at the end. The
+// holiday (#319) is on a day in the 22nd century with a name of its own and is deleted
+// at the end.
 import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { clientFor } from "./agent";
@@ -190,6 +192,81 @@ test("an admin imports time entries: pending for an employee, approved for the o
   const pending = data.find((e) => e.status === "pending");
   const cancelled = await lucas.rpc("cancel_manual_entry", { p_id: pending?.id ?? "" });
   if (cancelled.error) throw cancelled.error;
+});
+
+test("an admin imports a holiday, sees it unchanged, then renames it with another file", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  // A day 2200 to 5,000 days into the 22nd century: no other spec's holiday.
+  const day = new Date(Date.UTC(2100, 0, 1) + (2200 + (stamp % 2800)) * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const name = `Import Day ${stamp}`;
+  const renamed = `Import Day renamed ${stamp}`;
+
+  await signIn(page, ADMIN_EMAIL, /\/team/);
+  await page.goto("/settings/import");
+  await page.getByRole("radio", { name: "Holidays" }).check();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download template" }).click();
+  const template = await download;
+  expect(template.suggestedFilename()).toBe("ai-proctor-holidays-import-template.csv");
+  expect(await readFile((await template.path()) ?? "", "utf8")).toBe(
+    "date,name,country,state\r\n2026-12-25,Christmas Day,US,\r\n",
+  );
+
+  // A state without the US, and a date that isn't one.
+  await upload(
+    page,
+    "holidays.csv",
+    `Holiday date,Holiday,Country,State\n${day},${name},DE,BY\nsoon,${name},,\n`,
+  );
+  await expect(row(page, 2)).toContainText("Only US holidays have a state.");
+  await expect(row(page, 3)).toContainText('"soon" isn\'t a date.');
+  await expect(page.getByRole("button", { name: /^Import/ })).toBeDisabled();
+  await expectNoA11yViolations(page);
+
+  // Fixed: for everyone in the US-CA place (a location cell).
+  await upload(page, "holidays-fixed.csv", `date,name,location\n${day},${name},US-CA\n`);
+  await expect(row(page, 2).getByRole("cell", { name: "New" })).toBeVisible();
+  await page.getByRole("button", { name: "Import 1 change" }).click();
+  await expect(page.getByRole("status")).toContainText("Imported: 1 added, 0 updated.");
+
+  // The same file again: nothing to do.
+  await expect(row(page, 2).getByRole("cell", { name: "Unchanged" })).toBeVisible();
+  await expect(page.getByText("Everything in this file is already up to date.")).toBeVisible();
+
+  // Another name for the same date and place renames it.
+  await upload(page, "holidays-renamed.csv", `date,name,country,state\n${day},${renamed},US,CA\n`);
+  await expect(row(page, 2).getByRole("cell", { name: "Update" })).toBeVisible();
+  await expect(row(page, 2)).toContainText(`renames it from ${name} to ${renamed}`);
+  await page.getByRole("button", { name: "Import 1 change" }).click();
+  await expect(page.getByRole("status")).toContainText("Imported: 0 added, 1 updated.");
+
+  const admin = await clientFor(ADMIN_EMAIL);
+  const { data, error } = await admin
+    .from("holidays")
+    .select("id, day, name, country, state")
+    .eq("day", day);
+  if (error) throw error;
+  expect(data.map((h) => [h.day, h.name, h.country, h.state])).toEqual([
+    [day, renamed, "US", "CA"],
+  ]);
+  const audit = await admin
+    .from("audit_log")
+    .select("metadata")
+    .eq("action", "import.applied")
+    .eq("metadata->>kind", "holidays")
+    .order("at", { ascending: false })
+    .limit(1)
+    .single();
+  if (audit.error) throw audit.error;
+  expect(audit.data.metadata).toEqual({ kind: "holidays", created: 0, updated: 1, rows: 1 });
+
+  // Leave the calendar as it was.
+  const removed = await admin.rpc("delete_holiday", { p_id: data[0]?.id ?? "" });
+  if (removed.error) throw removed.error;
 });
 
 test("a manager can't open the import page", async ({ page }) => {

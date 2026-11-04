@@ -14,7 +14,8 @@ import { ERIN, ERIN_EMAIL, ERIN_ZONE, freshErinWeek, MANAGER_EMAIL, weekDays } f
 // two of them and no flagged time: Erin's own week made 19 calls (2 of them the app shell's, her
 // profile and notifications) and the manager's review 21 (his shell also reads alerts, and the
 // review reads the week's misses). Each budget is that plus 2, so a new read is a deliberate
-// change here rather than a slow creep.
+// change here rather than a slow creep. #319 added one read, the week's leave (LV-05): 20 and
+// 22 calls on 5 Nov 2026, still within the budgets.
 const OWN_WEEK_BUDGET = 21;
 const MANAGER_WEEK_BUDGET = 23;
 

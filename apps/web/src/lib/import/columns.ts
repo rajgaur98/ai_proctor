@@ -96,10 +96,18 @@ export const COLUMNS: Record<ImportKind, ColumnSpec[]> = {
     ]),
     col("reason", "Logged in our old tool", ["reason for entry", "why"]),
   ],
+  holidays: [
+    col("date", "2026-12-25", ["day", "holiday date", "holiday day"], true),
+    col("name", "Christmas Day", ["holiday", "holiday name", "description"], true),
+    // Empty country: a holiday for everyone in the org.
+    col("country", "US", ["work country", "country code"]),
+    col("state", "", ["work state", "state code", "us state"]),
+    col("location", "", ["work location", "place"]),
+  ],
 };
 
 // The template leaves the combined work location out: country and state say the same.
-export const TEMPLATE_SKIP = new Set(["work_location"]);
+export const TEMPLATE_SKIP = new Set(["work_location", "location"]);
 
 export interface ColumnMap {
   /** Column name -> index in the row. */
