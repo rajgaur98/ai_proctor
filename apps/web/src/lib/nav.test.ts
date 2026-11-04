@@ -8,6 +8,7 @@ describe("navFor", () => {
       "Timesheets",
       "Time off",
       "Reports",
+      "Insights",
       "Projects",
     ]);
     expect(navFor("manager").map((l) => l.to)).not.toContain("/policy");
@@ -56,6 +57,12 @@ describe("navFor", () => {
 
   it("keeps Reports from employees", () => {
     expect(navFor("employee").map((l) => l.to)).not.toContain("/reports");
+  });
+
+  it("gives managers, owners and admins Insights; employees see theirs in My data (#305)", () => {
+    expect(navFor("manager").map((l) => l.to)).toContain("/insights");
+    expect(navFor("admin").map((l) => l.to)).toContain("/insights");
+    expect(navFor("employee").map((l) => l.to)).not.toContain("/insights");
   });
 
   it("lands each role on its first page", () => {

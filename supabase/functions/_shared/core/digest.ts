@@ -90,3 +90,61 @@ export function digestLineText(l: Omit<DigestLine, "userId">): string {
     plural(l.lateClockIns, "late clock-in", "late clock-ins"),
   ].join(", ");
 }
+
+// The weekly insights email (PRD 4.18 INS-06, #305) ------------------------------------------
+// internal.weekly_insights_eval puts the manager's direct reports' totals for last week and
+// the week before in the payload (insights_totals: raw seconds and counts). These are the
+// lines the email shows: one metric per line, last week next to the week before, plain
+// totals with no score, ranking or verdict (INS-03).
+
+/** One metric of the weekly email, ready to show. */
+export interface WeeklyLine {
+  label: string;
+  /** Last week. */
+  value: string;
+  /** The week before. */
+  previous: string;
+}
+
+type Totals = Record<string, unknown>;
+
+const n = (t: Totals, key: string): number => whole(t[key]);
+const rate = (v: unknown): string => {
+  const x = Number(v);
+  return v === null || v === undefined || !Number.isFinite(x) ? "—" : `${Math.round(x * 100)}%`;
+};
+const seconds = (v: unknown): string => {
+  const x = Number(v);
+  return v === null || v === undefined || !Number.isFinite(x) ? "—" : `${(x / 1000).toFixed(1)} s`;
+};
+const ratio = (part: number, all: number): string =>
+  all > 0 ? `${Math.round((part / all) * 100)}%` : "—";
+
+const WEEKLY: { label: string; show: (t: Totals) => string }[] = [
+  { label: "Worked", show: (t) => clockHours(n(t, "worked_s")) },
+  { label: "Scheduled", show: (t) => clockHours(n(t, "scheduled_s")) },
+  { label: "Shift days on time", show: (t) => `${n(t, "on_time")} of ${n(t, "shift_days")}` },
+  { label: "Late clock-ins", show: (t) => String(n(t, "late_clock_ins")) },
+  { label: "Shift days without a clock-in", show: (t) => String(n(t, "no_clock_in")) },
+  { label: "Check-in response rate", show: (t) => rate(t.response_rate) },
+  { label: "Median response", show: (t) => seconds(t.median_response_ms) },
+  { label: "Missed check-ins", show: (t) => String(n(t, "checkins_missed")) },
+  { label: "Flagged", show: (t) => clockHours(n(t, "flagged_s")) },
+  { label: "Billable share", show: (t) => ratio(n(t, "billable_s"), n(t, "worked_s")) },
+  { label: "Anti-cheat flags to review", show: (t) => String(n(t, "needs_review")) },
+  { label: "Tamper", show: (t) => String(n(t, "tamper")) },
+];
+
+/** The weekly email's lines, from the payload's `current` and `previous` totals. */
+export function weeklyInsightsLines(current: Totals, previous: Totals): WeeklyLine[] {
+  return WEEKLY.map((w) => ({
+    label: w.label,
+    value: w.show(current ?? {}),
+    previous: w.show(previous ?? {}),
+  }));
+}
+
+/** "Worked: 9:30 (week before 2:00)". */
+export function weeklyLineText(l: WeeklyLine): string {
+  return `${l.label}: ${l.value} (week before ${l.previous})`;
+}

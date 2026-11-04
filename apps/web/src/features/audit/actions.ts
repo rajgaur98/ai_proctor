@@ -19,6 +19,7 @@ export const actionLabels: Record<string, string> = {
   "team.renamed": "Renamed a team",
   "team.deleted": "Deleted a team",
   "team.policy_changed": "Changed a team's policy",
+  "team.billable_target_changed": "Changed a team's billable target",
   "capture.viewed": "Viewed captures",
   "audit_log.exported": "Exported the audit log",
   "export.created": "Exported a list",
@@ -159,6 +160,10 @@ export function summarize(
     case "team.policy_changed": {
       const changed = m.changed && typeof m.changed === "object" ? Object.keys(m.changed) : [];
       return `${text(m.name) ?? "—"} · ${plural(changed.length, "setting")}`;
+    }
+    case "team.billable_target_changed": {
+      const target = (v: unknown) => (typeof v === "number" ? `${v}%` : "None");
+      return `${text(m.name) ?? "—"} · ${target(m.from)} → ${target(m.to)}`;
     }
     case "capture.viewed": {
       const id = text(m.checkin_id);

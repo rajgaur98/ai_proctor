@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(82);
+select plan(84);
 
 \set org '''00000000-0000-4000-8000-000000000001'''
 \set org2 '''00000000-0000-4000-8000-000000000002'''
@@ -185,6 +185,12 @@ begin
   values ('00000000-0000-4000-8000-000000000001', 'manager@acme.test', 'digest',
           jsonb_build_object('day', current_date - 1,
             'reports', jsonb_build_array(jsonb_build_object('user_id', u, 'full_name', slug))));
+  -- #305: a weekly insights email sent to them, and one that added up their numbers.
+  insert into public.weekly_insights_sent (org_id, recipient_id, week_start)
+  values ('00000000-0000-4000-8000-000000000001', u, current_date - 7);
+  insert into public.email_outbox (org_id, to_email, template, payload)
+  values ('00000000-0000-4000-8000-000000000001', 'manager@acme.test', 'weekly_insights',
+          jsonb_build_object('week_from', current_date - 7, 'report_ids', jsonb_build_array(u)));
 end;
 $$;
 
@@ -530,6 +536,16 @@ select is(
 select is(
   (select count(*)::int from public.email_outbox
    where template = 'digest' and payload -> 'reports' @> jsonb_build_array(jsonb_build_object('user_id', :lucas))),
+  1, 'but not the ones about someone else'
+);
+select is(
+  (select count(*)::int from public.email_outbox
+   where template = 'weekly_insights' and payload -> 'report_ids' ? :erin::text),
+  0, 'the weekly insights emails that added up her numbers are gone too (#305)'
+);
+select is(
+  (select count(*)::int from public.email_outbox
+   where template = 'weekly_insights' and payload -> 'report_ids' ? :lucas::text),
   1, 'but not the ones about someone else'
 );
 
