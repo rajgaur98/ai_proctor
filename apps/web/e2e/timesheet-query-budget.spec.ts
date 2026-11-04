@@ -5,6 +5,13 @@
 // several days and comments on them, so a read per day, entry or thread would show. Rebuilding
 // the week (one Edge Function call per day, LLD section 6) isn't counted: it isn't REST.
 // Order-independent: the week is one nobody has touched, picked per run.
+//
+// #334: pg_cron's alert_eval raises alerts once a minute from what earlier specs left behind
+// (tamper-reason.spec leaves two Tamper periods for Lucas, raised in the same tick), and they
+// can reach the manager over Realtime while his week is loading. The bell then reads its alerts again (useLiveAlerts), which is the bell
+// staying live, not the page loading: an alerts read that starts after a Realtime alert
+// arrived is left out of the count and the repeat check (and listed in an annotation). A
+// second read on mount, with no Realtime alert before it, still fails.
 import { expect, type Page, type Request, test } from "@playwright/test";
 import { DateTime } from "luxon";
 import { clientFor } from "./agent";
@@ -36,15 +43,47 @@ const describe = (r: Request) => {
   return `${r.method()} ${decodeURIComponent(url.pathname + url.search)}${r.postData() ? ` ${r.postData()}` : ""}`;
 };
 
+/** A Realtime frame announcing a new row on an alerts channel (useLiveAlerts.ts). */
+function isLiveAlert(payload: string | Buffer): boolean {
+  try {
+    const [, , topic, event] = JSON.parse(String(payload)) as unknown[];
+    return (
+      typeof topic === "string" &&
+      topic.startsWith("realtime:alerts-") &&
+      event === "postgres_changes"
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Opens the week with a full page load and returns every REST request it made, once the
- * entries and their threads are shown and no request has started for a second.
+ * entries and their threads are shown and no request has started for a second. Alerts reads
+ * that start after a Realtime alert arrived come back apart, as `live`.
  */
-async function loadWeek(page: Page, week: string, entryNote: string): Promise<string[]> {
+async function loadWeek(
+  page: Page,
+  week: string,
+  entryNote: string,
+): Promise<{ requests: string[]; live: string[] }> {
   const seen: string[] = [];
+  const live: string[] = [];
+  let alertArrived = false;
   const onRequest = (r: Request) => {
-    if (new URL(r.url()).pathname.startsWith("/rest/v1/")) seen.push(describe(r));
+    const path = new URL(r.url()).pathname;
+    if (!path.startsWith("/rest/v1/")) return;
+    if (alertArrived && path === "/rest/v1/alerts") live.push(describe(r));
+    else seen.push(describe(r));
   };
+  // From a blank page: the landing page's reads still in flight after sign-in (#334: /me's
+  // week, activity and timesheet) end with it instead of being counted against this one.
+  await page.goto("about:blank");
+  page.on("websocket", (ws) =>
+    ws.on("framereceived", (f) => {
+      if (isLiveAlert(f.payload)) alertArrived = true;
+    }),
+  );
   page.on("request", onRequest);
   await page.goto(`/timesheets/${ERIN}?week=${week}`);
   const days = page.getByRole("region", { name: "Days", exact: true });
@@ -55,12 +94,12 @@ async function loadWeek(page: Page, week: string, entryNote: string): Promise<st
   await expect(page.getByRole("region", { name: "Totals" })).not.toContainText("Loading");
   await page.waitForLoadState("networkidle");
   // Settled: no new request for a whole second (a late read would still be counted).
-  for (let count = -1; count !== seen.length; ) {
-    count = seen.length;
+  for (let count = -1; count !== seen.length + live.length; ) {
+    count = seen.length + live.length;
     await page.waitForTimeout(1000);
   }
   page.off("request", onRequest);
-  return seen;
+  return { requests: seen, live };
 }
 
 function expectWithinBudget(requests: string[], budget: number) {
@@ -126,8 +165,11 @@ test("week page: loading a week stays within its query budget, without repeats",
 
   test.info().annotations.push({
     type: "rest-calls",
-    description: `own week ${ownRequests.length}, manager ${managerRequests.length}`,
+    description: `own week ${ownRequests.requests.length}, manager ${managerRequests.requests.length}`,
   });
-  expectWithinBudget(ownRequests, OWN_WEEK_BUDGET);
-  expectWithinBudget(managerRequests, MANAGER_WEEK_BUDGET);
+  for (const r of [...ownRequests.live, ...managerRequests.live]) {
+    test.info().annotations.push({ type: "not counted: after a Realtime alert", description: r });
+  }
+  expectWithinBudget(ownRequests.requests, OWN_WEEK_BUDGET);
+  expectWithinBudget(managerRequests.requests, MANAGER_WEEK_BUDGET);
 });
