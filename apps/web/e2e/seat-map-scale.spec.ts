@@ -3,8 +3,9 @@
 // Manager (in teams of 3 to 130), runs this and removes them. Checks the team page's reads
 // (a page per thousand people, nothing twice) and that it loads in under 1.5 s (#322), that
 // only what's on screen is in the DOM, the frame rate while panning and zooming at each level
-// of detail, and that live status updates change chairs without a new layout. Prints what it
-// measured.
+// of detail, and that live status updates change chairs without a new layout. Also that the
+// List view loads in under 0.8 s, drawing only the rows on screen, and shows a live update to an
+// off-screen row once it's scrolled to (#323). Prints what it measured.
 import { execFileSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 import { MANAGER_EMAIL } from "./helpers";
@@ -196,4 +197,70 @@ test("the seat map stays smooth with thousands of people", async ({ page }) => {
     expect(t.p50, what).toBeLessThan(20);
     expect(t.fps, what).toBeGreaterThan(45);
   }
+});
+
+test("the Live team list loads quickly with thousands of people on shift", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/sign-in");
+  await page.getByLabel("Work email").fill(MANAGER_EMAIL);
+  await page.getByLabel("Password").fill("password123");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/team$/, { timeout: 15_000 });
+  const firstLink = page.getByRole("link", { name: /^View day for Seat Person/ }).first();
+  await expect(firstLink).toBeVisible({ timeout: 60_000 });
+
+  // #323: from a fresh load until the rows are on screen, the list draws only what's on screen
+  // (it took 2.7 to 4.6 s drawing every row). Median of three loads; the reads as the seat
+  // map's: a page per thousand people, nothing twice.
+  const reads: string[] = [];
+  let counting = true;
+  page.on("request", (r) => {
+    const url = new URL(r.url());
+    if (counting && url.pathname.startsWith("/rest/v1/")) {
+      reads.push(`${r.method()} ${url.pathname}${url.search}`);
+    }
+  });
+  const loads: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const start = Date.now();
+    await page.reload();
+    await expect(firstLink).toBeVisible({ timeout: 60_000 });
+    loads.push(Date.now() - start);
+    if (i === 0) {
+      await page.waitForLoadState("networkidle");
+      counting = false;
+    }
+  }
+  const teamReads = reads.filter((r) => r.includes("/rest/v1/team_live"));
+  expect(teamReads.length).toBeGreaterThanOrEqual(Math.ceil(PEOPLE / 1000));
+  expect(teamReads.length).toBeLessThanOrEqual(Math.ceil((PEOPLE + 50) / 1000));
+  expect(reads.filter((r, i) => reads.indexOf(r) !== i)).toEqual([]);
+  const listMs = [...loads].sort((a, b) => a - b)[1] ?? 0;
+
+  const table = page.getByRole("table");
+  const onShift = Number(await table.getAttribute("aria-rowcount")) - 1;
+  const drawn = page.locator("table tbody tr[aria-rowindex]");
+  const drawnRows = await drawn.count();
+  expect(onShift).toBeGreaterThan(PEOPLE / 2);
+  expect(drawnRows).toBeLessThan(60);
+
+  // In name order the last of the synthetic people is at the end. A live update to them while
+  // they're off screen shows when the list is scrolled to the end.
+  await page.getByLabel("Sort").selectOption("name");
+  const lastPerson = page
+    .getByRole("row")
+    .filter({ hasText: `Seat Person ${String(PEOPLE - 1).padStart(4, "0")}` });
+  await expect(lastPerson).toHaveCount(0);
+  sql(`update public.presence p set status = 'in_meeting', since = now()
+       from public.users u where u.id = p.user_id and u.email = 'seat${PEOPLE - 1}@seat-scale.test'`);
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(lastPerson).toBeInViewport();
+  await expect(lastPerson.getByText("In meeting")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(`tr[aria-rowindex="${onShift + 1}"]`)).toBeInViewport();
+  expect(await drawn.count()).toBeLessThan(60);
+
+  console.log(JSON.stringify({ people: PEOPLE, onShift, listLoadsMs: loads, listMs, drawnRows }));
+  expect(listMs).toBeLessThan(800);
 });
