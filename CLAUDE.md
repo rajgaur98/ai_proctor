@@ -42,11 +42,16 @@ If an issue body and a doc disagree, **the docs win** (PRD > tech-stack > LLD > 
 - When blocked on a decision only Raj can make, add it to "Blocked on Raj" in `docs/progress.md` with the exact question, then move to the next unblocked issue.
 
 ## Autonomous runs
-- When `.claude/autonomy/mode` says `on`, keep working through the open milestone issues in the order of `docs/progress.md` → "Now / Next" until none is left unblocked. A list you wrote yourself is an order, not a stopping point.
-- After a restart or compaction, re-read "Now / Next" (on `origin/main`) and the open issues, then continue. Keep that block current in every PR.
+The rules below are enforced by scripts in `scripts/autonomy/` where they can be; each prints one line you act on.
+- **Switch:** `scripts/autonomy/ctl.sh on|off|claim|status`. `on` makes the session that runs it the **owner** (the heartbeat hook records its id), and prints the follow-ups: enable the scheduled task `ai-proctor-wake` and request keep-awake (`off`: disable the task). Only the owner is held by the Stop hook, merges, and edits `docs/progress.md`.
+- **What next:** `scripts/autonomy/next.py` lists every open milestone issue and open PR with its state and next action (ready-to-merge, pr-failing, pr-conflict, behind-main, needs-work; then pr-in-ci, waiting-on-base, blocked). Run it after a restart or compaction and whenever you pick work; "Now / Next" in `docs/progress.md` is the narrative, not the queue. Keep working until nothing is actionable. A list you wrote yourself is an order, not a stopping point.
+- **Stopping:** the Stop hook blocks the owner only while something is actionable. When everything left is waiting on CI, stop: the wake-up (`scripts/autonomy/wake.md`, every 15 min) nudges you or takes over. After 4 stops in a row with no work in between it lets you go and parks that state for an hour.
+- **Merging:** `scripts/autonomy/gate.py <pr>` (one-line verdict) and `scripts/autonomy/merge.py <pr>` (gate, merge commit, board Done, retarget stacked children to main and merge main into them on GitHub). Never merge any other way.
+- **Before pushing:** `scripts/autonomy/prepush.sh` runs the checks for what the branch changed and prints each exit code; push only on `PREPUSH ok`.
+- **Worktrees:** `scripts/autonomy/worktree.sh up <issue> [base] [--stack]` / `down <issue>` (branch, install, own Supabase stack, board card; teardown).
 - Something only Raj can do: add it to "Blocked on Raj" with the exact question, label the issue `blocked`, move on. Device steps go into one batched list for Raj.
-- Deferred work always becomes an issue (sub-issue of its milestone epic, on the board). Move board cards as work moves: In progress → In review → Done.
-- Run up to ~3 implementers in parallel, each in its own worktree on files that don't overlap and with its own stack (`scripts/stack.sh`); the main session reviews, merges and owns `docs/progress.md`. Two migrations that both redefine the same function (e.g. `internal.apply_event`) silently undo each other: rebase the later one on the earlier before merging.
+- Deferred work always becomes an issue (sub-issue of its milestone epic, on the board). Board cards: In progress (`worktree.sh up`) → In review when the PR opens (`scripts/autonomy/board.sh <n> review`) → Done (`merge.py`).
+- Run up to ~3 implementers in parallel, each in its own worktree on files that don't overlap and with its own stack; the owner reviews, merges and owns `docs/progress.md`. Two migrations that both redefine the same function (e.g. `internal.apply_event`) silently undo each other: rebase the later one on the earlier before merging.
 
 ## Where development runs
 All development runs in a **local Claude desktop session on Raj's Mac** (`docs/handoff/mac-session.md`). The earlier cloud session only did planning and docs.

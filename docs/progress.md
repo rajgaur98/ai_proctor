@@ -8,7 +8,7 @@ _Last updated: 4 Nov 2026. M0–M2 built and merged; M3–M5 next._
 
 Read this first after a restart or a context compaction. Update it with every PR.
 
-- **Autonomous mode:** the switch is the local file `.claude/autonomy/mode` (`on` / `off`, untracked). While it's on, the Stop hook (`scripts/autonomy/stop_guard.py`) keeps the session going until no unblocked milestone issue is left, and a scheduled check every ~30 min resumes the work if the session goes idle.
+- **Autonomous mode:** `scripts/autonomy/ctl.sh on|off|status` (state in the main checkout's untracked `.claude/autonomy/`). The session that turns it on is the owner; the Stop hook holds the owner while `scripts/autonomy/next.py` shows actionable work, and the scheduled task `ai-proctor-wake` (every 15 min, `scripts/autonomy/wake.md`) nudges an idle owner or takes the run over. Rules and scripts: `CLAUDE.md` → "Autonomous runs" (#312).
 - **Now (1 Nov):** Raj's 31 Oct requests are on main, apart from the parts below.
   - Merged:
     - #250 onboarding without a camera (#258)
@@ -35,8 +35,7 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #299 comment buttons on the grid's rows and entries (#301)
     - #267 keyboard, axe and query budget for the grid and day list (#302)
   - In progress: none. Every unblocked issue is merged.
-  - Board: moving a card to "In review" closes the issue (the board's Auto-close workflow), which blinds the Stop hook. Cards stay "In progress" until the PR merges.
-- **Open PRs:** none.
+- **Open PRs:** #312 autonomy scripts (this PR).
 - **Added 4 Nov (from the competitor comparison: Hubstaff, Toggl, Clockify, Insightful, Apploye, ActivTrak, Time Doctor, DeskTime):** P1 issues under #62, with PRD sections: #304 time off (LV-01..07), #305 insights page (INS-01..06), #306 public API and webhooks (API-01..06), #307 MCP server (API-07/08), #308 seat map at scale (DSH-11). Backlog, not started; their defaults are listed in each issue.
 - **Next:**
   - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.
