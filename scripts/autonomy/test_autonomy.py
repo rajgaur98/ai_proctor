@@ -5,6 +5,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -12,7 +13,8 @@ import unittest
 
 STATE = tempfile.mkdtemp()
 os.environ["AI_PROCTOR_AUTONOMY_DIR"] = STATE
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 
 import gate  # noqa: E402
 import lib  # noqa: E402
@@ -170,8 +172,87 @@ class StopGuard(unittest.TestCase):
         owner = {"session_id": "A", "calls": 0}
         for i in range(stop_guard.MAX_IDLE_BLOCKS * 3):
             owner["calls"] += stop_guard.MIN_CALLS
-            reason, owner = stop_guard.decide(owner, "A", ACT, 0)
+            # Spaced out so the burst backstop doesn't apply.
+            reason, owner = stop_guard.decide(owner, "A", ACT, i * stop_guard.BURST_S)
             self.assertIsNotNone(reason, i)
+
+    def test_burst_of_blocks_lets_go_even_with_calls(self):
+        owner = {"session_id": "A", "calls": 0}
+        for i in range(stop_guard.BURST_BLOCKS):
+            owner["calls"] += stop_guard.MIN_CALLS
+            reason, owner = stop_guard.decide(owner, "A", ACT, 100 + i * 60)
+            self.assertIsNotNone(reason, i)
+        owner["calls"] += stop_guard.MIN_CALLS
+        reason, owner = stop_guard.decide(owner, "A", ACT, 100 + 6 * 60)
+        self.assertIsNone(reason)
+        self.assertIn("stuck", owner)
+
+    def test_burst_window_slides(self):
+        owner = {"session_id": "A", "calls": 0}
+        for i in range(stop_guard.BURST_BLOCKS * 3):
+            owner["calls"] += stop_guard.MIN_CALLS
+            reason, owner = stop_guard.decide(owner, "A", ACT, i * stop_guard.BURST_S / 5)
+            self.assertIsNotNone(reason, i)
+
+
+class Activity(unittest.TestCase):
+    def tearDown(self):
+        if os.path.exists(lib.ACTIVITY_FILE):
+            os.remove(lib.ACTIVITY_FILE)
+
+    def test_worktree_issue_from_paths_command_or_cwd(self):
+        self.assertEqual(lib.worktree_issue({"tool_input": {"file_path": "/Users/r/ai_proctor-306/x.ts"}}), 306)
+        self.assertEqual(lib.worktree_issue({"tool_input": {"command": "cd /u/ai_proctor-12 && ls"}}), 12)
+        self.assertEqual(lib.worktree_issue({"tool_input": {}, "cwd": "/u/ai_proctor-7"}), 7)
+        self.assertIsNone(lib.worktree_issue({"tool_input": {"command": "ls"}, "cwd": "/u/ai_proctor"}))
+        self.assertIsNone(lib.worktree_issue({"tool_input": {"path": "/u/ai_proctor-d31"}}))
+
+    def test_record_and_read(self):
+        lib.record_activity(306, 50)
+        lib.record_activity(308, 60)
+        self.assertEqual(lib.read_activity(), {306: 50, 308: 60})
+
+    def test_recent_activity_is_building_without_edits(self):
+        with tempfile.TemporaryDirectory() as d:
+            parent = os.path.dirname(lib._main_checkout())
+            wt = os.path.join(parent, "ai_proctor-999999")
+            if os.path.exists(wt):
+                self.skipTest("worktree path exists")
+            os.symlink(d, wt)
+            try:
+                now = 10_000
+                self.assertEqual(lib.building_worktrees([999999], now, {999999: now - 60}), {999999: wt})
+                self.assertEqual(lib.building_worktrees([999999], now, {999999: now - lib.ACTIVE_S - 1}), {})
+            finally:
+                os.remove(wt)
+
+
+class Heartbeat(unittest.TestCase):
+    def run_hook(self, hook):
+        env = dict(os.environ, AI_PROCTOR_AUTONOMY_DIR=lib.STATE_DIR)
+        subprocess.run([sys.executable, os.path.join(HERE, "heartbeat.py")],
+                       input=json.dumps(hook), text=True, env=env, check=True)
+
+    def setUp(self):
+        with open(lib.MODE_FILE, "w") as f:
+            f.write("on")
+        lib.write_owner({"session_id": "S", "calls": 0, "heartbeat_at": 0})
+
+    def tearDown(self):
+        for f in (lib.MODE_FILE, lib.OWNER_FILE, lib.ACTIVITY_FILE):
+            if os.path.exists(f):
+                os.remove(f)
+
+    def test_subagent_calls_are_not_the_owners(self):
+        self.run_hook({"session_id": "S", "agent_id": "x", "hook_event_name": "PostToolUse",
+                       "tool_name": "Bash", "tool_input": {"command": "cd /u/ai_proctor-306 && ls"}})
+        self.assertEqual(lib.read_owner()["calls"], 0)
+        self.assertIn(306, lib.read_activity())
+
+    def test_owner_calls_count(self):
+        self.run_hook({"session_id": "S", "hook_event_name": "PostToolUse",
+                       "tool_name": "Bash", "tool_input": {"command": "ls"}})
+        self.assertEqual(lib.read_owner()["calls"], 1)
 
 
 class WakeCheck(unittest.TestCase):

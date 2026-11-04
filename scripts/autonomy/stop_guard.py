@@ -14,7 +14,10 @@ It blocks the stop only when all of these hold:
   * the session isn't stuck: after MAX_IDLE_BLOCKS blocks in a row with fewer
     than MIN_CALLS tool calls between them and no change on GitHub, it lets
     the stop through and records the state as stuck, so the wake-up leaves that
-    exact state alone for an hour.
+    exact state alone for an hour;
+  * backstop: after BURST_BLOCKS blocks of the same state within BURST_S
+    seconds it lets the stop through and records stuck, whatever `calls` says
+    (tool calls can come from somewhere else, as they did from subagents).
 GitHub unreachable or any error: lets the stop through (never traps a session).
 """
 
@@ -26,6 +29,8 @@ import lib
 
 MAX_IDLE_BLOCKS = 4
 MIN_CALLS = 3
+BURST_BLOCKS = 6
+BURST_S = 10 * 60
 
 
 def allow():
@@ -45,11 +50,13 @@ def decide(owner, sid, rows, now):
     calls = owner.get("calls", 0)
     idle = guard.get("fingerprint") == fp and calls - guard.get("calls", 0) < MIN_CALLS
     blocks = guard.get("blocks", 0) + 1 if idle else 1
-    if blocks > MAX_IDLE_BLOCKS:
+    same = guard.get("fingerprint") == fp
+    recent = [t for t in guard.get("at", []) if same and now - t < BURST_S] + [now]
+    if blocks > MAX_IDLE_BLOCKS or len(recent) > BURST_BLOCKS:
         owner.pop("guard", None)
         owner["stuck"] = {"fingerprint": fp, "at": now}
         return None, owner
-    owner["guard"] = {"fingerprint": fp, "calls": calls, "blocks": blocks}
+    owner["guard"] = {"fingerprint": fp, "calls": calls, "blocks": blocks, "at": recent}
     import next as nxt
 
     listed = "\n".join(f"- {nxt.line(r)}" for r in actionable[:6])
