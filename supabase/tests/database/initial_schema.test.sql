@@ -32,7 +32,8 @@ select is(
   'ensure_weekly_partitions is idempotent'
 );
 
--- (id, at) is the key: a resend of the same event is rejected.
+-- (id, at) is the key: a resend of the same event is rejected. The event is at now()
+-- (fixed within the transaction), whose week always has a partition; a fixed date ages out.
 insert into public.devices (id, org_id, user_id, platform, os_version, agent_version, hardware_hash)
 values ('00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-000000000001',
         '00000000-0000-4000-8000-0000000000c1', 'macos', '26.0', '0.0.0', 'test');
@@ -40,13 +41,13 @@ values ('00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000
 insert into public.agent_events_raw (id, org_id, device_id, user_id, seq, type, at)
 values ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-000000000001',
         '00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000c1',
-        1, 'clock_in', '2026-10-19T09:00:00Z'::timestamptz);
+        1, 'clock_in', now());
 
 select throws_ok(
   $$ insert into public.agent_events_raw (id, org_id, device_id, user_id, seq, type, at)
      values ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-000000000001',
              '00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000c1',
-             1, 'clock_in', '2026-10-19T09:00:00Z'::timestamptz) $$,
+             1, 'clock_in', now()) $$,
   '23505',
   null,
   'duplicate (id, at) is rejected'
