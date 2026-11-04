@@ -32,6 +32,8 @@ export const actionLabels: Record<string, string> = {
   "api_key.revoked": "Revoked an API key",
   "api.read": "Read through the API",
   "api.write": "Changed through the API",
+  "ai_assistant_access.changed": "Changed AI assistant access",
+  "mcp.tool_call": "Asked through an AI assistant",
   "leave_type.created": "Added a leave type",
   "leave_type.changed": "Changed a leave type",
   "holiday.added": "Added a holiday",
@@ -211,6 +213,21 @@ export function summarize(
     }
     case "api.write":
       return [text(m.operation) ?? "—", `key ${apiKeyName(m)}`].join(" · ");
+    case "ai_assistant_access.changed":
+      return onOff(m.enabled);
+    case "mcp.tool_call": {
+      // #307: like an API read, the tool, its filters and the rows, and which assistant.
+      const f = (m.filters ?? {}) as Meta;
+      return [
+        text(m.tool) ?? "—",
+        plural(typeof m.row_count === "number" ? m.row_count : 0, "row"),
+        ...Object.entries(f).map(([k, v]) => `${k}: ${String(v)}`),
+        text(m.client_name) ?? text(m.client_id),
+        text(m.error) ? `refused: ${text(m.error)}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
     case "leave_type.created":
       return `${text(m.name) ?? "—"} · ${m.paid === false ? "Unpaid" : "Paid"}`;
     case "leave_type.changed": {

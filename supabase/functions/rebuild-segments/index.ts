@@ -16,6 +16,7 @@
 //
 // ../_shared/core is generated from packages/core (`pnpm core:fn`).
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
+import { isAssistantToken } from "../_shared/assistantToken.ts";
 import { buildSegments, type DayInput } from "../_shared/core/segments.ts";
 
 const DEFAULT_LIMIT = 50;
@@ -118,6 +119,10 @@ function summary(days: DayResult[]) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "method_not_allowed" }, 405);
+  // #307: an AI assistant's token is only for the MCP server.
+  if (isAssistantToken(req.headers.get("Authorization"))) {
+    return reply({ error: "assistant_token" }, 403);
+  }
 
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";

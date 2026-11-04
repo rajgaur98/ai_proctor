@@ -14,6 +14,7 @@
 // invites: { email, ok, error? }[] }. Reply 4xx: { error, detail? } where detail is
 // import_apply's ("rows: 3") or the row of the email Auth refused.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
+import { isAssistantToken } from "../_shared/assistantToken.ts";
 
 const MAX_ITEMS = 5000;
 // Two Auth calls per new person; keeps one request well inside the function's time limit.
@@ -70,6 +71,10 @@ async function each<T, R>(list: T[], task: (t: T) => Promise<R>): Promise<R[]> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "method_not_allowed" }, 405);
+  // #307: an AI assistant's token is only for the MCP server.
+  if (isAssistantToken(req.headers.get("Authorization"))) {
+    return reply({ error: "assistant_token" }, 403);
+  }
 
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {

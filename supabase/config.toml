@@ -156,8 +156,8 @@ max_indexes = 5
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails.
-site_url = "http://127.0.0.1:3000"
+# in emails. The dashboard: Auth's OAuth server sends people to its consent page here (#307).
+site_url = "http://localhost:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
@@ -371,14 +371,17 @@ enabled = false
 # Obtain from https://clerk.com/setup/supabase
 # domain = "example.clerk.accounts.dev"
 
-# OAuth server configuration
+# OAuth server configuration. AI assistants (Claude, ChatGPT, ...) connect to the MCP server
+# (supabase/functions/mcp, #307) with OAuth 2.1 through it: they register themselves
+# (dynamic client registration, as MCP clients expect) and send the person to the
+# dashboard's consent page (site_url + authorization_url_path) to approve them.
 [auth.oauth_server]
 # Enable OAuth server functionality
-enabled = false
+enabled = true
 # Path for OAuth consent flow UI
 authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
-allow_dynamic_registration = false
+allow_dynamic_registration = true
 
 [edge_runtime]
 enabled = true
@@ -397,6 +400,11 @@ deno_version = 2
 # The public API (#306) authenticates with org API keys, not session JWTs: the function
 # checks the key itself (supabase/functions/api-v1).
 [functions.api-v1]
+verify_jwt = false
+
+# The MCP server (#307) checks the assistant's OAuth token itself, so it can answer a
+# missing or expired one with the MCP spec's 401 and WWW-Authenticate header.
+[functions.mcp]
 verify_jwt = false
 
 [analytics]
