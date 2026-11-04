@@ -5,7 +5,7 @@
 | **Product** | AI Proctor (working name) |
 | **Phase** | 1 of 2 (Phase 2 = AI daily summaries / standups) |
 | **Status** | Draft v0.3 |
-| **Last updated** | 2026-10-08 |
+| **Last updated** | 2026-11-04 |
 | **Tech stack** | [docs/tech-stack.md](../tech-stack.md) |
 | **Target build** | ~13–14 weeks, 2–3 engineers + part-time designer |
 
@@ -32,7 +32,7 @@ A desktop agent (Windows + macOS) and web dashboard that:
 - G6: Phase 1 collects the activity and project data that Phase 2 (AI summaries) needs.
 
 ### 1.4 Non-goals (Phase 1)
-- AI features of any kind (summaries, productivity scoring, insights).
+- AI features of any kind (summaries, productivity scoring, insights). The Insights page (INS) is plain totals and trends of presence and time data: not AI and not a score.
 - Productivity scores, rankings or "focus" metrics.
 - Face recognition / identity verification. Emotion or attention detection (prohibited in EU workplaces).
 - Keystroke logging, URL/app blocking, continuous screen or video recording.
@@ -312,8 +312,9 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | DSH-06 | P0 | **Timesheets tab:** list of reports' timesheets by week and status; open, review flagged time, edit, approve or return |
 | DSH-07 | P0 | **Reports:** per employee and team for a date range: worked hours, flagged hours, check-ins shown/passed/missed/failed, response rate, median response time, break and pause totals, late clock-ins |
 | DSH-08 | P1 | Anomaly flags in reports (see ANT): suspected injected input, virtual camera, duplicate webcam frames, remote session |
-| DSH-09 | P1 | **Seat view** of the Team page, a toggle beside the list and remembered per viewer: everyone the viewer can see sits in a chair round an oval table (seven chairs on each long side, four round each end, about 22 a table; more people open more tables, and with every team shown each team has its own). Initials on each chair; green = Active, red = any other status (idle, away, on break, paused, in a meeting, offline, tamper, off shift), always with the exact status and since when as text (tooltip and accessible name), never colour alone. Hover or focus shows name, status, since and project; click or Enter opens the person's day; arrow keys move round a table; the chairs are a list for screen readers. Updates live from the same feed as DSH-01. Below laptop width the list shows instead |
+| DSH-09 | P1 | **Seat view** of the Team page, a toggle beside the list and remembered per viewer: everyone the viewer can see sits in a chair round an oval table (seven chairs on each long side, four round each end, about 22 a table; more people open more tables, and with every team shown each team has its own). Initials on each chair; green = Active, red = any other status (idle, away, on break, paused, in a meeting, offline, tamper, off shift), always with the exact status and since when as text (tooltip and accessible name), never colour alone. Hover or focus shows name, status, since and project; click or Enter opens the person's day; arrow keys move round a table; the chairs are a list for screen readers. Updates live from the same feed as DSH-01. Below laptop width the list shows instead. DSH-11 replaces the fixed table size and adds zoom and pan (#308) |
 | DSH-10 | P1 | **Reports by task:** the Reports tab groups by person (the default) or by **project and task**: worked and flagged time per project, and under it per task in the project's order, then **No task** (project time nobody tagged); time without a project is **Unassigned**. The same people, days and seconds as the per-person report; totals added from raw seconds and rounded only for display, with how many people logged each (#269) |
+| DSH-11 | P1 | **Seat map at scale** (extends DSH-09, #308). **Tables fit their people:** a table's long sides grow and shrink with its headcount and the ends keep their chairs, so there are no empty chairs; past the maximum (default 60 seats) a team continues on another table with the same team label. **Canvas:** the whole org is one canvas of tables grouped by team, ordered by team name, laid out automatically and stable when people join or leave. Zoom with pinch, Ctrl/Cmd + scroll, + / − buttons and keys; pan by dragging, scrolling or Space + drag; "Fit all", "Zoom to 100%" and a minimap. **Find:** a search box (team or person) and the team filter zoom to the match and highlight it instead of hiding everyone else; a link to a team opens zoomed on it. **Detail by zoom:** zoomed out, each table is a block with the team name and Active / not active counts; mid zoom, chairs as dots; zoomed in, initials, hover/focus details and click-through as DSH-09. **Scale:** smooth pan and zoom (about 60 fps) with 5,000 people on a mid-range laptop; only what is on screen is drawn in detail; live status updates don't redo the layout. DSH-09's accessibility holds (status as text, never colour alone; arrow keys round a table, Tab between tables; a list for screen readers; zoom and pan from the keyboard; no animated zoom under reduced motion; the list below laptop width). Zoom and position are remembered per viewer |
 
 ### 4.12 Alerts (ALR)
 
@@ -362,9 +363,47 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 
 | ID | Pri | Requirement |
 |---|---|---|
-| AUD-01 | P0 | Append-only audit log of: capture views, policy changes, role and reporting-line changes, timesheet edits/approvals/returns/reopens, timesheet comments (TS-33), delegations, exports (each with what was exported, its filters and row count, from every page that exports, TS-27), user deactivation, data exports/deletions, employees' deletions of parts of their own check-ins (EMP-06), DPIA confirmations |
+| AUD-01 | P0 | Append-only audit log of: capture views, policy changes, role and reporting-line changes, timesheet edits/approvals/returns/reopens, timesheet comments (TS-33), delegations, exports (each with what was exported, its filters and row count, from every page that exports, TS-27), user deactivation, data exports/deletions, employees' deletions of parts of their own check-ins (EMP-06), DPIA confirmations, time-off requests and decisions (LV-03), API keys and webhooks created or revoked and every API read or write (API-02), AI assistant access turned on or off and every MCP tool call (API-07) |
 | AUD-02 | P0 | Admin and Owner can search and export the audit log |
 | AUD-03 | P0 | Audit log retained for at least 3 years, regardless of other retention settings |
+
+### 4.17 Time off (LV)
+
+| ID | Pri | Requirement |
+|---|---|---|
+| LV-01 | P1 | Admin sets up **leave types**: name, paid or unpaid, active or archived (defaults: Vacation, Sick, Personal, Unpaid). Types are never deleted |
+| LV-02 | P1 | Admin keeps an **org holiday calendar** (date, name), each holiday for everyone or for a work location (country, plus state for US, ORG-06). Holidays can be imported like ORG-09. The calendar starts empty; there are no preset country calendars |
+| LV-03 | P1 | Employee **requests time off** from the dashboard: type, whole days or a part day with a start and end in their time zone, optional note. The **direct manager or active delegate** approves or rejects (as TS-12); owners and admins who aren't the manager only read. The employee can cancel a pending request, or an approved one before it starts. Every request, decision and cancellation is audit-logged and notifies the other side. No balances or accrual |
+| LV-04 | P1 | On an approved leave day or a holiday that applies to the person: no late clock-in is recorded or alerted (SHF-06, ALR-01), no "offline during shift" alert, auto clock-in (SHF-03) doesn't start, and the status is **On leave** instead of Off shift (STS). If they clock in anyway, tracking works as normal |
+| LV-05 | P1 | **Timesheets:** approved paid leave shows on the week as its own **Leave** row with the shift's hours for that day (or the part-day span), kept apart from worked time and from overtime (TS-19); unpaid leave shows with 0 hours; holidays show the same way as paid leave. Raw seconds (TS-05/06) |
+| LV-06 | P1 | Exports and reports: a Leave column in the timesheet exports (TS-20..22), leave totals in Reports (DSH-07), and a time-off list page with export (TS-27/28). Managers see a **team calendar** of who is off this week and next |
+| LV-07 | P1 | Leave requests follow retention (timesheet retention, ADM-03), the person's data export (EMP-04) and deletion (ADM-05) |
+
+### 4.18 Insights (INS)
+
+Plain totals and trends of presence and time data. Not AI, and never a productivity score, ranking, leaderboard or "focus" metric (§1.4).
+
+| ID | Pri | Requirement |
+|---|---|---|
+| INS-01 | P1 | **Insights page:** managers see their reports (and their delegates' scope), owners and admins the org. Filter by team, person and date range; each metric shows its trend against the previous period of the same length |
+| INS-02 | P1 | Metrics. **Attendance:** on-time vs late clock-ins (SHF-06), shift days with no clock-in (leave and holidays excluded, LV-04), worked vs scheduled shift hours. **Presence:** check-in response rate and median response time over time (CHK-24), misses by reason (CHK-23), share deferred for calls and presenting (CHK-03). **Time:** worked vs flagged vs excluded (TS-02), break and pause use against caps (BRK-06), overtime (TS-19), billable share of worked time (utilisation) against an optional per-team target. **Projects:** hours by client, project and task over time, and the Unassigned share. **Needs review:** anti-cheat flags and Tamper counts over time (ANT-08), linking to the day views |
+| INS-03 | P1 | People tables list people by name by default; no composite score and no "top / bottom" lists. Top apps stay time only, with no productive / unproductive labels (ACT-04) |
+| INS-04 | P1 | Numbers match Reports (DSH-07, DSH-10) for the same filters: computed server-side from segments in raw seconds and rounded only for display (TS-06). Export as TS-27/28 |
+| INS-05 | P1 | Employees see the same metrics about themselves in My data (EMP-02) |
+| INS-06 | P1 | Optional weekly insights email to managers, alongside the daily digest (ALR-03) |
+
+### 4.19 Public API and AI assistant access (API)
+
+| ID | Pri | Requirement |
+|---|---|---|
+| API-01 | P1 | A **versioned public API** (`/api/v1`), JSON over HTTPS, with an OpenAPI spec and a docs page. It is its own contract in front of the database (not raw tables), so the schema can change without breaking customers |
+| API-02 | P1 | **API keys:** owners and admins create keys with a name, read and write scopes per resource and an optional expiry. A key is shown once, stored hashed, revocable, and sees only its org. Creating and revoking keys, and every read (what, filters, row count) and write, is audit-logged (AUD-01) |
+| API-03 | P1 | **Read:** people, teams, clients, projects, tasks, shifts, time off (LV), timesheets with status and approver, per-day segments and manual entries, check-in events as metadata (result, times, response_ms), report totals (DSH-07) and alerts. **Write:** create and archive clients, projects and tasks; request manual entries through the manual-entry rules (TS-07..09) with the key's creator as actor |
+| API-04 | P1 | The API never returns capture images or links to them, window titles, or the next check-in time (EMP-01). Data purged by retention or deleted (ADM-04/05, EMP-06) is gone from the API too |
+| API-05 | P1 | Cursor pagination and an `updated_since` filter for syncing; times in ISO 8601 with zone; durations in seconds, never rounded (TS-05); rate limits per key with clear errors |
+| API-06 | P1 | **Webhooks:** timesheet submitted / approved / returned, alert raised, person invited / deactivated, time off decided. Signed (HMAC), retried with backoff, with a delivery log for admins |
+| API-07 | P1 | **MCP server** for AI assistants (Claude, ChatGPT and others), remote over HTTPS, in the org's data region. The person signs in with OAuth and the server sees exactly what they see in the dashboard (same access rules). Off per org until an admin turns on **AI assistant access** (audit-logged); the monitoring notice templates (ADM-06) mention it. Every tool call is audit-logged (actor, tool, filters, rows) |
+| API-08 | P1 | **MCP tools, read-only first:** who is on shift now and their status (DSH-01); a person's day (segments, check-ins, misses with reasons, top apps by time); timesheets by week and status, including those waiting for the caller's approval; hours by person, team, client, project and task (DSH-07, DSH-10); alerts; insights (INS). The limits of API-04 apply. Write tools come later and follow the dashboard's rules (approve or return a timesheet, request a manual entry, add a miss reason) |
 
 ---
 
@@ -425,6 +464,10 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 | Week start | Monday | Any day | Org |
 | Rounding | None | None only (Phase 1) | Org |
 | Manager approval reminder / escalation | 2 days / +3 days | Fixed | System |
+| Paid leave counts toward overtime | No | Fixed | System |
+| Utilisation target | Off | 0–100% | Team |
+| AI assistant access (MCP) | Off | On/Off | Org |
+| Seats per table before a team continues on another table | 60 | Fixed | System |
 
 ---
 
@@ -494,6 +537,13 @@ timesheets(id, user_id, period_start, status[draft|submitted|approved|returned],
            submitted_at, approver_id, approved_at, comments)
 timesheet_edits(id, timesheet_id, editor_id, change jsonb, reason, created_at)
 alerts(id, org_id, user_id, type, payload, sent_at)
+leave_types(id, org_id, name, paid, archived)
+holidays(id, org_id, date, name, work_country, work_state)
+leave_requests(id, user_id, leave_type_id, start_at, end_at, note,
+               status[pending|approved|rejected|cancelled], decided_by, decided_at)
+api_keys(id, org_id, name, key_hash, scopes[], created_by, expires_at, revoked_at, last_used_at)
+webhook_endpoints(id, org_id, url, events[], secret_hash, active)
+webhook_deliveries(id, endpoint_id, event, payload, status, attempts, next_attempt_at)
 audit_log(id, org_id, actor_id, action, target_type, target_id, metadata, created_at)
 ```
 
@@ -594,7 +644,7 @@ Manager dashboard: React SPA on Cloudflare Pages
 
 **Phase 1.5 (driven by pilot feedback)**
 - Slack / Microsoft Teams alerts and digests
-- Accounting and payroll integrations (QuickBooks, Xero, Zoho Books, Keka, greytHR, Darwinbox, Zoho People)
+- Accounting and payroll integrations (QuickBooks, Xero, Zoho Books, Keka, greytHR, Darwinbox, Zoho People), built on the public API (API-01..06)
 - Billing rates and invoice-ready reports
 - Rounding rules (6 / 15 min)
 - SSO (SAML / SCIM)
