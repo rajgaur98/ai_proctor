@@ -7,31 +7,12 @@ import { useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { requestProblem } from "./leaveText";
 import { leaveTypesQuery, requestLeave } from "./timeOffData";
 
 const fieldClass = "h-11 w-full rounded-[9px] border border-line2 bg-panel px-3 text-sm text-ink";
 
 /** What's wrong with the form before it goes to the database, or null. */
-export function requestProblem(f: {
-  typeId: string;
-  partDay: boolean;
-  firstDay: string;
-  lastDay: string;
-  start: string;
-  end: string;
-}): string | null {
-  if (!f.typeId) return "Choose a type of leave.";
-  if (!f.firstDay) return "Choose a date.";
-  if (f.partDay) {
-    if (!f.start || !f.end) return "Choose a start and an end time.";
-    if (f.end <= f.start) return "The end time is after the start time.";
-    return null;
-  }
-  if (!f.lastDay) return "Choose the last day.";
-  if (f.lastDay < f.firstDay) return "The last day is on or after the first day.";
-  return null;
-}
-
 export function RequestDialog({ zone, onClose }: { zone: string; onClose: () => void }) {
   const id = useId();
   const queryClient = useQueryClient();

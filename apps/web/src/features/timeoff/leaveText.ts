@@ -104,3 +104,23 @@ const errors: Record<string, string> = {
 export function explain(code: string): string {
   return errors[code] ?? code;
 }
+
+export function requestProblem(f: {
+  typeId: string;
+  partDay: boolean;
+  firstDay: string;
+  lastDay: string;
+  start: string;
+  end: string;
+}): string | null {
+  if (!f.typeId) return "Choose a type of leave.";
+  if (!f.firstDay) return "Choose a date.";
+  if (f.partDay) {
+    if (!f.start || !f.end) return "Choose a start and an end time.";
+    if (f.end <= f.start) return "The end time is after the start time.";
+    return null;
+  }
+  if (!f.lastDay) return "Choose the last day.";
+  if (f.lastDay < f.firstDay) return "The last day is on or after the first day.";
+  return null;
+}
