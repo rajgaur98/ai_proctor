@@ -1267,6 +1267,179 @@ export type Database = {
           },
         ];
       };
+      insights_daily: {
+        Row: {
+          billable_s: number | null;
+          break_s: number | null;
+          day: string;
+          deferred: number | null;
+          deferred_call: number | null;
+          deferred_presenting: number | null;
+          excluded_s: number | null;
+          failed: number | null;
+          flagged_s: number | null;
+          flags: number | null;
+          late: number | null;
+          leave_s: number | null;
+          leave_shift_days: number | null;
+          manual_s: number | null;
+          miss_away: number | null;
+          miss_break: number | null;
+          miss_meeting: number | null;
+          miss_none: number | null;
+          miss_other: number | null;
+          miss_phone_call: number | null;
+          missed: number | null;
+          no_clock_in: number | null;
+          on_time: number | null;
+          pass_ms: number[] | null;
+          passed: number | null;
+          pause_over_cap_s: number | null;
+          pause_s: number | null;
+          scheduled_s: number | null;
+          seg_n: number | null;
+          shift_days: number | null;
+          shown: number | null;
+          tamper: number | null;
+          unassigned_s: number | null;
+          unreviewed: number | null;
+          user_id: string;
+          worked_s: number | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          billable_s?: number | null;
+          break_s?: number | null;
+          day: string;
+          deferred?: number | null;
+          deferred_call?: number | null;
+          deferred_presenting?: number | null;
+          excluded_s?: number | null;
+          failed?: number | null;
+          flagged_s?: number | null;
+          flags?: number | null;
+          late?: number | null;
+          leave_s?: number | null;
+          leave_shift_days?: number | null;
+          manual_s?: number | null;
+          miss_away?: number | null;
+          miss_break?: number | null;
+          miss_meeting?: number | null;
+          miss_none?: number | null;
+          miss_other?: number | null;
+          miss_phone_call?: number | null;
+          missed?: number | null;
+          no_clock_in?: number | null;
+          on_time?: number | null;
+          pass_ms?: number[] | null;
+          passed?: number | null;
+          pause_over_cap_s?: number | null;
+          pause_s?: number | null;
+          scheduled_s?: number | null;
+          seg_n?: number | null;
+          shift_days?: number | null;
+          shown?: number | null;
+          tamper?: number | null;
+          unassigned_s?: number | null;
+          unreviewed?: number | null;
+          user_id: string;
+          worked_s?: number | null;
+        };
+        Update: {
+          billable_s?: number | null;
+          break_s?: number | null;
+          day?: string;
+          deferred?: number | null;
+          deferred_call?: number | null;
+          deferred_presenting?: number | null;
+          excluded_s?: number | null;
+          failed?: number | null;
+          flagged_s?: number | null;
+          flags?: number | null;
+          late?: number | null;
+          leave_s?: number | null;
+          leave_shift_days?: number | null;
+          manual_s?: number | null;
+          miss_away?: number | null;
+          miss_break?: number | null;
+          miss_meeting?: number | null;
+          miss_none?: number | null;
+          miss_other?: number | null;
+          miss_phone_call?: number | null;
+          missed?: number | null;
+          no_clock_in?: number | null;
+          on_time?: number | null;
+          pass_ms?: number[] | null;
+          passed?: number | null;
+          pause_over_cap_s?: number | null;
+          pause_s?: number | null;
+          scheduled_s?: number | null;
+          seg_n?: number | null;
+          shift_days?: number | null;
+          shown?: number | null;
+          tamper?: number | null;
+          unassigned_s?: number | null;
+          unreviewed?: number | null;
+          user_id?: string;
+          worked_s?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "insights_daily_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "insights_daily_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      insights_daily_projects: {
+        Row: {
+          day: string;
+          project_id: string | null;
+          task_id: string | null;
+          user_id: string;
+          worked_s: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          day: string;
+          project_id?: string | null;
+          task_id?: string | null;
+          user_id: string;
+          worked_s: number;
+        };
+        Update: {
+          day?: string;
+          project_id?: string | null;
+          task_id?: string | null;
+          user_id?: string;
+          worked_s?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "insights_daily_projects_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "insights_daily_projects_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       last_seen: {
         Row: {
           at: string;
@@ -2277,6 +2450,71 @@ export type Database = {
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      shift_history: {
+        Row: {
+          created_at: string;
+          days: number[];
+          end_time: string;
+          id: string;
+          org_id: string;
+          shift_id: string;
+          start_time: string;
+          timezone: string;
+          user_id: string;
+          valid_from: string;
+          valid_to: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          days: number[];
+          end_time: string;
+          id?: string;
+          org_id: string;
+          shift_id: string;
+          start_time: string;
+          timezone: string;
+          user_id: string;
+          valid_from: string;
+          valid_to?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          days?: number[];
+          end_time?: string;
+          id?: string;
+          org_id?: string;
+          shift_id?: string;
+          start_time?: string;
+          timezone?: string;
+          user_id?: string;
+          valid_from?: string;
+          valid_to?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "shift_history_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "orgs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_history_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "team_live";
+            referencedColumns: ["user_id"];
+          },
+          {
+            foreignKeyName: "shift_history_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
             referencedColumns: ["id"];
           },
         ];

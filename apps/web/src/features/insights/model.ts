@@ -20,6 +20,7 @@ export const COUNT_KEYS = [
   "billable_s",
   "unassigned_s",
   "scheduled_s",
+  "leave_s",
   "shift_days",
   "on_time",
   "late_clock_ins",
@@ -74,6 +75,8 @@ export interface Point {
   flagged_s: number;
   excluded_s: number;
   scheduled_s: number;
+  /** Paid leave and holidays (leave_days, as the timesheet's Leave row), apart from worked time. */
+  leave_s: number;
   break_s: number;
   pause_s: number;
   pause_over_cap_s: number;
@@ -233,6 +236,7 @@ export function parseInsights(raw: unknown): Insights {
       flagged_s: num(p.flagged_s),
       excluded_s: num(p.excluded_s),
       scheduled_s: num(p.scheduled_s),
+      leave_s: num(p.leave_s),
       break_s: num(p.break_s),
       pause_s: num(p.pause_s),
       pause_over_cap_s: num(p.pause_over_cap_s),
@@ -500,6 +504,7 @@ export const summaryLines: SummaryLine[] = [
   { label: "Shift days on leave or a holiday", value: (t) => t.leave_shift_days },
   { label: "Worked (h)", value: (t) => t.worked_s, hours: true },
   { label: "Scheduled (h)", value: (t) => t.scheduled_s, hours: true },
+  { label: "Leave (h)", value: (t) => t.leave_s, hours: true },
   { label: "Check-ins shown", value: (t) => t.checkins_shown },
   { label: "Passed", value: (t) => t.checkins_passed },
   { label: "Missed", value: (t) => t.checkins_missed },
@@ -553,6 +558,7 @@ export function peopleTable(people: Person[]): ExportTable {
       "Person",
       "Worked (h)",
       "Scheduled (h)",
+      "Leave (h)",
       "Shift days",
       "On time",
       "Late clock-ins",
@@ -583,6 +589,7 @@ export function peopleTable(people: Person[]): ExportTable {
       p.full_name,
       exportHours(p.worked_s),
       exportHours(p.scheduled_s),
+      exportHours(p.leave_s),
       p.shift_days,
       p.on_time,
       p.late_clock_ins,
@@ -619,6 +626,7 @@ export function trendTable(i: Insights): ExportTable {
       i.bucket === "week" ? "Week from" : "Day",
       "Worked (h)",
       "Scheduled (h)",
+      "Leave (h)",
       "Flagged (h)",
       "Excluded (h)",
       "Billable (h)",
@@ -646,6 +654,7 @@ export function trendTable(i: Insights): ExportTable {
       p.bucket,
       exportHours(p.worked_s),
       exportHours(p.scheduled_s),
+      exportHours(p.leave_s),
       exportHours(p.flagged_s),
       exportHours(p.excluded_s),
       exportHours(p.billable_s),
