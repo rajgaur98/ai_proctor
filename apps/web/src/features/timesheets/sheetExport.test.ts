@@ -2,6 +2,7 @@ import { billingCatalog, workTotals } from "@ai-proctor/core";
 import { describe, expect, it } from "vitest";
 import type { ManualEntry } from "../day/entryData";
 import type { DayList } from "./dayList";
+import { type DayLeave, leaveByDay } from "./leave";
 import {
   DAY_LIST_HEADER,
   dayListTable,
@@ -109,7 +110,9 @@ describe("totalsTable", () => {
         projectId === null ? "Unassigned" : `Website › ${taskId ? "Design" : "No task"}`,
     });
     expect(table.header).toEqual(TOTALS_HEADER);
-    expect(table.rows[0]).toEqual(["Total", "All worked time", 3.25, 2, 1.25]);
+    expect(table.rows[0]).toEqual(["Total", "All worked time", 3.25, 2, 1.25, 0, "0:00"]);
+    // Leave is on no client, project or task: those rows leave its columns empty.
+    for (const row of table.rows.slice(1)) expect(row.slice(-2)).toEqual(["", ""]);
     expect(table.rows.map((r) => `${r[0]}:${r[1]}`)).toEqual([
       "Total:All worked time",
       ...totals.byClient.map((c) => `Client:${c.unassigned ? "Unassigned" : "Acme"}`),
@@ -128,6 +131,26 @@ describe("totalsTable", () => {
         .reduce((a, b) => a + b, 0);
       expect(sum).toBe(totals.seconds);
     }
+  });
+});
+
+describe("totalsTable with leave (LV-05)", () => {
+  const names = {
+    client: () => "Acme",
+    project: () => "Website",
+    task: () => "Website › No task",
+  };
+
+  it("puts leave in its own columns on the Total row, apart from worked time", () => {
+    const totals = workTotals([{ projectId: "p1", taskId: null, seconds: 3600 }], catalog);
+    // A holiday (8 h) and a part day (2 h 30 min 20 s), from raw seconds.
+    const table = totalsTable(totals, names, 8 * 3600 + 2 * 3600 + 1820);
+    expect(table.rows[0]).toEqual(["Total", "All worked time", 1, 1, 0, 10.51, "10:30"]);
+  });
+
+  it("has the leave of a week with no worked time", () => {
+    const table = totalsTable(workTotals([], catalog), names, 8 * 3600);
+    expect(table.rows).toEqual([["Total", "All worked time", 0, 0, 0, 8, "8:00"]]);
   });
 });
 
@@ -184,6 +207,8 @@ describe("dayListTable", () => {
         "",
         "No",
         "",
+        "",
+        "",
       ],
       [
         "2026-10-19",
@@ -196,7 +221,48 @@ describe("dayListTable", () => {
         "Design",
         "No",
         "Client workshop",
+        "",
+        "",
       ],
     ]);
+  });
+
+  it("starts a day with leave with a Leave row, its hours only in the Leave columns", () => {
+    const holiday: DayLeave = {
+      day: "2026-10-19",
+      seconds: 8 * 3600,
+      items: [{ name: "Founders day", paid: true, holiday: true, part_day: false }],
+    };
+    const unpaid: DayLeave = {
+      day: "2026-10-20",
+      seconds: 0,
+      items: [{ name: "Unpaid", paid: false, holiday: false, part_day: false }],
+    };
+    const table = dayListTable(
+      days,
+      (id) => (id === "p1" ? "Website" : id === "p2" ? "Internal" : "Unassigned"),
+      (id) => (id === "t1" ? "Design" : "Task"),
+      () => false,
+      "America/New_York",
+      leaveByDay([holiday, unpaid]),
+    );
+    expect(table.rows.map((r) => r.slice(0, 1).concat(r.slice(5)))).toEqual([
+      ["2026-10-19", "Leave", "", "", "No", "Founders day (holiday)", 8, "8:00"],
+      ["2026-10-19", "Tracked · flagged", "Internal", "", "No", "", "", ""],
+      [
+        "2026-10-19",
+        "Manual · pending, not counted",
+        "Website",
+        "Design",
+        "No",
+        "Client workshop",
+        "",
+        "",
+      ],
+      // Unpaid leave is listed with 0 hours, on a day with no time.
+      ["2026-10-20", "Leave", "", "", "No", "Unpaid (unpaid)", 0, "0:00"],
+    ]);
+    // Hours and Seconds stay worked time: empty on the Leave rows.
+    expect(table.rows[0]?.slice(1, 5)).toEqual(["", "", "", ""]);
   });
 });

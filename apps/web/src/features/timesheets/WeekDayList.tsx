@@ -6,7 +6,8 @@
 // whose entry, the week's state, overlaps, and approval (TS-08). #265: each manual entry can
 // carry extra content under it (the page puts the entry's comment thread there, TS-33).
 // #319 (LV-05): a day with approved leave or a holiday says so under its heading, with the
-// hours it counts (not worked time).
+// hours it counts (not worked time). #327 (LV-06): the Days export has it in its own Leave
+// columns.
 import { ManualEntryRequest, WorkNote } from "@ai-proctor/contracts";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -114,8 +115,8 @@ export function WeekDayList({
   zone: string;
   /** The week's manual entries (the page already reads them). */
   entries: ManualEntry[];
-  /** LV-05: the week's leave by day (the page already reads it). */
-  leave?: ReadonlyMap<string, DayLeave>;
+  /** LV-05: the week's leave by day (the page already reads it); undefined while it loads. */
+  leave: ReadonlyMap<string, DayLeave> | undefined;
   /** Read the segments once the page's rebuild has finished. */
   enabled: boolean;
   /** The viewer is the employee and the week is a draft or returned. */
@@ -183,7 +184,13 @@ export function WeekDayList({
           <ExportButton
             title="Days"
             className="ml-auto h-9"
-            ready={enabled && segments.isSuccess && projectsQ.isSuccess && tasksQ.isSuccess}
+            ready={
+              enabled &&
+              segments.isSuccess &&
+              projectsQ.isSuccess &&
+              tasksQ.isSuccess &&
+              leave !== undefined
+            }
             spec={{
               page: "timesheet-days",
               filters: { person: personName, week },
@@ -194,6 +201,7 @@ export function WeekDayList({
                   (id) => tasks.find((t) => t.id === id)?.name ?? "Task",
                   (projectId, taskId) => isBillable(projectId, taskId, projects, tasks),
                   viewerZone(),
+                  leave,
                 ),
             }}
           />

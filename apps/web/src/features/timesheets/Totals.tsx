@@ -3,7 +3,8 @@
 // timesheets shown). The numbers come from packages/core workTotals, summed from raw
 // seconds; they are rounded only here, for display. Overtime (#65, TS-19) is shown next to
 // them by the page, which knows whether it is one person's week or many. Leave (#319, LV-05)
-// is its own number next to them, never part of worked time.
+// is its own number next to them, never part of worked time; the export has it in its own
+// Leave columns on the Total row (#327).
 import type { ClientTotal, WorkTotals } from "@ai-proctor/core";
 import type { ReactNode } from "react";
 import { ExportButton } from "../../components/ExportButton";
@@ -138,7 +139,7 @@ export function TotalsPanel({
             title={title}
             className="ml-auto h-9"
             ready={!loading}
-            spec={{ ...exportAs, table: () => totalsTable(totals, names) }}
+            spec={{ ...exportAs, table: () => totalsTable(totals, names, leave ?? 0) }}
           />
         )}
       </div>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canRedeliver,
   deliveryResult,
   deliveryStatus,
   endpointStatus,
@@ -28,6 +29,7 @@ describe("webhooks", () => {
     );
     expect(eventSummary(["something.new"])).toBe("something.new");
     expect(eventLabel("alert.raised")).toBe("Alert raised");
+    expect(eventLabel("ping")).toBe("Test event");
   });
 
   it("says why an endpoint is off", () => {
@@ -51,9 +53,17 @@ describe("webhooks", () => {
     expect(deliveryResult({ responseStatus: null, lastError: null })).toBe("—");
   });
 
+  it("offers a redelivery only once a delivery is done", () => {
+    expect(canRedeliver({ status: "delivered" })).toBe(true);
+    expect(canRedeliver({ status: "failed" })).toBe(true);
+    expect(canRedeliver({ status: "pending" })).toBe(false);
+  });
+
   it("explains the server's refusals and passes anything else through", () => {
     expect(explainWebhook("invalid_url")).toMatch(/https/);
     expect(explainWebhook("too_many_webhooks")).toMatch(/10/);
+    expect(explainWebhook("webhook_off")).toMatch(/off/);
+    expect(explainWebhook("delivery_pending")).toMatch(/waiting/);
     expect(explainWebhook("something new")).toBe("something new");
   });
 });

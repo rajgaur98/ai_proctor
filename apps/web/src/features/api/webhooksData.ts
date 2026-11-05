@@ -1,7 +1,7 @@
-// Webhook endpoints and their delivery log (#320, API-06). The signing secret comes back only
-// from createWebhook and rotateSecret; the database keeps it in Vault for signing and never
-// returns it again. Creating, changing, deleting and rotating are audit-logged by the
-// database.
+// Webhook endpoints and their delivery log (#320, #335; API-06). The signing secret comes back
+// only from createWebhook and rotateSecret; the database keeps it in Vault for signing and
+// never returns it again. Creating, changing, deleting, rotating, test events and
+// redeliveries are audit-logged by the database.
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
 import { explainWebhook } from "./webhookText";
@@ -17,6 +17,8 @@ export interface Webhook {
   createdAt: string;
   createdBy: string | null;
   secretRotatedAt: string | null;
+  /** Until when the secret a rotation replaced still signs too (24 hours); null: none. */
+  previousSecretExpiresAt: string | null;
   lastDeliveryAt: string | null;
   pending: number;
 }
@@ -34,6 +36,8 @@ export interface Delivery {
   nextAttemptAt: string | null;
   lastAttemptAt: string | null;
   createdAt: string;
+  /** The delivery this one sends again, for a redelivery. */
+  redeliveryOf: string | null;
 }
 
 export interface CreatedWebhook {
@@ -58,6 +62,7 @@ export const webhooksQuery = queryOptions({
       createdAt: w.created_at,
       createdBy: (w.created_by_name as string | null) ?? null,
       secretRotatedAt: (w.secret_rotated_at as string | null) ?? null,
+      previousSecretExpiresAt: (w.previous_secret_expires_at as string | null) ?? null,
       lastDeliveryAt: (w.last_delivery_at as string | null) ?? null,
       pending: w.pending,
     }));
@@ -87,6 +92,7 @@ export const deliveriesQuery = (webhookId: string | null) =>
         nextAttemptAt: (d.next_attempt_at as string | null) ?? null,
         lastAttemptAt: (d.last_attempt_at as string | null) ?? null,
         createdAt: d.created_at,
+        redeliveryOf: (d.redelivery_of as string | null) ?? null,
       }));
     },
   });
@@ -117,6 +123,20 @@ export async function deleteWebhook(id: string) {
 /** A new signing secret, shown once. */
 export async function rotateSecret(id: string): Promise<string> {
   const { data, error } = await supabase.rpc("rotate_webhook_secret", { p_id: id });
+  if (error) throw new Error(explainWebhook(error.message));
+  return data;
+}
+
+/** Queues a test event (a ping) for the endpoint; returns the delivery's id. */
+export async function sendTestEvent(id: string): Promise<string> {
+  const { data, error } = await supabase.rpc("send_test_webhook", { p_id: id });
+  if (error) throw new Error(explainWebhook(error.message));
+  return data;
+}
+
+/** Queues a delivered or failed delivery's event again; returns the new delivery's id. */
+export async function redeliver(deliveryId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("redeliver_webhook", { p_delivery_id: deliveryId });
   if (error) throw new Error(explainWebhook(error.message));
   return data;
 }

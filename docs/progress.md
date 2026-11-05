@@ -40,9 +40,16 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #308 seat map at scale: tables sized to their team, zoom/pan canvas, find, 60 fps with 5,000 people (#321)
     - #304 time off part 1: leave types, holidays, requests and approval, On leave status, no late/offline alerts or auto clock-in on leave (#317)
     - #306 public API v1 with API keys, OpenAPI spec and docs (#318)
-  - Open PRs: #324 (#322 Live team read at scale, ~5.5 s → ~0.3 s for 5,000 people).
-  - Being built: #305 insights, #319 time off part 2 (Leave row, exports, reports, list filters, holidays import), #307 MCP server.
-  - Queue: #320 webhooks + time-off endpoint (after the current three), #323 Live team List view windowing (after #322).
+    - #322 Live team read at scale, ~5.5 s → ~0.3 s for 5,000 people (#324)
+    - #319 time off part 2: Leave on timesheets, exports, Reports, list filters, holidays import (#326)
+    - #320 webhooks (signed, retried, auto turn-off) and `/v1/time-off`, `/v1/holidays` (#333)
+    - #323 Live team List view draws only the rows on screen, ~3 s → ~0.3 s (#332)
+    - #305 Insights page and My insights, matching Reports, weekly insights email (#328)
+    - #334 flaky week query budget e2e (Realtime alert refetch) (#337)
+    - #335 webhooks: test event, redeliver, rotation grace period, DNS pinning (#336)
+    - #327 leave in the Totals and Days exports and in My data (#339)
+  - Open PRs: #330 (#307 MCP server), built and green, **not merged**: waiting on Raj (see Blocked on Raj).
+  - Being built: #329 Insights follow-ups (shift history, one leave rule, leave hours, longer ranges), #338 week page rebuild timeout and 401s.
   - Defaults taken are listed in each PR body; Raj can override any of them.
 - **Next:**
   - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.

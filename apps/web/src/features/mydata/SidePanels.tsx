@@ -1,6 +1,7 @@
 // The right column of My data (#49): who viewed my captures (EMP-03) and my timesheet
 // for the week of the day shown, with Submit (#43's submit) and the manager's edits
-// with their reasons (EMP-02, TS-13).
+// with their reasons (EMP-02, TS-13). #327 (LV-05): the week's approved leave and holidays,
+// the same figures as the timesheet (timesheet_leave), apart from worked time.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { DateTime } from "luxon";
@@ -8,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { initials } from "../../lib/nav";
 import { viewerZone } from "../../lib/time";
 import { projectsQuery } from "../projects/projectData";
+import { leaveByDay, leaveLabel, leaveTotal } from "../timesheets/leave";
 import { SheetStatusChip } from "../timesheets/SheetStatusChip";
 import { formatDuration, summarizeWeek } from "../timesheets/summary";
 import {
@@ -15,9 +17,10 @@ import {
   rebuildWeek,
   submitWeek,
   timesheetQuery,
+  weekLeaveQuery,
   weekStartQuery,
 } from "../timesheets/timesheetData";
-import { weekDays, weekLabel, weekStartOf } from "../timesheets/weeks";
+import { dayLabel, weekDays, weekLabel, weekStartOf } from "../timesheets/weeks";
 import { type CaptureView, minutesText, recentViews, viewerLabel, whenLabel } from "./helpers";
 import { type MyEdit, myEditsQuery, unassignedQuery } from "./queries";
 
@@ -168,6 +171,8 @@ function TimesheetCard({
     ),
     enabled: fresh,
   });
+  // LV-05: doesn't depend on the segments, so it needn't wait for the rebuild.
+  const leave = useQuery({ ...weekLeaveQuery(userId, week), enabled: ready });
   const edits = useQuery(myEditsQuery(userId));
   const projects = useQuery(projectsQuery);
   const projectName = (id: string | null) =>
@@ -189,12 +194,18 @@ function TimesheetCard({
   });
 
   const viewer = viewerZone();
-  const total = week ? summarizeWeek(breakdown.data ?? [], weekDays(week)).total.worked : 0;
+  const days = week ? weekDays(week) : [];
+  const total = week ? summarizeWeek(breakdown.data ?? [], days).total.worked : 0;
+  const leaveDays = leaveByDay(leave.data ?? []);
+  const leaveList = days.flatMap((d) => {
+    const l = leaveDays.get(d);
+    return l ? [l] : [];
+  });
   const status = sheet.data?.status;
   const canSubmit = status === "draft" || status === "returned";
   const open = (unassigned.data ?? []).slice(0, 5);
   const more = (unassigned.data ?? []).length - open.length;
-  const error = sheet.error ?? breakdown.error ?? unassigned.error ?? submit.error;
+  const error = sheet.error ?? breakdown.error ?? leave.error ?? unassigned.error ?? submit.error;
   const recentEdits = (edits.data ?? []).slice(0, 5);
 
   return (
@@ -208,6 +219,28 @@ function TimesheetCard({
           {breakdown.data ? formatDuration(total) : "…"}
         </span>
       </div>
+      {leaveList.length > 0 && (
+        <div className="flex flex-col gap-2 border-b border-line px-[18px] py-3.5">
+          <div className="flex items-baseline gap-2">
+            <h3 id="my-leave-title" className="text-[12.5px] font-medium text-ink2">
+              Leave and holidays
+            </h3>
+            <span className="ml-auto font-mono text-[13px]">
+              {formatDuration(leaveTotal(leaveDays, days))}
+            </span>
+          </div>
+          <ul aria-labelledby="my-leave-title" className="flex flex-col gap-1.5">
+            {leaveList.map((l) => (
+              <li key={l.day} className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+                <span className="font-mono text-[12.5px]">{dayLabel(l.day)}</span>
+                <span className="text-ink2">{leaveLabel(l)}</span>
+                <span className="ml-auto font-mono text-[12.5px]">{formatDuration(l.seconds)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-ink3">Not worked time; not in the total above.</p>
+        </div>
+      )}
       <div className="flex flex-col gap-2.5 px-[18px] py-3.5">
         <span className="text-[12.5px] font-medium text-ink2">Unassigned time</span>
         {open.length === 0 ? (

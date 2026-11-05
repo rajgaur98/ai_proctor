@@ -2,9 +2,12 @@
 // cover (#255 part 2, TS-27/28): the Timesheets list's rows, a Totals panel (#266) and a
 // week's Days list (#263). Hours are decimals from raw seconds (TS-05); times are ISO
 // 8601 with the viewer's offset. Pure, so the columns are unit-tested.
+// #327 (LV-05/06): the Totals and Days exports carry leave in its own Leave (h) and
+// Leave (H:MM) columns, like the timesheet exports, never in worked time.
 import {
   type BillingCatalog,
   type CellValue,
+  clockHours,
   isOver,
   type WorkTotals,
   workTotals,
@@ -12,6 +15,7 @@ import {
 import { type ExportTable, exportHours, exportTime, yesNo } from "../../lib/exportFile";
 import type { ManualEntry } from "../day/entryData";
 import type { DayList } from "./dayList";
+import { type DayLeave, leaveLabel } from "./leave";
 // Types only: timesheetData opens the Supabase client.
 import type { ListRow, SheetStatus } from "./timesheetData";
 
@@ -68,29 +72,46 @@ export interface TotalsNames {
   task: (projectId: string | null, taskId: string | null) => string;
 }
 
-export const TOTALS_HEADER = ["Group", "Name", "Worked (h)", "Billable (h)", "Non-billable (h)"];
+export const TOTALS_HEADER = [
+  "Group",
+  "Name",
+  "Worked (h)",
+  "Billable (h)",
+  "Non-billable (h)",
+  "Leave (h)",
+  "Leave (H:MM)",
+];
+
+/** Leave's two cells: decimal hours and H:MM, both from raw seconds (TS-05/06). */
+function leaveCells(seconds: number): CellValue[] {
+  return [exportHours(seconds), clockHours(seconds)];
+}
 
 /**
  * A Totals panel as one table: the overall total, then the rows by client, by project
- * and by task, in the panel's order.
+ * and by task, in the panel's order. LV-05: the shown timesheets' paid leave and holidays
+ * (`leaveSeconds`) are on the Total row in the Leave columns, apart from worked time; the
+ * client, project and task rows leave them empty (leave is on no project).
  */
-export function totalsTable(totals: WorkTotals, names: TotalsNames): ExportTable {
+export function totalsTable(totals: WorkTotals, names: TotalsNames, leaveSeconds = 0): ExportTable {
   const line = (
     group: string,
     name: string,
     s: { seconds: number; billable: number; nonBillable: number },
+    leave: CellValue[] = ["", ""],
   ): CellValue[] => [
     group,
     name,
     exportHours(s.seconds),
     exportHours(s.billable),
     exportHours(s.nonBillable),
+    ...leave,
   ];
   return {
     sheet: "Totals",
     header: TOTALS_HEADER,
     rows: [
-      line("Total", "All worked time", totals),
+      line("Total", "All worked time", totals, leaveCells(leaveSeconds)),
       ...totals.byClient.map((c) => line("Client", names.client(c), c)),
       ...totals.byProject.map((p) => line("Project", names.project(p.projectId), p)),
       ...totals.byTask.map((t) => line("Task", names.task(t.projectId, t.taskId), t)),
@@ -115,11 +136,16 @@ export const DAY_LIST_HEADER = [
   "Task",
   "Billable",
   "Note",
+  "Leave (h)",
+  "Leave (H:MM)",
 ];
 
 /**
  * A week's Days list: each day's tracked runs and manual entries in time order, as the
  * list shows them. `billable` decides from the project and task, as the list does.
+ * LV-05: a day with leave or a holiday (`leave`) starts with a Leave row, as the list shows
+ * it under the day's heading: what it is in Note and its hours in the Leave columns only,
+ * so Hours and Seconds stay worked time.
  */
 export function dayListTable(
   days: readonly DayList[],
@@ -127,30 +153,50 @@ export function dayListTable(
   taskName: (id: string | null) => string,
   billable: (projectId: string | null, taskId: string | null) => boolean,
   zone: string,
+  leave?: ReadonlyMap<string, DayLeave>,
 ): ExportTable {
+  const leaveRow = (day: string, l: DayLeave): CellValue[] => [
+    day,
+    "",
+    "",
+    "",
+    "",
+    "Leave",
+    "",
+    "",
+    "No",
+    leaveLabel(l),
+    ...leaveCells(l.seconds),
+  ];
   return {
     sheet: "Days",
     header: DAY_LIST_HEADER,
-    rows: days.flatMap(({ day, items }) =>
-      items.map((item) => {
-        const projectId = item.kind === "manual" ? item.entry.projectId : item.projectId;
-        const taskId = item.kind === "manual" ? item.entry.taskId : item.taskId;
-        const seconds = Math.round(item.seconds);
-        return [
-          day,
-          exportTime(item.startAt, zone),
-          exportTime(item.endAt, zone),
-          exportHours(seconds),
-          seconds,
-          item.kind === "manual"
-            ? entryStatus[item.entry.status]
-            : `Tracked${item.excluded ? " · excluded" : item.flagged ? " · flagged" : ""}`,
-          projectName(projectId),
-          projectId && taskId ? taskName(taskId) : "",
-          yesNo(billable(projectId, taskId)),
-          item.kind === "manual" ? (item.entry.note ?? "") : "",
-        ];
-      }),
-    ),
+    rows: days.flatMap(({ day, items }) => {
+      const dayLeave = leave?.get(day);
+      return [
+        ...(dayLeave ? [leaveRow(day, dayLeave)] : []),
+        ...items.map((item) => {
+          const projectId = item.kind === "manual" ? item.entry.projectId : item.projectId;
+          const taskId = item.kind === "manual" ? item.entry.taskId : item.taskId;
+          const seconds = Math.round(item.seconds);
+          return [
+            day,
+            exportTime(item.startAt, zone),
+            exportTime(item.endAt, zone),
+            exportHours(seconds),
+            seconds,
+            item.kind === "manual"
+              ? entryStatus[item.entry.status]
+              : `Tracked${item.excluded ? " · excluded" : item.flagged ? " · flagged" : ""}`,
+            projectName(projectId),
+            projectId && taskId ? taskName(taskId) : "",
+            yesNo(billable(projectId, taskId)),
+            item.kind === "manual" ? (item.entry.note ?? "") : "",
+            "",
+            "",
+          ];
+        }),
+      ];
+    }),
   };
 }
