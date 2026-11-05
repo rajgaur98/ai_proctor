@@ -65,6 +65,9 @@ from scale_users u cross join scale_days d cross join generate_series(0, 7) c;
 
 insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone)
 select :org, id, '{1,2,3,4,5}', '09:00', '17:00', tz from scale_users;
+-- They applied all along (#329: a shift set now applies from today on).
+update public.shift_history set valid_from = '-infinity'
+where user_id in (select id from scale_users);
 -- A clock-in a day, every third one late.
 insert into public.clock_sessions (org_id, user_id, device_id, start_at, end_at, start_event_id)
 select :org, u.id, u.id,
@@ -79,6 +82,12 @@ select 'people' as seeded, count(*) from scale_users
 union all select 'time_segments', count(*) from public.time_segments
 union all select 'checkin_events', count(*) from public.checkin_events
 union all select 'clock_sessions', count(*) from public.clock_sessions;
+
+create function pg_temp.act_as_postgres() returns void
+language sql as $$
+  select set_config('role', 'postgres', true);
+  select set_config('request.jwt.claims', '', true);
+$$;
 
 create function pg_temp.act_as(uid uuid) returns void
 language sql as $$
@@ -119,6 +128,8 @@ select 'manager, a week' as scenario, * from (select pg_temp.act_as(:max)) a,
 
 -- Insights (#305): the same people and history, one insights call (the range and the
 -- previous one of the same length, the series, projects and attendance), best of three.
+-- First "cold" (nothing in the person-day cache, #329: everything computed), then after a
+-- fill has kept every day that is over, as the cron job does in production.
 create function pg_temp.time_insights(p_from date, p_to date)
 returns table (people int, best_ms numeric)
 language plpgsql as $$
@@ -136,6 +147,20 @@ begin
 end;
 $$;
 
+select 'insights cold: owner, a week' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_insights(date_trunc('week', current_date)::date - 7,
+    date_trunc('week', current_date)::date - 1);
+select 'insights cold: owner, 28 days' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_insights(current_date - 27, current_date);
+
+-- The fill (pg_cron runs it every 5 minutes with a smaller budget per run).
+select pg_temp.act_as_postgres();
+\timing on
+select internal.insights_daily_fill(1000000000) as person_days_kept;
+\timing off
+-- Autoanalyze would see the new rows in production; here they are in this transaction.
+analyze public.insights_daily, public.insights_daily_projects;
+
 select 'insights: owner, a week' as scenario, * from (select pg_temp.act_as(:ada)) a,
   lateral pg_temp.time_insights(date_trunc('week', current_date)::date - 7,
     date_trunc('week', current_date)::date - 1);
@@ -144,5 +169,16 @@ select 'insights: owner, 28 days' as scenario, * from (select pg_temp.act_as(:ad
 select 'insights: manager, a week' as scenario, * from (select pg_temp.act_as(:max)) a,
   lateral pg_temp.time_insights(date_trunc('week', current_date)::date - 7,
     date_trunc('week', current_date)::date - 1);
+
+-- Longer ranges (#329): 90 and 365 days back from today (seed with history=365 to fill them;
+-- history=730 fills the previous range of the year too).
+select 'report: owner, 90 days' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_report(current_date - 89, current_date);
+select 'report: owner, 365 days' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_report(current_date - 364, current_date);
+select 'insights: owner, 90 days' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_insights(current_date - 89, current_date);
+select 'insights: owner, 365 days' as scenario, * from (select pg_temp.act_as(:ada)) a,
+  lateral pg_temp.time_insights(current_date - 364, current_date);
 
 rollback;

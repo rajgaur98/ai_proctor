@@ -59,6 +59,8 @@ values
    '{1,2,3,4,5}', '09:00', '17:00', 'America/Los_Angeles'),
   ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000c2',
    '{1,2,3,4}', '22:00', '06:00', 'America/Chicago');
+-- The seed's shifts applied all along (shift history, #329: a shift set now applies from today).
+update public.shift_history set valid_from = '-infinity';
 
 insert into public.presence (user_id, org_id)
 select id, org_id from public.users;

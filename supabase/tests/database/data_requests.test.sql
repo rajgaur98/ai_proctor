@@ -191,6 +191,9 @@ begin
   insert into public.email_outbox (org_id, to_email, template, payload)
   values ('00000000-0000-4000-8000-000000000001', 'manager@acme.test', 'weekly_insights',
           jsonb_build_object('week_from', current_date - 7, 'report_ids', jsonb_build_array(u)));
+  -- #329: a day of theirs kept for Insights.
+  insert into public.insights_daily select (internal.insights_day_empty(u, current_date - 500)).*;
+  insert into public.insights_daily_projects (user_id, day, worked_s) values (u, current_date - 500, 60);
 end;
 $$;
 

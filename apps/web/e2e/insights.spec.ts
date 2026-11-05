@@ -224,7 +224,7 @@ test("a manager exports Insights as CSV, and the export is audit-logged", async 
     new RegExp(`^insights-people-${weekFrom}_${weekTo}-\\d{4}-\\d{2}-\\d{2}\\.csv$`),
   );
   const lines = (await readFile((await file.path()) ?? "", "utf8")).split("\r\n");
-  expect(lines[0]).toMatch(/^Person,Worked \(h\),Scheduled \(h\),Shift days,On time,/);
+  expect(lines[0]).toMatch(/^Person,Worked \(h\),Scheduled \(h\),Leave \(h\),Shift days,On time,/);
   expect(lines.some((l) => l.startsWith("Erin Employee,"))).toBe(true);
 
   const admin = await clientFor(ADMIN_EMAIL);

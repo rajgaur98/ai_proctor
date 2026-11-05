@@ -6,6 +6,8 @@
 #   scripts/stack.sh up && scripts/stack.sh reset
 #   scripts/it-reports-scale.sh [people=500] [history_days=28]
 # The best of three timed calls per scenario is in milliseconds; the PRD target is < 2000.
+# Insights is timed cold (nothing kept yet) and after a fill of its person-day cache (#329);
+# history_days=365 fills the 90- and 365-day ranges, 730 their previous ranges too.
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)

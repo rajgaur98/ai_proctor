@@ -5,7 +5,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(69);
+select plan(99);
 
 \set ada '''00000000-0000-4000-8000-0000000000a1'''
 \set max '''00000000-0000-4000-8000-0000000000b1'''
@@ -69,7 +69,7 @@ language sql as $$
   keys (k) as (values ('full_name'), ('worked_s'), ('flagged_s'), ('excluded_s'), ('break_s'),
     ('pause_s'), ('manual_s'), ('checkins_shown'), ('checkins_passed'), ('checkins_missed'),
     ('checkins_failed'), ('response_rate'), ('median_response_ms'), ('late_clock_ins'),
-    ('anomaly_flags'), ('needs_review')),
+    ('anomaly_flags'), ('needs_review'), ('leave_s')),
   people as (
     select format('%s.%s: report %s, insights %s',
       coalesce(rr.x ->> 'full_name', ii.x ->> 'full_name'), keys.k, rr.x -> keys.k, ii.x -> keys.k) as m
@@ -196,6 +196,9 @@ insert into public.shifts (org_id, user_id, days, start_time, end_time, timezone
 values
   (:org, :erin, '{1,2,3,4,5}', '09:00', '17:00', 'America/Los_Angeles'),
   (:org, :lucas, '{1}', '22:00', '06:00', 'America/Chicago');
+-- These shifts applied all along (#329: a shift set now applies from today on).
+delete from public.shift_history where valid_to is not null;
+update public.shift_history set valid_from = '-infinity';
 insert into public.clock_sessions (org_id, user_id, device_id, start_at, end_at, start_event_id)
 values
   (:org, :erin, '00000000-0000-4000-8000-0000000000e1', '2026-03-16 07:00:00-07', '2026-03-16 08:00:00-07', gen_random_uuid()),
@@ -338,6 +341,15 @@ select is(
 select is(pg_temp.ins('2026-03-09', '2026-03-15') -> 'totals' ->> 'no_clock_in', '6',
   'the week before: five of Erin''s days and Lucas''s night without a clock-in');
 
+-- Leave hours (LV-05, #329): the holiday counts Erin's eight shift hours, apart from worked time.
+select is(pg_temp.person(:erin, 'leave_s') || '/' || pg_temp.person(:lucas, 'leave_s'), '28800/0',
+  'leave: the holiday is Erin''s shift hours that day (Lucas has no shift on Fridays)');
+select is(
+  (select s ->> 'leave_s' from jsonb_array_elements(pg_temp.ins() -> 'series') s where s ->> 'bucket' = '2026-03-20'),
+  '28800', 'in Friday''s bucket');
+select is(pg_temp.ins() -> 'totals' ->> 'leave_s', '28800', 'and in the totals');
+select is(pg_temp.ins('2026-03-09', '2026-03-15') -> 'totals' ->> 'leave_s', '0', 'none the week before');
+
 select pg_temp.act_as_postgres();
 delete from public.holidays where org_id = :org and day = '2026-03-20';
 select pg_temp.act_as(:max);
@@ -410,6 +422,89 @@ select ok(
     @> jsonb_build_object('team_id', :team, 'name', 'Web', 'from', 60, 'to', 75), 'audit-logged with before and after');
 select lives_ok(format($$ select public.set_team_billable_target(%L, null) $$, :team), 'and turns it off');
 select is((select billable_target_pct from public.teams where id = :team), null, 'off is null');
+
+-- The person-day cache (#329) -----------------------------------------------------------------------
+-- Days that are over are kept (insights_daily); the reader takes them and computes the rest.
+-- After any change to what a day is computed from, the reader still equals the computation.
+
+select pg_temp.act_as_postgres();
+create function pg_temp.cache_diff(p_from date default '2026-03-01', p_to date default '2026-03-31')
+returns text
+language sql as $$
+  with ids as (select array_agg(id) as a from public.users),
+  a as (select d.user_id, d.day, to_jsonb(d) - 'pass_ms' as j, array(select unnest(d.pass_ms) order by 1) as ms
+        from internal.insights_days((select a from ids), p_from, p_to, now()) d),
+  b as (select d.user_id, d.day, to_jsonb(d) - 'pass_ms' as j, array(select unnest(d.pass_ms) order by 1) as ms
+        from internal.insights_days_live((select a from ids), p_from, p_to, now()) d),
+  x as ((select * from a except all select * from b) union all (select * from b except all select * from a))
+  select coalesce(string_agg(distinct format('%s %s', x.user_id, x.day), ', '), '') from x
+$$;
+
+select is(pg_temp.cache_diff(), '', 'nothing kept yet: computed');
+select cmp_ok(internal.insights_daily_fill(1000000), '>', 0, 'a fill keeps the days that are over');
+select is(
+  (select count(*)::int from public.insights_daily where day between '2026-03-01' and '2026-03-31'),
+  (select count(*)::int * 31 from public.users), 'every person-day of March, empty ones too');
+select is(
+  (select count(*)::int from public.insights_daily where day > internal.insights_daily_last(now())),
+  0, 'nothing from the last three days');
+select is(internal.insights_daily_fill(), 0, 'a second fill has nothing to do');
+select is(pg_temp.cache_diff(), '', 'kept days read the same as computed');
+select is(pg_temp.cache_diff('2026-03-01', current_date), '', 'up to today (the last days computed)');
+select pg_temp.act_as(:max);
+select is(pg_temp.mismatches('2026-03-16', '2026-03-22'), '', 'Insights still equal Reports');
+select is(pg_temp.mismatches('2026-03-01', '2026-03-31'), '', 'for the month too');
+select is(pg_temp.project_mismatches('2026-03-01', '2026-03-31'), '', 'and the projects');
+select pg_temp.act_as_postgres();
+update public.insights_daily set worked_s = worked_s + 1 where user_id = :erin and day = '2026-03-16';
+select pg_temp.act_as(:max);
+select is(pg_temp.person(:erin, 'worked_s'), '19801', 'the page reads the kept days');
+select pg_temp.act_as_postgres();
+update public.insights_daily set worked_s = worked_s - 1 where user_id = :erin and day = '2026-03-16';
+
+-- Each change forgets the days it touches (all in the first week of March, which nothing
+-- below reads).
+insert into public.time_segments (org_id, user_id, day, start_at, end_at, type, counted, flagged)
+values (:org, :erin, '2026-03-04', '2026-03-04 13:00:00-08', '2026-03-04 14:00:00-08', 'verified', true, false);
+select is(pg_temp.cache_diff(), '', 'a segment');
+insert into public.checkin_events (id, org_id, user_id, device_id, scheduled_at, shown_at, outcome, response_ms)
+values (gen_random_uuid(), :org, :erin, '00000000-0000-4000-8000-0000000000e1', '2026-03-04 13:30:00-08',
+  '2026-03-04 13:30:02-08', 'pass', 2000);
+select is(pg_temp.cache_diff(), '', 'a check-in');
+update public.checkin_events set outcome = 'miss', response_ms = null
+where user_id = :erin and scheduled_at = '2026-03-04 13:30:00-08';
+select is(pg_temp.cache_diff(), '', 'a check-in''s outcome');
+insert into public.clock_sessions (org_id, user_id, device_id, start_at, end_at, start_event_id)
+values (:org, :erin, '00000000-0000-4000-8000-0000000000e1', '2026-03-03 09:40:00-08', '2026-03-03 17:00:00-08', gen_random_uuid());
+select is(pg_temp.cache_diff(), '', 'a clock session (attended, and late)');
+select is((select count(*)::int from public.late_clock_ins where user_id = :erin and day = '2026-03-03'), 1,
+  'its late clock-in was recorded');
+delete from public.late_clock_ins where user_id = :erin and day = '2026-03-03';
+select is(pg_temp.cache_diff(), '', 'a late clock-in');
+insert into public.leave_requests (org_id, user_id, leave_type_id, paid, kind, first_day, last_day,
+  start_at, end_at, timezone, status)
+select :org, :erin, t.id, true, 'days', '2026-03-05', '2026-03-05',
+  '2026-03-05 00:00:00-08', '2026-03-06 00:00:00-08', 'America/Los_Angeles', 'approved'
+from public.leave_types t where t.org_id = :org and t.name = 'Vacation';
+select is(pg_temp.cache_diff(), '', 'approved leave');
+insert into public.holidays (org_id, day, name) values (:org, '2026-03-04', 'Midweek day');
+select is(pg_temp.cache_diff(), '', 'a holiday');
+update public.anticheat_flags set reviewed_at = null, reviewed_by = null where user_id = :lucas;
+select is(pg_temp.cache_diff(), '', 'a flag''s review');
+insert into public.status_periods (org_id, user_id, status, reason, start_at, end_at)
+values (:org, :lucas, 'tamper', 'agent_stopped', '2026-03-03 13:00:00-06', '2026-03-03 13:30:00-06');
+select is(pg_temp.cache_diff(), '', 'a Tamper period');
+update public.shift_history set days = '{1,2}' where user_id = :lucas and valid_to is null;
+select is(pg_temp.cache_diff(), '', 'shift history');
+update public.shift_history set days = '{1}' where user_id = :lucas and valid_to is null;
+update public.projects set billable = not billable where id = :revamp;
+select is(pg_temp.cache_diff(), '', 'a project''s billable flag');
+update public.users set timezone = 'America/Denver' where id = :lucas;
+select is(pg_temp.cache_diff(), '', 'a time zone');
+select cmp_ok(internal.insights_daily_fill(1000000), '>', 0, 'the next fill keeps them again');
+select is(pg_temp.cache_diff(), '', 'and they read the same');
+update public.users set timezone = 'America/Chicago' where id = :lucas;
+update public.projects set billable = not billable where id = :revamp;
 
 -- Weekly insights email (INS-06) -------------------------------------------------------------------
 

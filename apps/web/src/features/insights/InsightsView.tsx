@@ -119,7 +119,7 @@ export function InsightsView({ data, self = false }: { data: Insights; self?: bo
           <Tile
             label="Worked vs scheduled"
             value={formatDuration(t.worked_s)}
-            note={`of ${formatDuration(t.scheduled_s)} scheduled (${formatRate(share(t.worked_s, t.scheduled_s))})`}
+            note={`of ${formatDuration(t.scheduled_s)} scheduled (${formatRate(share(t.worked_s, t.scheduled_s))}) · ${formatDuration(t.leave_s)} leave`}
             change={change((x) => x.worked_s, "duration")}
           />
         </dl>
@@ -137,15 +137,17 @@ export function InsightsView({ data, self = false }: { data: Insights; self?: bo
             {...range}
           />
           <BucketBars
-            title="Worked and scheduled hours"
-            summary={`${span}. In all: ${formatDuration(t.worked_s)} worked of ${formatDuration(t.scheduled_s)} scheduled.`}
+            title="Worked, leave and scheduled hours"
+            summary={`${span}. In all: ${formatDuration(t.worked_s)} worked and ${formatDuration(t.leave_s)} leave, of ${formatDuration(t.scheduled_s)} scheduled.`}
             rows={rows.map((r) => ({
               bucket: r.bucket,
               worked: r.worked_s / 3600,
+              leave: r.leave_s / 3600,
               scheduled: r.scheduled_s / 3600,
             }))}
             series={[
               { key: "worked", name: "Worked", colour: "var(--acc)" },
+              { key: "leave", name: "Leave", colour: "var(--sbreak)" },
               { key: "scheduled", name: "Scheduled", colour: "var(--spaused)" },
             ]}
             unit="hours"
@@ -666,6 +668,7 @@ function PeopleSection({ data }: { data: Insights }) {
   const win = pageWindow(index, total, size);
   const headers = [
     "Worked",
+    "Leave",
     "Scheduled",
     "On time",
     "Late",
@@ -712,6 +715,7 @@ function PeopleSection({ data }: { data: Insights }) {
                   </th>
                   {[
                     formatDuration(r.worked_s),
+                    formatDuration(r.leave_s),
                     formatDuration(r.scheduled_s),
                     `${r.on_time} of ${r.shift_days}`,
                     String(r.late_clock_ins),

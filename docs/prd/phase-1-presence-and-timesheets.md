@@ -114,7 +114,7 @@ Requirements are labelled `AREA-NN`. Priority: **P0** = must ship in Phase 1, **
 
 | ID | Pri | Requirement |
 |---|---|---|
-| SHF-01 | P0 | Admin/Manager defines shifts per employee: days of week, start/end time, **employee's time zone**. Shifts may cross midnight |
+| SHF-01 | P0 | Admin/Manager defines shifts per employee: days of week, start/end time, **employee's time zone**. Shifts may cross midnight. An edit applies from the employee's today on; earlier days keep the shift that applied then (shift history, #329) |
 | SHF-02 | P0 | Employee clocks in/out from the tray app. Optional project selection at clock-in (see PRJ) |
 | SHF-03 | P0 | Org setting **auto clock-in**: when enabled, the agent clocks the employee in on first input within the shift window (with a notification) |
 | SHF-04 | P0 | **Forgotten clock-out**: if no input for 30 min after shift end (configurable), agent auto clocks out at last activity time and flags the day |
@@ -389,7 +389,7 @@ Plain totals and trends of presence and time data. Not AI, and never a productiv
 | INS-01 | P1 | **Insights page:** managers see their reports (and their delegates' scope), owners and admins the org. Filter by team, person and date range; each metric shows its trend against the previous period of the same length |
 | INS-02 | P1 | Metrics. **Attendance:** on-time vs late clock-ins (SHF-06), shift days with no clock-in (leave and holidays excluded, LV-04), worked vs scheduled shift hours. **Presence:** check-in response rate and median response time over time (CHK-24), misses by reason (CHK-23), share deferred for calls and presenting (CHK-03). **Time:** worked vs flagged vs excluded (TS-02), break and pause use against caps (BRK-06), overtime (TS-19), billable share of worked time (utilisation) against an optional per-team target (off unless an owner or admin sets one on the team, 1–100%). **Projects:** hours by client, project and task over time, and the Unassigned share. **Needs review:** anti-cheat flags and Tamper counts over time (ANT-08), linking to the day views |
 | INS-03 | P1 | People tables list people by name by default; no composite score and no "top / bottom" lists. Top apps stay time only, with no productive / unproductive labels (ACT-04) |
-| INS-04 | P1 | Numbers match Reports (DSH-07, DSH-10) for the same filters: computed server-side from segments in raw seconds and rounded only for display (TS-06). Export as TS-27/28 |
+| INS-04 | P1 | Numbers match Reports (DSH-07, DSH-10) for the same filters: computed server-side from segments in raw seconds and rounded only for display (TS-06). Leave hours (LV-05) next to worked hours, as Reports' Leave. Past days use the shift that applied that day (SHF-01 history). Ranges up to a year load in under 2 s at 500 people. Export as TS-27/28 |
 | INS-05 | P1 | Employees see the same metrics about themselves in My data (EMP-02) |
 | INS-06 | P1 | Optional weekly insights email to managers, alongside the daily digest (ALR-03): off until the manager turns it on on the Alerts page; last week's totals for their direct reports against the week before, with no names |
 

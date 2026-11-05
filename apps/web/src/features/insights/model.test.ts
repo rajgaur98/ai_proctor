@@ -35,6 +35,7 @@ const reply = {
     billable_s: 10_800,
     unassigned_s: 5400,
     scheduled_s: 144_000,
+    leave_s: 28_800,
     shift_days: 5,
     on_time: 3,
     late_clock_ins: 2,
@@ -55,6 +56,7 @@ const reply = {
       active: true,
       worked_s: 19_800,
       billable_s: 7200,
+      leave_s: "28800",
       response_rate: 0.75,
       median_response_ms: 3000,
       shift_days: 4,
@@ -63,7 +65,13 @@ const reply = {
     { user_id: "ivan", full_name: "Ivan Inactive", team_id: null, active: false, worked_s: 3600 },
   ],
   series: [
-    { bucket: "2026-03-16", worked_s: 19_800, response_rate: 0.75, median_response_ms: 1500 },
+    {
+      bucket: "2026-03-16",
+      worked_s: 19_800,
+      leave_s: 28_800,
+      response_rate: 0.75,
+      median_response_ms: 1500,
+    },
     { bucket: "2026-03-17", worked_s: 3600, response_rate: null, median_response_ms: null },
   ],
   projects: [
@@ -253,6 +261,7 @@ describe("export tables", () => {
     const t = summaryTable(data);
     expect(t.header).toEqual(["Metric", "2026-03-16 to 2026-03-22", "2026-03-09 to 2026-03-15"]);
     expect(t.rows.find((r) => r[0] === "Worked (h)")).toEqual(["Worked (h)", 6.5, 2]);
+    expect(t.rows.find((r) => r[0] === "Leave (h)")).toEqual(["Leave (h)", 8, 0]);
     expect(t.rows.find((r) => r[0] === "Response rate (%)")).toEqual([
       "Response rate (%)",
       60,
@@ -269,13 +278,16 @@ describe("export tables", () => {
     const t = peopleTable(data.people);
     expect(t.rows.map((r) => r[0])).toEqual(["Erin Employee", "Ivan Inactive"]);
     expect(t.rows[0]?.[1]).toBe(5.5);
+    // LV-05 (#329): leave hours next to worked and scheduled.
+    expect(t.header.slice(1, 4)).toEqual(["Worked (h)", "Scheduled (h)", "Leave (h)"]);
+    expect(t.rows.map((r) => r[3])).toEqual([8, 0]);
     expect(t.header).toHaveLength(t.rows[0]?.length ?? 0);
   });
 
   it("trend, projects and the days to review", () => {
-    expect(trendTable(data).rows.map((r) => [r[0], r[1]])).toEqual([
-      ["2026-03-16", 5.5],
-      ["2026-03-17", 1],
+    expect(trendTable(data).rows.map((r) => [r[0], r[1], r[3]])).toEqual([
+      ["2026-03-16", 5.5, 8],
+      ["2026-03-17", 1, 0],
     ]);
     expect(projectsTable(data).rows[3]).toEqual(["", "Unassigned", "", 1.5, 23.1, "No", 1]);
     expect(reviewTable(data.reviewDays).rows).toEqual([["2026-03-17", "Erin Employee", 1, 1, 0]]);

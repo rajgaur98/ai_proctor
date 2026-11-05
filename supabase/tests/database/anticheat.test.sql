@@ -299,9 +299,11 @@ select is(
    where n.nspname in ('public', 'internal') and p.prosrc ilike '%anticheat_flags%'
      -- delete_user_data (#54) only deletes a person's flags along with the rest of their data;
      -- report_rows (#63, DSH-08) only counts them for the report's "needs review" column;
-     -- insights_days (#305, INS-02) counts them the same way for Insights.
+     -- insights_days_live (#305, INS-02) counts them the same way for Insights, and
+     -- insights_forget_row (#329) only forgets the kept Insights days a flag changes.
      and p.proname not in ('anticheat_from_checkin', 'anticheat_eval', 'anticheat_mark_reviewed',
-                           'delete_user_data', 'report_rows', 'insights_days')),
+                           'delete_user_data', 'report_rows', 'insights_days_live',
+                           'insights_forget_row')),
   0, 'no other function (status, segments, timesheets) reads the flags');
 
 create function pg_temp.fingerprint() returns text
