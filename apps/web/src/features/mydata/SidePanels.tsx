@@ -10,6 +10,7 @@ import { initials } from "../../lib/nav";
 import { viewerZone } from "../../lib/time";
 import { projectsQuery } from "../projects/projectData";
 import { leaveByDay, leaveLabel, leaveTotal } from "../timesheets/leave";
+import { RefreshFailed } from "../timesheets/RefreshFailed";
 import { SheetStatusChip } from "../timesheets/SheetStatusChip";
 import { formatDuration, summarizeWeek } from "../timesheets/summary";
 import {
@@ -149,7 +150,8 @@ function TimesheetCard({
   const week = startDay.data ? weekStartOf(date, startDay.data) : "";
   const ready = week !== "";
   const sheet = useQuery({ ...timesheetQuery(userId, week), enabled: ready });
-  // The week's segments are rebuilt when it opens, so the numbers are current.
+  // The week's segments are rebuilt when it opens, so the numbers are current; a failed or
+  // timed-out rebuild (#338) shows what is stored, with a retry.
   const rebuild = useQuery({
     queryKey: ["my-data", "rebuild", userId, week],
     enabled: ready,
@@ -192,6 +194,18 @@ function TimesheetCard({
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       ),
   });
+
+  const retryRebuild = async () => {
+    const result = await rebuild.refetch();
+    if (result.isSuccess) {
+      await Promise.all(
+        [
+          ["timesheet-breakdown", userId],
+          ["my-data", "unassigned", userId],
+        ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      );
+    }
+  };
 
   const viewer = viewerZone();
   const days = week ? weekDays(week) : [];
@@ -242,6 +256,7 @@ function TimesheetCard({
         </div>
       )}
       <div className="flex flex-col gap-2.5 px-[18px] py-3.5">
+        {rebuild.isError && <RefreshFailed onRetry={retryRebuild} retrying={rebuild.isFetching} />}
         <span className="text-[12.5px] font-medium text-ink2">Unassigned time</span>
         {open.length === 0 ? (
           <p className="text-[13px] text-ink3">

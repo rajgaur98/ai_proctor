@@ -46,6 +46,7 @@ import { LockBanner } from "./LockBanner";
 import { leaveByDay, leaveLabel, leaveTotal } from "./leave";
 import { OvertimeNote, WorkedTime } from "./Overtime";
 import { ProjectTime } from "./ProjectTime";
+import { RefreshFailed } from "./RefreshFailed";
 import { allowedProjects, canReassignWeek, unassignedSpans } from "./reassign";
 import { EditsList, WeekEntries } from "./SheetPanels";
 import { lateDataSummary, SheetStatusChip } from "./SheetStatusChip";
@@ -152,7 +153,8 @@ export function TimesheetPage() {
 
   const sheet = useQuery({ ...timesheetQuery(userId, week), enabled: ready });
   // The week's segments are rebuilt when the page opens (LLD section 6), so what the
-  // manager reviews is current; the numbers load once that has finished.
+  // manager reviews is current; the numbers load once that has finished, or once it has
+  // failed or timed out (#338: rebuildWeek gives up after 15 s), showing what is stored.
   const rebuild = useQuery({
     queryKey: ["timesheet-rebuild", userId, week],
     enabled: ready,
@@ -224,6 +226,11 @@ export function TimesheetPage() {
         ["timesheet-list"],
       ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     );
+  };
+  // #338: once a retried rebuild has finished, the numbers read before it are stale.
+  const retryRebuild = async () => {
+    const result = await rebuild.refetch();
+    if (result.isSuccess) await refresh();
   };
   const refreshAfterRebuild = async () => {
     // Project edits and reopened weeks only show once their days are rebuilt.
@@ -443,6 +450,9 @@ export function TimesheetPage() {
             <span className="text-[12.5px] text-ink3" aria-live="polite">
               Refreshing the week…
             </span>
+          )}
+          {rebuild.isError && ready && (
+            <RefreshFailed onRetry={retryRebuild} retrying={rebuild.isFetching} />
           )}
         </div>
       </div>
