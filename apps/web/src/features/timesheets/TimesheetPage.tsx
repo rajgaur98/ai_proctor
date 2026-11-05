@@ -649,7 +649,13 @@ export function TimesheetPage() {
         leave={hasLeave ? leaveSeconds : undefined}
         names={totalsNames(clients.data ?? [], projects.data ?? [], tasks.data ?? [])}
         overtime={<OvertimeChips items={overtimeItems} />}
-        loading={breakdown.isPending || projects.isPending || tasks.isPending || clients.isPending}
+        loading={
+          breakdown.isPending ||
+          projects.isPending ||
+          tasks.isPending ||
+          clients.isPending ||
+          leave.isPending
+        }
         exportAs={{ page: "timesheet-totals", filters: { person: name, week } }}
       />
       <OvertimeNote overtime={overtime} />
@@ -690,7 +696,7 @@ export function TimesheetPage() {
           week={week}
           zone={zone}
           entries={entryList}
-          leave={leaveDays}
+          leave={leave.isSuccess ? leaveDays : undefined}
           enabled={fresh}
           canEdit={canEditNotes}
           onChanged={refreshAfterRebuild}
