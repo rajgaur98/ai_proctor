@@ -358,11 +358,13 @@ select is(internal.status_input(:erin, pg_temp.la(pg_temp.mon(), '12:00')) ->> '
   'the status inputs carry leave (clocked in, the usual rules apply: see the status vectors)');
 
 -- The sweep: a holiday written without the functions (a midnight passing is the same) is
--- picked up within a minute.
-insert into public.holidays (org_id, day, name) values (:org, pg_temp.today(), 'Everyone off');
+-- picked up within a minute. Two days, so it is today for Lucas too: from 22:00 Los
+-- Angeles time his Chicago day is already the next date (#349).
+insert into public.holidays (org_id, day, name) values
+  (:org, pg_temp.today(), 'Everyone off'), (:org, pg_temp.today() + 1, 'Everyone off');
 select cmp_ok(internal.leave_sweep(), '>=', 2, 'the sweep refreshes whoever''s leave began');
 select is(pg_temp.status_of(:lucas), 'on_leave', 'Lucas is On leave too');
-delete from public.holidays where org_id = :org and day = pg_temp.today();
+delete from public.holidays where org_id = :org and day in (pg_temp.today(), pg_temp.today() + 1);
 select cmp_ok(internal.leave_sweep(), '>=', 2, 'and again when it ends');
 select is(pg_temp.status_of(:lucas), 'off_shift', 'Lucas is Off shift again');
 select is(internal.leave_sweep(), 0, 'with nothing changed, it does nothing');
