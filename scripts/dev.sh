@@ -7,6 +7,8 @@
 #   migrate      apply new migrations keeping the data, set the Vault secrets, and
 #                restart the stack so new and changed Edge Functions are served
 #   reset        rebuild the database from migrations + seed, set the Vault secrets
+#   demo         reset, then load the demo data set (#351: ~60 people, 4 weeks of
+#                history, every status); never before a test run
 #   dash         run the dashboard on this checkout's port (writes .env.local first)
 #   app-build    build the debug .app: signed with "AI Proctor Dev" when this Mac
 #                has it (#108), this stack's URL and anon key compiled in (the
@@ -102,6 +104,7 @@ case "${1:-}" in
     "$STACK" reset
     secrets
     ;;
+  demo) STACK_SH="$STACK" exec bash "$ROOT/scripts/demo-seed.sh" ;;
   dash)
     stack_env
     [ -f apps/web/.env.local ] && grep -q "$API_URL" apps/web/.env.local || "$STACK" dotenv
@@ -121,7 +124,7 @@ case "${1:-}" in
   logs) exec tail -f "$(ls -t "$HOME"/Library/Logs/com.aiproctor.agent/agent.*.log | head -1)" ;;
   sign-check) codesign -d -r- "$APP" 2>&1 | grep designated ;;
   *)
-    sed -n '2,21p' "$0"
+    sed -n '2,23p' "$0"
     exit 2
     ;;
 esac
