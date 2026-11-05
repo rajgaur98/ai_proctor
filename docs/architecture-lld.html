@@ -741,7 +741,7 @@ pub trait Platform: Send + Sync {
         <table>
           <thead><tr><th>Name</th><th>Trigger</th><th>Does</th></tr></thead>
           <tbody>
-            <tr><td><code>rebuild-segments</code></td><td>Cron 5 min; dashboard on open</td><td>Rebuilds every dirty user-day (section 6)</td></tr>
+            <tr><td><code>rebuild-segments</code></td><td>Cron 5 min; dashboard on open (one call per day; gives up after 15 s and shows the stored segments with a retry; a 401 renews the session once, or is ignored when signed out)</td><td>Rebuilds every dirty user-day (section 6)</td></tr>
             <tr><td><code>capture-url</code></td><td>Dashboard</td><td>Access check, audit row, signed URLs valid 5 min</td></tr>
             <tr><td><code>export-timesheet</code></td><td>Dashboard</td><td>CSV or XLSX into a private exports bucket, signed link</td></tr>
             <tr><td><code>api-v1</code></td><td>API clients (org API key)</td><td>The public API v1 (#306): routes <code>/v1/...</code>, hashes the key, calls <code>api_v1_authenticate</code> and <code>api_v1_call</code>; serves the OpenAPI document (docs/api)</td></tr>

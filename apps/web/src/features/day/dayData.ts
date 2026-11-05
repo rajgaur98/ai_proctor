@@ -2,6 +2,7 @@
 // the reason, #160), its check-ins, its top apps (#67) and the org's response window.
 import type { SegmentType } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
+import { rebuildSegments } from "../../lib/rebuildSegments";
 import { supabase } from "../../lib/supabase";
 import type { TopApp } from "./appsData";
 import { type RemovedParts, removedFromRow } from "./removedText";
@@ -31,14 +32,14 @@ export interface DaySegmentRow extends DaySegment {
 
 /**
  * Asks for the day's segments to be rebuilt (LLD section 6), so the numbers are current
- * when the page opens. A day in an approved week or a failing rebuild keeps what is
- * stored, so this never throws.
+ * when the page opens. A day in an approved week, a failing rebuild or one that takes
+ * longer than REBUILD_TIMEOUT_MS (#338) keeps what is stored, so this never throws.
  */
 export async function rebuildDay(userId: string, day: string): Promise<boolean> {
-  const { error } = await supabase.functions.invoke("rebuild-segments", {
-    body: { user_id: userId, day },
-  });
-  return !error;
+  return rebuildSegments(userId, [day]).then(
+    () => true,
+    () => false,
+  );
 }
 
 export const daySegmentsQuery = (userId: string, date: string) =>

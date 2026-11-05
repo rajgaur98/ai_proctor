@@ -9,6 +9,7 @@ import {
 } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { rebuildSegments } from "../../lib/rebuildSegments";
 import { supabase } from "../../lib/supabase";
 import { type DayLeave, leaveByUser, toLeaveItems } from "./leave";
 import type { WeekMiss } from "./misses";
@@ -396,18 +397,17 @@ export const weekListQuery = (weekStart: string) =>
 /**
  * Rebuilds the week's segments (the Edge Function accepts one day at a time from a
  * signed-in viewer), so what's shown or submitted is fresh. Days that haven't
- * started in the employee's zone have nothing to rebuild.
+ * started in the employee's zone have nothing to rebuild. Gives up after
+ * REBUILD_TIMEOUT_MS (#338), leaving what is stored.
  */
 export async function rebuildWeek(userId: string, weekStart: string, zone: string) {
   const today = DateTime.now().setZone(zone).toISODate() ?? weekStart;
   const days = weekDays(weekStart).filter((d) => d <= today);
-  const results = await Promise.all(
-    days.map((day) =>
-      supabase.functions.invoke("rebuild-segments", { body: { user_id: userId, day } }),
-    ),
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) throw new Error(`Couldn't refresh the week: ${failed.error.message}`);
+  try {
+    await rebuildSegments(userId, days);
+  } catch (e) {
+    throw new Error(`Couldn't refresh the week: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /** Refreshes the week's segments, then submits it. Returns the new status. */
