@@ -4,7 +4,8 @@
 # clock) queues the email_outbox row -> send_emails_kick calls the send-emails Edge
 # Function through pg_net with the Vault key -> the mail lands in Mailpit. Max manages Erin
 # and Lucas; in the week of Monday 16 March 2026 Erin worked 3 h 30 min (30 min of it
-# flagged), missed a check-in and clocked in 20 minutes late. The email is off until Max
+# flagged), missed a check-in, clocked in 20 minutes late and took Wednesday off (an approved
+# paid day of leave: her 8-hour shift, the Leave line, #344). The email is off until Max
 # turns it on (set_weekly_insights, signed in as him); then it goes out at 09:00 Chicago on
 # Monday 23 March, with last week's totals next to the week before's and no names. A
 # repeat run sends nothing.
@@ -82,6 +83,7 @@ cleanup() {
           delete from public.checkin_events where device_id = '$DEV';
           delete from public.clock_sessions where device_id = '$DEV';
           delete from public.devices where id = '$DEV';
+          delete from public.leave_requests where user_id = '$ERIN' and note = 'it-weekly-insights';
           delete from public.notification_prefs;
           delete from public.weekly_insights_sent;
           delete from public.dirty_days where day = '2026-03-17'" >/dev/null || true
@@ -97,6 +99,12 @@ sql -c "insert into public.devices (id, org_id, user_id, platform, os_version, a
         values ('$ORG', '$ERIN', '$DEV', '2026-03-17 09:20:00-07', '2026-03-17 12:50:00-07', gen_random_uuid());
         insert into public.checkin_events (id, org_id, user_id, device_id, scheduled_at, shown_at, outcome)
         values (gen_random_uuid(), '$ORG', '$ERIN', '$DEV', '2026-03-17 11:00:00-07', '2026-03-17 11:00:00-07', 'miss');
+        delete from public.leave_requests where user_id = '$ERIN' and note = 'it-weekly-insights';
+        insert into public.leave_requests (org_id, user_id, leave_type_id, paid, kind, first_day, last_day,
+          start_at, end_at, timezone, note, status)
+        select '$ORG', '$ERIN', t.id, true, 'days', '2026-03-18', '2026-03-18', '2026-03-18 00:00:00-07',
+          '2026-03-19 00:00:00-07', 'America/Los_Angeles', 'it-weekly-insights', 'approved'
+        from public.leave_types t where t.org_id = '$ORG' and t.name = 'Vacation';
         delete from public.time_segments where user_id = '$ERIN' and day = '2026-03-17';
         insert into public.time_segments (org_id, user_id, day, start_at, end_at, type, counted, flagged)
         values ('$ORG', '$ERIN', '2026-03-17', '2026-03-17 09:20:00-07', '2026-03-17 12:20:00-07', 'verified', true, false),
@@ -128,6 +136,7 @@ wait_mail manager@acme.test 1
 mail=$(first_mail manager@acme.test)
 case "${mail%%|*}" in "Weekly insights: your team, "*) ;; *) fail "unexpected subject: ${mail%%|*}" ;; esac
 for want in "Worked: 3:30 (week before 0:00)" "Flagged: 0:30 (week before 0:00)" \
+  "Leave: 8:00 (week before 0:00)" \
   "Late clock-ins: 1 (week before 0)" "Missed check-ins: 1 (week before 0)" "/insights"; do
   case "$mail" in *"$want"*) ;; *) fail "'$want' is missing in: $mail" ;; esac
 done

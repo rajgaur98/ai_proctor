@@ -3,6 +3,7 @@ import {
   barSegments,
   barSpan,
   type DaySegment,
+  historyRules,
   localDay,
   markerLeft,
   shiftText,
@@ -126,6 +127,26 @@ describe("shiftText", () => {
   it("lists the shifts that start that day, in the employee's zone", () => {
     expect(shiftText([shift], "2026-10-19", zone)).toBe("Shift 09:00–17:00 (PDT)");
     expect(shiftText([shift], "2026-10-20", zone)).toBe("No shift");
+  });
+});
+
+describe("historyRules", () => {
+  // Sunday night's 22:00 shift, then Monday's own after an edit on Monday (#344).
+  const rules = historyRules([
+    { day: "2026-10-18", start_time: "22:00:00", end_time: "06:00:00", timezone: zone },
+    { day: "2026-10-19", start_time: "13:00:00", end_time: "15:00:00", timezone: zone },
+  ]);
+
+  it("keeps each shift on the day it applied to", () => {
+    expect(rules).toEqual([
+      { days: [7], start: "22:00", end: "06:00", timezone: zone },
+      { days: [1], start: "13:00", end: "15:00", timezone: zone },
+    ]);
+  });
+
+  it("draws last night's tail and the day's own shift, and names only the day's", () => {
+    expect(barSpan(day, zone, rules, [], [])).toEqual({ start: ms("00:00"), end: ms("15:00") });
+    expect(shiftText(rules, "2026-10-19", zone)).toBe("Shift 13:00–15:00 (PDT)");
   });
 });
 

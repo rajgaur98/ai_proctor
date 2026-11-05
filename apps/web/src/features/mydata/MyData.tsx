@@ -16,11 +16,10 @@ import { Time, viewerZone } from "../../lib/time";
 import { CaptureViewer } from "../day/CaptureViewer";
 import { missReason, noFace, outcomeLabel } from "../day/checkinText";
 import { Marker } from "../day/DayTimeline";
-import { rebuildDay } from "../day/dayData";
+import { dayShiftsQuery, rebuildDay } from "../day/dayData";
 import { removedText } from "../day/removedText";
 import { TopApps } from "../day/TopApps";
 import { barSpan, deferralLabel, localDay, ticks } from "../day/timeline";
-import { shiftsQuery } from "../people/ShiftEditor";
 import { projectsQuery } from "../projects/projectData";
 import { timesheetQuery, weekStartQuery } from "../timesheets/timesheetData";
 import { weekStartOf } from "../timesheets/weeks";
@@ -81,7 +80,8 @@ function MyDay() {
 
   const manager = useQuery(myManagerQuery(profile.id));
   const retention = useQuery(retentionQuery);
-  const shifts = useQuery(shiftsQuery(profile.id));
+  // SHF-01: a past day shows the shift that applied that day (#344).
+  const shifts = useQuery(dayShiftsQuery(profile.id, date, isToday));
   // The day's segments are rebuilt when the page opens, as on the manager's day page
   // (LLD section 6), so a just-finished day isn't empty until the 5-minute cron. A failed
   // rebuild leaves what is stored. Today is rebuilt again every minute.

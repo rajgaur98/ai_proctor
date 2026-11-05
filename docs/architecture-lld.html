@@ -840,7 +840,7 @@ pub trait Platform: Send + Sync {
           <li><span class="badge">FK</span>user_id → users</li>
           <li>days int[] · start_time · end_time</li>
           <li>timezone</li>
-          <li>shift_history (#329, written by a trigger on shifts): the same plus valid_from · valid_to, the person's local days each shift applied to. An edit applies from the person's today; earlier days keep the shift they had. <code>internal.shift_occurrences</code> reads it for past days (Insights attendance, <code>leave_days</code>, late clock-ins synced later); the agent, live alerts, Team live and reminders read <code>shifts</code></li>
+          <li>shift_history (#329, written by a trigger on shifts): the same plus valid_from · valid_to, the person's local days each shift applied to. An edit applies from the person's today; earlier days keep the shift they had. <code>internal.shift_occurrences</code> reads it for past days (Insights attendance, <code>leave_days</code>, late clock-ins synced later); <code>public.day_shifts</code> gives the day page and My data a past day's shifts, and <code>alert_eval</code> checks yesterday's occurrence (a night shift still running) against it (#344); the agent, today's live alerts, Team live and reminders read <code>shifts</code></li>
         </ul></div>
         <div class="t-card"><div class="name">teams · notices · notice_acks</div><ul>
           <li>teams: id · name · policy jsonb (overrides, #66)</li>

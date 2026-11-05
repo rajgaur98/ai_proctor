@@ -3752,6 +3752,16 @@ export type Database = {
           url: string;
         }[];
       };
+      day_shifts: {
+        Args: { p_day: string; p_user_id: string };
+        Returns: {
+          day: string;
+          days: number[];
+          end_time: string;
+          start_time: string;
+          timezone: string;
+        }[];
+      };
       decide_leave: {
         Args: { p_approve: boolean; p_note?: string; p_request_id: string };
         Returns: undefined;
