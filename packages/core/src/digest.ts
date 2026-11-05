@@ -120,6 +120,8 @@ const ratio = (part: number, all: number): string =>
 const WEEKLY: { label: string; show: (t: Totals) => string }[] = [
   { label: "Worked", show: (t) => clockHours(n(t, "worked_s")) },
   { label: "Scheduled", show: (t) => clockHours(n(t, "scheduled_s")) },
+  // LV-05 (#344): paid leave and holidays, apart from worked time.
+  { label: "Leave", show: (t) => clockHours(n(t, "leave_s")) },
   { label: "Shift days on time", show: (t) => `${n(t, "on_time")} of ${n(t, "shift_days")}` },
   { label: "Late clock-ins", show: (t) => String(n(t, "late_clock_ins")) },
   { label: "Shift days without a clock-in", show: (t) => String(n(t, "no_clock_in")) },

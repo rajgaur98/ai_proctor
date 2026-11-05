@@ -181,6 +181,29 @@ export function ticks(span: Span, zone: string): { left: number; label: string }
   return out;
 }
 
+/** One public.day_shifts row (#344): a shift that applied on `day` (shift history, SHF-01). */
+export interface DayShiftRow {
+  /** The local date it applied to, in the shift's zone. */
+  day: string;
+  start_time: string;
+  end_time: string;
+  timezone: string;
+}
+
+/**
+ * The shifts that applied on a past day and the day before it, as rules for barSpan and
+ * shiftText: each only on the weekday it applied to, so last night's version and the day's
+ * own don't mix when a shift was edited in between.
+ */
+export function historyRules(rows: DayShiftRow[]): ShiftRule[] {
+  return rows.map((r) => ({
+    days: [DateTime.fromISO(r.day).weekday],
+    start: r.start_time.slice(0, 5),
+    end: r.end_time.slice(0, 5),
+    timezone: r.timezone,
+  }));
+}
+
 /** "Shift 09:00–18:00 (IST)" for the shifts that start on this day, or "No shift". */
 export function shiftText(shifts: ShiftRule[], isoDate: string, zone: string): string {
   const day = DateTime.fromISO(isoDate, { zone });

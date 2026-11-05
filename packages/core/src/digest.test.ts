@@ -103,6 +103,7 @@ describe("weeklyInsightsLines", () => {
       {
         worked_s: 34_200,
         scheduled_s: 144_000,
+        leave_s: 28_800,
         on_time: 3,
         shift_days: 5,
         late_clock_ins: 2,
@@ -120,6 +121,7 @@ describe("weeklyInsightsLines", () => {
     expect(lines.map(weeklyLineText)).toEqual([
       "Worked: 9:30 (week before 2:00)",
       "Scheduled: 40:00 (week before 0:00)",
+      "Leave: 8:00 (week before 0:00)",
       "Shift days on time: 3 of 5 (week before 0 of 0)",
       "Late clock-ins: 2 (week before 0)",
       "Shift days without a clock-in: 0 (week before 0)",

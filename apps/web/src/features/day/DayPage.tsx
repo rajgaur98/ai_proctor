@@ -11,7 +11,7 @@ import { StatusChip } from "../../components/StatusChip";
 import { Button } from "../../components/ui/button";
 import { supabase } from "../../lib/supabase";
 import { Time, viewerZone } from "../../lib/time";
-import { ShiftEditor, shiftsQuery } from "../people/ShiftEditor";
+import { ShiftEditor } from "../people/ShiftEditor";
 import { projectsQuery, tasksQuery } from "../projects/projectData";
 import { canDecideQuery, weekStartQuery } from "../timesheets/timesheetData";
 import { weekStartOf } from "../timesheets/weeks";
@@ -21,6 +21,7 @@ import { DayTimeline, Marker, StatsRow, segmentStyle } from "./DayTimeline";
 import {
   dayCheckinsQuery,
   daySegmentsQuery,
+  dayShiftsQuery,
   dayTamperQuery,
   rebuildDay,
   responseWindowQuery,
@@ -81,7 +82,8 @@ export function DayPage() {
   const day = useMemo(() => localDay(date, zone), [date, zone]);
   const live = isToday ? 30_000 : false;
 
-  const shifts = useQuery({ ...shiftsQuery(userId), enabled: !!person.data });
+  // SHF-01: a past day is drawn with the shift that applied that day (#344).
+  const shifts = useQuery({ ...dayShiftsQuery(userId, date, isToday), enabled: !!person.data });
   // The day's segments are rebuilt when the page opens (LLD section 6), then read; a
   // failed rebuild leaves what is stored. Today is rebuilt again every minute.
   const rebuild = useQuery({

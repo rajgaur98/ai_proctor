@@ -1,12 +1,40 @@
 // What the day page reads (#33, #124): the day's time_segments, its Tamper periods (for
 // the reason, #160), its check-ins, its top apps (#67) and the org's response window.
-import type { SegmentType } from "@ai-proctor/core";
+import type { SegmentType, ShiftRule } from "@ai-proctor/core";
 import { queryOptions } from "@tanstack/react-query";
 import { rebuildSegments } from "../../lib/rebuildSegments";
 import { supabase } from "../../lib/supabase";
+import { shiftsQuery } from "../people/ShiftEditor";
 import type { TopApp } from "./appsData";
 import { type RemovedParts, removedFromRow } from "./removedText";
-import type { Checkin, DaySegment, Span, TamperPeriod } from "./timeline";
+import {
+  type Checkin,
+  type DaySegment,
+  historyRules,
+  type Span,
+  type TamperPeriod,
+} from "./timeline";
+
+/**
+ * The shifts the day is drawn with (SHF-01, #344): today the current ones (the shift
+ * editor's query, so a save shows at once); a past day the ones that applied that day and
+ * the day before, from the shift history, so editing a shift today leaves earlier days as
+ * they were.
+ */
+export function dayShiftsQuery(userId: string, date: string, isToday: boolean) {
+  if (isToday) return shiftsQuery(userId);
+  return {
+    queryKey: ["shifts", userId, "day", date],
+    queryFn: async (): Promise<ShiftRule[]> => {
+      const { data, error } = await supabase.rpc("day_shifts", {
+        p_user_id: userId,
+        p_day: date,
+      });
+      if (error) throw error;
+      return historyRules(data ?? []);
+    },
+  };
+}
 
 export interface CheckinRow extends Checkin {
   respondedAt: string | null;
