@@ -48,8 +48,11 @@ Read this first after a restart or a context compaction. Update it with every PR
     - #334 flaky week query budget e2e (Realtime alert refetch) (#337)
     - #335 webhooks: test event, redeliver, rotation grace period, DNS pinning (#336)
     - #327 leave in the Totals and Days exports and in My data (#339)
+    - #338 week page rebuild gives up after 15 s with a Retry; 401s explained and handled (#341)
+    - #329 shift history, one leave rule, leave hours in Insights, year-long ranges via a person-day cache (#343)
+    - #344 shift history in the day view, weekly email Leave line, alert_eval (#345)
   - Open PRs: #330 (#307 MCP server), built and green, **not merged**: waiting on Raj (see Blocked on Raj).
-  - Being built: #329 Insights follow-ups (shift history, one leave rule, leave hours, longer ranges), #338 week page rebuild timeout and 401s.
+  - Being built: none. Every unblocked #62 issue is merged; the run is off until Raj answers #307 and #342.
   - Defaults taken are listed in each PR body; Raj can override any of them.
 - **Next:**
   - The hosted Supabase project (staging) for Pages previews and backups, once Raj sets up the M6 accounts.
@@ -150,6 +153,7 @@ Format: `- #<issue>: <exact question or action needed>`
 
 - #12, #13, #14 (Windows halves), #56: a Windows VM (Raj is setting one up, 22 Oct). CI builds an unsigned Windows installer to install there; then the Windows checklists in each PR.
 - #307 (PR #330, built and green, not merged): an AI assistant's OAuth token is a full Supabase Auth session, so the assistant can change the person's password and enrol an MFA factor through `PUT /auth/v1/user` (Supabase's OAuth server has no scopes). Off per org by default; the consent page names the assistant and its return host. Which: (a) accept for the pilot; (b) accept and set `secure_password_change = true` (password changes need a recent sign-in, for everyone); (c) no OAuth for now, only short-lived tokens issued from the dashboard? Also the privacy lawyer review of the notice sentence about AI assistant access.
+- #342: dashboard Sign out uses Supabase's default scope=global, ending every session of that person (by GoTrue's rules, likely the desktop agent's too; not yet tested on the agent). Should it end only this browser (`scope: "local"`) with a separate "Sign out of all devices" action, or keep ending every session?
 - #27, #55, #57, #60, #61: accounts and secrets for M6 (Apple Developer, Cloudflare Pages + R2, Sentry, Better Stack, Google/Microsoft OAuth, a domain for Resend).
 - 31 Oct defaults taken (Raj can change any of them):
   - #251: in_meeting, paused and idle show red on the seat map, although the "Active" tile counts them as active.
