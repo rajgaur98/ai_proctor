@@ -47,6 +47,8 @@ For each issue in the build order (`docs/progress.md`):
 
 **Physical steps:** when something needs Raj (approve a permission prompt, click the check-in card, open a full-screen app), stop and give numbered steps, then wait. Verify what you can yourself with screenshots. Test permissions on a bundled `.app`, not a binary launched from your shell.
 
+**Trying the product by hand:** `scripts/demo-seed.sh` resets the stack and loads the demo data set (#351): ~60 more people in Acme Remote with four weeks of history ending now, every live status, timesheets in every state, time off, alerts, webhooks (see `supabase/demo/`). Sign in to the dashboard as `admin@acme.test` or `manager@acme.test` (`password123`). It replaces the database, so run `scripts/stack.sh reset` before any pgTAP or e2e run.
+
 **Blocked on a decision:** add it to "Blocked on Raj" in `docs/progress.md` with the exact question, tell Raj, and move to the next unblocked issue.
 
 **Windows:** code must compile and pass tests on the Windows CI runner; label PRs needing real-machine testing `needs-device-test` with a checklist. #12 waits for a Windows machine.
