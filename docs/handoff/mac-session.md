@@ -59,7 +59,7 @@ For each issue in the build order (`docs/progress.md`):
 APPLE_SIGNING_IDENTITY="AI Proctor Dev" pnpm --filter @ai-proctor/agent tauri build --debug
 ```
 
-`scripts/agent-e2e.sh` sets it on its own when `security find-identity -v -p codesigning` lists the identity. Without it (CI, other Macs) the bundle stays ad hoc signed, and every rebuild loses the grants again.
+Use `scripts/dev.sh app-build` (or `app`, which also restarts the app) rather than typing that: it sets the identity and compiles in the stack's URL and anon key (#347). `scripts/agent-e2e.sh` sets it on its own when `security find-identity -v -p codesigning` lists the identity. Without it (CI, other Macs) the bundle stays ad hoc signed, and every rebuild loses the grants again.
 - Check a build: `codesign -d -r- "target/debug/bundle/macos/AI Proctor.app"` should print `designated => identifier "com.aiproctor.agent" and certificate leaf = H"afcdc3cc…"`, the same after every rebuild. An ad hoc build prints `cdhash H"…"`, which changes on every build.
 - Signing with an identity turns on the hardened runtime. The camera then needs the `com.apple.security.device.camera` entitlement (`apps/agent/src-tauri/Entitlements.plist`, wired in through `bundle.macOS.entitlements`). Screen Recording needs no entitlement.
 - The first launch after switching from ad hoc builds may show one keychain prompt for the outbox key: click "Always Allow". It shouldn't come back after later rebuilds.

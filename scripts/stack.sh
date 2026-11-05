@@ -9,6 +9,7 @@
 #   down    stop it (data kept)
 #   env     print API_URL, ANON_KEY, MAILPIT_URL, ... and WEB_PORT
 #   reset   rebuild the database from this worktree's migrations + seed
+#   migrate apply migrations the database doesn't have yet (data kept)
 #   test    run the pgTAP tests against it
 #   dotenv  write apps/web/.env.local for this stack
 #   ports   print the port block
@@ -102,6 +103,7 @@ case "${1:-}" in
     echo "WEB_PORT=$WEB_PORT"
     ;;
   reset) sb db reset ;;
+  migrate) sb migration up --local ;;
   test) sb test db ;;
   types)
     # `pnpm db:types` reads the default stack; a worktree must read its own.
@@ -134,7 +136,7 @@ case "${1:-}" in
     echo "worktree=$NAME block=$K api=$((BASE + 1)) db=$((BASE + 2)) mail=$((BASE + 4)) web=$WEB_PORT"
     ;;
   *)
-    sed -n '2,19p' "$0"
+    sed -n '2,20p' "$0"
     exit 2
     ;;
 esac
